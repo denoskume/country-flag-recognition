@@ -17,6 +17,8 @@ import random
 import re
 import urllib.parse
 import urllib.request
+import urllib.error
+import time
 
 import numpy as np
 from PIL import Image, ImageOps
@@ -62,7 +64,11 @@ def parse_args():
     return parser.parse_args()
 
 
-def api_get(params: dict[str, str | int]) -> dict:
+def api_get(
+    params: dict[str, str | int],
+    retries: int = 6,
+    base_delay: float = 2.0,
+) -> dict:
     encoded = urllib.parse.urlencode({
         "format": "json",
         "formatversion": "2",
@@ -72,8 +78,31 @@ def api_get(params: dict[str, str | int]) -> dict:
         f"{API}?{encoded}",
         headers={"User-Agent": USER_AGENT},
     )
-    with urllib.request.urlopen(request, timeout=30) as response:
-        return json.load(response)
+
+    for attempt in range(retries):
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                payload = json.load(response)
+            time.sleep(0.8)
+            return payload
+        except urllib.error.HTTPError as exc:
+            if exc.code != 429 or attempt == retries - 1:
+                raise
+
+            retry_after = exc.headers.get("Retry-After")
+            delay = (
+                float(retry_after)
+                if retry_after and retry_after.isdigit()
+                else base_delay * (2 ** attempt)
+            )
+            delay = min(delay, 60.0)
+            print(
+                f"Wikimedia rate limit (429). "
+                f"Retrying in {delay:.0f}s..."
+            )
+            time.sleep(delay)
+
+    raise RuntimeError("Wikimedia request failed after retries.")
 
 
 def load_taxonomy(path: Path) -> dict[str, str]:
@@ -187,13 +216,41 @@ def metadata_value(metadata: dict, key: str) -> str:
     return ""
 
 
-def download_image(url: str) -> tuple[bytes, Image.Image]:
-    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(request, timeout=30) as response:
-        payload = response.read(12 * 1024 * 1024)
+def download_image(
+    url: str,
+    retries: int = 5,
+    base_delay: float = 2.0,
+) -> tuple[bytes, Image.Image]:
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": USER_AGENT},
+    )
 
-    image = Image.open(io.BytesIO(payload)).convert("RGB")
-    return payload, image
+    for attempt in range(retries):
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                payload = response.read(12 * 1024 * 1024)
+            time.sleep(0.5)
+            image = Image.open(io.BytesIO(payload)).convert("RGB")
+            return payload, image
+        except urllib.error.HTTPError as exc:
+            if exc.code != 429 or attempt == retries - 1:
+                raise
+
+            retry_after = exc.headers.get("Retry-After")
+            delay = (
+                float(retry_after)
+                if retry_after and retry_after.isdigit()
+                else base_delay * (2 ** attempt)
+            )
+            delay = min(delay, 60.0)
+            print(
+                f"Image rate limit (429). "
+                f"Retrying in {delay:.0f}s..."
+            )
+            time.sleep(delay)
+
+    raise RuntimeError("Image download failed after retries.")
 
 
 def safe_name(title: str) -> str:
@@ -222,13 +279,71 @@ def main():
     args.output_dir.mkdir(parents=True, exist_ok=True)
     args.manifest.parent.mkdir(parents=True, exist_ok=True)
 
+    if args.manifest.is_file():
+        with args.manifest.open(newline="", encoding="utf-8") as handle:
+            existing_rows = list(csv.DictReader(handle))
+        rows.extend(existing_rows)
+
+        for row in existing_rows:
+            try:
+                accepted_hashes.append(int(row["dhash16"], 16))
+            except (KeyError, ValueError, TypeError):
+                pass
+
+        print(
+            f"Resuming existing manifest: {len(existing_rows)} image(s)"
+        )
+
+    fieldnames = [
+        "path", "class_code", "country_name", "source", "source_page",
+        "source_image", "license", "artist", "description",
+        "sha256_download", "dhash16", "review_status", "review_note",
+    ]
+
+    def save_manifest() -> None:
+        with args.manifest.open(
+            "w",
+            newline="",
+            encoding="utf-8",
+        ) as handle:
+            writer = csv.DictWriter(
+                handle,
+                fieldnames=fieldnames,
+            )
+            writer.writeheader()
+            writer.writerows(rows)
+
     for class_index, code in enumerate(target_codes, start=1):
         name = taxonomy[code]
         class_dir = args.output_dir / code
         class_dir.mkdir(parents=True, exist_ok=True)
 
-        saved = 0
-        candidates = search_files(name)
+        existing_for_class = [
+            row
+            for row in rows
+            if row.get("class_code") == code
+            and Path(row.get("path", "")).is_file()
+        ]
+        saved = len(existing_for_class)
+
+        if saved >= args.images_per_class:
+            print(
+                f"[{class_index:02d}/{len(target_codes):02d}] "
+                f"{code} {name}: {saved}/{args.images_per_class} (already complete)"
+            )
+            continue
+
+        try:
+            candidates = search_files(name)
+        except urllib.error.HTTPError as exc:
+            if exc.code == 429:
+                print(
+                    f"[{class_index:02d}/{len(target_codes):02d}] "
+                    f"{code} {name}: API rate-limited, skipping for this run"
+                )
+                save_manifest()
+                continue
+            raise
 
         for candidate in candidates:
             if saved >= args.images_per_class:
@@ -278,21 +393,16 @@ def main():
                 "review_note": "",
             })
             saved += 1
+            save_manifest()
 
         print(
             f"[{class_index:02d}/{len(target_codes):02d}] "
             f"{code} {name}: {saved}/{args.images_per_class}"
         )
 
-    fieldnames = [
-        "path", "class_code", "country_name", "source", "source_page",
-        "source_image", "license", "artist", "description",
-        "sha256_download", "dhash16", "review_status", "review_note",
-    ]
-    with args.manifest.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(rows)
+        time.sleep(1.5)
+
+    save_manifest()
 
     print()
     print(f"Target classes       : {len(target_codes)}")
