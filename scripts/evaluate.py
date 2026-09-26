@@ -44,8 +44,12 @@ def predict_loader(
     model.eval()
 
     for batch in loader:
-        images = batch["image"].to(device)
-        logits = model(images)
+        images = batch["image"].to(
+            device
+        )
+        logits = model(
+            images
+        )
 
         probabilities.append(
             torch.softmax(
@@ -60,8 +64,12 @@ def predict_loader(
         )
 
     return (
-        np.concatenate(probabilities),
-        np.concatenate(targets),
+        np.concatenate(
+            probabilities
+        ),
+        np.concatenate(
+            targets
+        ),
     )
 
 
@@ -77,13 +85,19 @@ def predict_unknown_scores(
     model.eval()
 
     for path in image_paths:
-        with Image.open(path) as image:
+        with Image.open(
+            path
+        ) as image:
             tensor = transform(
                 image.convert("RGB")
-            ).unsqueeze(0).to(device)
+            ).unsqueeze(0).to(
+                device
+            )
 
         probabilities = torch.softmax(
-            model(tensor),
+            model(
+                tensor
+            ),
             dim=1,
         )[0]
 
@@ -99,24 +113,82 @@ def predict_unknown_scores(
     )
 
 
+def evaluate_open_set_subset(
+    known_scores: np.ndarray,
+    subset: pd.DataFrame,
+    model,
+    transform,
+    device: torch.device,
+    threshold: float,
+) -> dict[str, float | int] | None:
+    """Evaluate one explicitly labeled unseen-data subset."""
+    if subset.empty:
+        return None
+
+    unknown_scores = (
+        predict_unknown_scores(
+            model,
+            [
+                Path(path)
+                for path in subset[
+                    "path"
+                ].tolist()
+            ],
+            transform,
+            device,
+        )
+    )
+
+    return {
+        "images": int(
+            len(subset)
+        ),
+        **open_set_summary(
+            known_scores=(
+                known_scores
+            ),
+            unknown_scores=(
+                unknown_scores
+            ),
+        ),
+        "unknown_rejection_rate": float(
+            np.mean(
+                unknown_scores
+                < threshold
+            )
+        ),
+    }
+
+
 def main() -> None:
     args = parse_args()
 
-    with args.config.open("r", encoding="utf-8") as handle:
-        config = yaml.safe_load(handle)
+    with args.config.open(
+        "r",
+        encoding="utf-8",
+    ) as handle:
+        config = yaml.safe_load(
+            handle
+        )
 
     manifest_path = Path(
-        config["data"]["split_manifest"]
+        config["data"][
+            "split_manifest"
+        ]
     )
     manifest = pd.read_csv(
         manifest_path
     )
 
     checkpoint_path = Path(
-        config["artifacts"]["model_path"]
+        config["artifacts"][
+            "model_path"
+        ]
     )
-    bundle = load_inference_bundle(
-        checkpoint_path
+    bundle = (
+        load_inference_bundle(
+            checkpoint_path
+        )
     )
 
     class_to_index = {
@@ -126,13 +198,25 @@ def main() -> None:
     }
 
     seen_test = manifest[
-        (manifest["regime"] == "seen")
-        & (manifest["partition"] == "test")
+        (
+            manifest["regime"]
+            == "seen"
+        )
+        & (
+            manifest["partition"]
+            == "test"
+        )
     ].copy()
 
     unseen_test = manifest[
-        (manifest["regime"] == "unseen")
-        & (manifest["partition"] == "test")
+        (
+            manifest["regime"]
+            == "unseen"
+        )
+        & (
+            manifest["partition"]
+            == "test"
+        )
     ].copy()
 
     if seen_test.empty:
@@ -145,30 +229,39 @@ def main() -> None:
             "The manifest contains no unseen test images."
         )
 
-    transform = build_eval_transform(
-        bundle.image_size
+    transform = (
+        build_eval_transform(
+            bundle.image_size
+        )
     )
 
-    seen_dataset = FlagManifestDataset(
-        seen_test,
-        class_to_index=class_to_index,
-        transform=transform,
+    seen_dataset = (
+        FlagManifestDataset(
+            seen_test,
+            class_to_index=(
+                class_to_index
+            ),
+            transform=transform,
+        )
     )
     seen_loader = DataLoader(
         seen_dataset,
         batch_size=int(
-            config["training"]["batch_size"]
+            config["training"][
+                "batch_size"
+            ]
         ),
         shuffle=False,
         num_workers=0,
     )
 
-    seen_probabilities, seen_targets = (
-        predict_loader(
-            bundle.model,
-            seen_loader,
-            bundle.device,
-        )
+    (
+        seen_probabilities,
+        seen_targets,
+    ) = predict_loader(
+        bundle.model,
+        seen_loader,
+        bundle.device,
     )
 
     closed_set_metrics = (
@@ -184,37 +277,73 @@ def main() -> None:
         )
     )
 
-    unknown_scores = (
-        predict_unknown_scores(
-            bundle.model,
-            [
-                Path(path)
-                for path in unseen_test[
-                    "path"
-                ].tolist()
-            ],
-            transform,
-            bundle.device,
-        )
-    )
-
-    open_set_metrics = open_set_summary(
-        known_scores=known_scores,
-        unknown_scores=unknown_scores,
-    )
-
     threshold = (
         bundle.unknown_threshold
     )
 
     known_acceptance = float(
         np.mean(
-            known_scores >= threshold
+            known_scores
+            >= threshold
         )
     )
-    unknown_rejection = float(
-        np.mean(
-            unknown_scores < threshold
+
+    # Keep real-world unknown evidence separate from controlled
+    # canonical/presentation variants.
+    unseen_real_world = unseen_test[
+        unseen_test[
+            "evaluation_scope"
+        ]
+        == "real_world_unknown"
+    ].copy()
+
+    unseen_controlled = unseen_test[
+        unseen_test[
+            "evaluation_scope"
+        ]
+        == "controlled_unknown"
+    ].copy()
+
+    overall_open_set = (
+        evaluate_open_set_subset(
+            known_scores=(
+                known_scores
+            ),
+            subset=unseen_test,
+            model=bundle.model,
+            transform=transform,
+            device=bundle.device,
+            threshold=threshold,
+        )
+    )
+
+    real_world_open_set = (
+        evaluate_open_set_subset(
+            known_scores=(
+                known_scores
+            ),
+            subset=(
+                unseen_real_world
+            ),
+            model=bundle.model,
+            transform=transform,
+            device=bundle.device,
+            threshold=threshold,
+        )
+    )
+
+    controlled_open_set = (
+        evaluate_open_set_subset(
+            known_scores=(
+                known_scores
+            ),
+            subset=(
+                unseen_controlled
+            ),
+            model=bundle.model,
+            transform=transform,
+            device=bundle.device,
+            threshold=threshold,
         )
     )
 
@@ -231,20 +360,27 @@ def main() -> None:
         "unknown_threshold": float(
             threshold
         ),
-        "closed_set": closed_set_metrics,
-        "open_set": {
-            **open_set_metrics,
+        "closed_set_real_world": {
+            **closed_set_metrics,
             "known_acceptance_rate": (
                 known_acceptance
             ),
-            "unknown_rejection_rate": (
-                unknown_rejection
-            ),
         },
+        "open_set_overall": (
+            overall_open_set
+        ),
+        "open_set_real_world": (
+            real_world_open_set
+        ),
+        "open_set_controlled_presentation": (
+            controlled_open_set
+        ),
     }
 
     metrics_dir = Path(
-        config["artifacts"]["metrics_dir"]
+        config["artifacts"][
+            "metrics_dir"
+        ]
     )
     metrics_dir.mkdir(
         parents=True,
@@ -272,7 +408,9 @@ def main() -> None:
             indent=2,
         )
     )
-    print(f"\nSaved: {output_path}")
+    print(
+        f"\nSaved: {output_path}"
+    )
 
 
 if __name__ == "__main__":
