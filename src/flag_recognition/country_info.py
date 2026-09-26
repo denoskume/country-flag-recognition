@@ -36,6 +36,7 @@ class CountryProfile:
     capital: str
     currency: str
     government_form: str
+    official_languages: str
     head_of_state: str
     head_of_state_office: str
     head_of_government: str
@@ -97,6 +98,7 @@ def fetch_wikidata_profile(
       ?capitalLabel
       ?currencyLabel
       ?governmentLabel
+      ?officialLanguageLabel
       ?headOfStateLabel
       ?headOfStateOfficeLabel
       ?headOfGovernmentLabel
@@ -181,6 +183,7 @@ def fetch_wikidata_profile(
         "capital": _unique_join(values("capitalLabel")),
         "currency": _unique_join(values("currencyLabel")),
         "government_form": _unique_join(values("governmentLabel")),
+        "official_languages": _unique_join(values("officialLanguageLabel")),
         "head_of_state": _unique_join(values("headOfStateLabel")),
         "head_of_state_office": _unique_join(
             values("headOfStateOfficeLabel")
@@ -272,6 +275,7 @@ def fetch_country_profile(
         capital=str(wikidata["capital"]),
         currency=str(wikidata["currency"]),
         government_form=str(wikidata["government_form"]),
+        official_languages=str(wikidata["official_languages"]),
         head_of_state=str(wikidata["head_of_state"]),
         head_of_state_office=str(wikidata["head_of_state_office"]),
         head_of_government=str(wikidata["head_of_government"]),
