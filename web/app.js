@@ -4,7 +4,8 @@ const state = {
   file: null,
   result: null,
   health: null,
-  checkpointThreshold: 0.593,
+  deploymentThreshold: 0.8805,
+  checkpointThreshold: 0.5927,
 };
 
 function toast(message) {
@@ -16,9 +17,9 @@ function toast(message) {
 
 function currentThreshold() {
   const policy = $("policySelect").value;
-  if (policy === "strict") return Math.max(state.checkpointThreshold, 0.75);
+  if (policy === "strict") return Math.min(0.99, state.deploymentThreshold + 0.05);
   if (policy === "custom") return Number($("thresholdRange").value) / 100;
-  return state.checkpointThreshold;
+  return state.deploymentThreshold;
 }
 
 function refreshPolicyUI() {
@@ -35,8 +36,9 @@ async function loadHealth() {
   const res = await fetch("/api/health");
   const data = await res.json();
   state.health = data;
+  state.deploymentThreshold = data.deployment_threshold;
   state.checkpointThreshold = data.checkpoint_threshold;
-  $("thresholdRange").value = Math.round(data.checkpoint_threshold * 100);
+  $("thresholdRange").value = Math.round(data.deployment_threshold * 100);
   $("modelMeta").textContent =
     data.model + " · " + data.classes + " classes · " + data.device;
   refreshPolicyUI();
@@ -48,7 +50,8 @@ function renderSystem(data) {
     ["Status", data.status],
     ["Model", data.model],
     ["Classes", data.classes],
-    ["Threshold", (data.checkpoint_threshold * 100).toFixed(1) + "%"],
+    ["Production threshold", (data.deployment_threshold * 100).toFixed(1) + "%"],
+    ["Checkpoint threshold", (data.checkpoint_threshold * 100).toFixed(1) + "%"],
   ].map(([k,v]) =>
     '<div class="metric-card"><span>' + k + '</span><strong>' + v + '</strong></div>'
   ).join("");
