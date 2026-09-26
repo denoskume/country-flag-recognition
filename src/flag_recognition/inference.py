@@ -161,3 +161,91 @@ def predict_image(
         unknown_threshold=bundle.unknown_threshold,
         inference_ms=inference_ms,
     )
+
+
+
+def _scene_crops(image: Image.Image) -> list[Image.Image]:
+    """Generate overlapping scene regions while preserving the full image.
+
+    The deployment classifier was trained primarily on flag crops. Full-scene
+    photos can contain a small flag, so deployment inference also examines
+    coarse overlapping regions without requiring a separate detector.
+    """
+    image = image.convert("RGB")
+    width, height = image.size
+
+    crops: list[Image.Image] = [image]
+
+    # Two-by-two overlapping windows at 65% of each dimension.
+    crop_w = max(1, round(width * 0.65))
+    crop_h = max(1, round(height * 0.65))
+    x_positions = sorted({0, max(0, width - crop_w), max(0, (width - crop_w) // 2)})
+    y_positions = sorted({0, max(0, height - crop_h), max(0, (height - crop_h) // 2)})
+
+    for y in y_positions:
+        for x in x_positions:
+            region = image.crop((x, y, x + crop_w, y + crop_h))
+            if region.size != image.size:
+                crops.append(region)
+
+    # Wide horizontal bands help with flags mounted high in a scene.
+    band_h = max(1, round(height * 0.50))
+    for y in sorted({0, max(0, height - band_h)}):
+        crops.append(image.crop((0, y, width, y + band_h)))
+
+    return crops
+
+
+@torch.inference_mode()
+def predict_scene(
+    image: Image.Image,
+    bundle: InferenceBundle,
+    top_k: int = 5,
+) -> Prediction:
+    """Predict from a full scene using multi-region score aggregation."""
+    transform = build_eval_transform(bundle.image_size)
+    crops = _scene_crops(image)
+
+    batch = torch.stack(
+        [transform(crop) for crop in crops],
+        dim=0,
+    ).to(bundle.device)
+
+    start = perf_counter()
+    logits = bundle.model(batch)
+    probabilities = torch.softmax(logits, dim=1)
+
+    if bundle.device.type == "cuda":
+        torch.cuda.synchronize()
+
+    inference_ms = (perf_counter() - start) * 1000.0
+
+    # Max pooling over regions lets a confident local flag region dominate.
+    aggregated = probabilities.max(dim=0).values
+
+    k = min(int(top_k), aggregated.numel())
+    values, indices = torch.topk(aggregated, k=k)
+
+    top5 = tuple(
+        (
+            bundle.index_to_class[int(index)],
+            float(value),
+        )
+        for value, index in zip(
+            values.cpu(),
+            indices.cpu(),
+        )
+    )
+
+    top1_country, top1_confidence = top5[0]
+
+    return Prediction(
+        top1_country=top1_country,
+        top1_confidence=top1_confidence,
+        top5=top5,
+        is_known=(
+            top1_confidence >= bundle.unknown_threshold
+        ),
+        unknown_threshold=bundle.unknown_threshold,
+        inference_ms=inference_ms,
+    )
