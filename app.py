@@ -146,7 +146,7 @@ st.markdown(
             border-radius: 16px;
             padding: 1rem 1.05rem;
             box-shadow: 0 8px 24px rgba(15, 23, 42, 0.045);
-            min-height: 112px;
+            min-height: 104px;
         }
 
         div[data-testid="stMetricLabel"] {
@@ -220,6 +220,25 @@ st.markdown(
             background: #e9edf3;
             overflow: hidden;
             margin: 0.4rem 0 0.8rem 0;
+        }
+
+        .decision-banner {
+            border-radius: 14px;
+            padding: 0.9rem 1rem;
+            margin: 0.8rem 0 0.7rem 0;
+            font-weight: 650;
+        }
+
+        .decision-known {
+            background: #ecfdf3;
+            border: 1px solid #ccebd8;
+            color: #17663a;
+        }
+
+        .decision-unknown {
+            background: #fff8e6;
+            border: 1px solid #f2dfaa;
+            color: #8a5a00;
         }
 
         .source-note {
@@ -387,28 +406,41 @@ with flag_column:
 
 with result_column:
     with st.container(border=True):
-        result_1, result_2, result_3 = st.columns(
-            3,
+        decision_label = (
+            country_name_from_code(prediction.top1_country)
+            if prediction.is_known
+            else "Unknown"
+        )
+        top_candidate = country_name_from_code(
+            prediction.top1_country
+        )
+
+        result_1, result_2, result_3, result_4 = st.columns(
+            4,
             gap="medium",
         )
 
         with result_1:
             st.metric(
-                "Prediction",
-                country_name_from_code(
-                    prediction.top1_country
-                ),
+                "Decision",
+                decision_label,
             )
 
         with result_2:
+            st.metric(
+                "Top candidate",
+                top_candidate,
+            )
+
+        with result_3:
             st.metric(
                 "Confidence",
                 f"{prediction.top1_confidence:.1%}",
             )
 
-        with result_3:
+        with result_4:
             st.metric(
-                "Inference",
+                "Latency",
                 f"{prediction.inference_ms:.1f} ms",
             )
 
@@ -425,20 +457,27 @@ with result_column:
         )
 
         if prediction.is_known:
-            st.success(
-                "Known flag · confidence is above the validation-derived "
-                "acceptance threshold."
+            st.markdown(
+                (
+                    '<div class="decision-banner decision-known">'
+                    'Accepted · confidence is above the model threshold.'
+                    '</div>'
+                ),
+                unsafe_allow_html=True,
             )
         else:
-            st.warning(
-                "Possible unknown flag · the supervised prediction is below "
-                "the acceptance threshold."
+            st.markdown(
+                (
+                    '<div class="decision-banner decision-unknown">'
+                    'Not accepted · top candidate shown for inspection only.'
+                    '</div>'
+                ),
+                unsafe_allow_html=True,
             )
 
         st.caption(
             "Acceptance threshold "
-            f"{prediction.unknown_threshold:.1%} · "
-            "Model decision only"
+            f"{prediction.unknown_threshold:.1%}"
         )
 
         top5_table = pd.DataFrame(
@@ -477,8 +516,7 @@ with result_column:
 
 if not prediction.is_known:
     st.info(
-        "Country facts are intentionally not asserted from a low-confidence "
-        "supervised prediction. The zero-shot stage will handle unseen identities."
+        "No country profile is shown because this prediction was not accepted."
     )
     st.stop()
 
@@ -496,7 +534,6 @@ try:
         '<div class="section-kicker">Country intelligence</div>',
         unsafe_allow_html=True,
     )
-
     st.markdown(
         (
             '<div class="country-title">'
@@ -512,7 +549,7 @@ try:
         st.markdown(
             (
                 '<div class="muted">'
-                "Population uses the latest available World Bank observation · "
+                "Population · latest available World Bank observation · "
                 + profile.population.year
                 + "</div>"
             ),
@@ -521,205 +558,173 @@ try:
 
     st.markdown("")
 
-    kpi_1, kpi_2, kpi_3, kpi_4 = st.columns(
-        4,
-        gap="medium",
+    overview_tab, government_tab, geography_tab = st.tabs(
+        [
+            "Overview",
+            "Government",
+            "Geography",
+        ]
     )
 
-    with kpi_1:
-        st.metric(
-            "Continent",
-            profile.continent,
+    with overview_tab:
+        kpi_1, kpi_2, kpi_3, kpi_4 = st.columns(
+            4,
+            gap="medium",
         )
 
-    with kpi_2:
-        st.metric(
-            "Capital",
-            profile.capital,
-        )
+        with kpi_1:
+            st.metric("Capital", profile.capital)
 
-    with kpi_3:
-        st.metric(
-            "Population",
-            format_population(
-                profile.population.value
-            ),
-        )
-
-    with kpi_4:
-        st.metric(
-            "Currency",
-            profile.currency,
-        )
-
-    st.markdown("")
-
-    kpi_5, kpi_6, kpi_7, kpi_8 = st.columns(
-        4,
-        gap="medium",
-    )
-
-    with kpi_5:
-        st.metric(
-            "Area",
-            format_area(
-                profile.area_km2
-            ),
-        )
-
-    with kpi_6:
-        st.metric(
-            "Calling code",
-            profile.calling_code,
-        )
-
-    with kpi_7:
-        st.metric(
-            "Internet domain",
-            profile.internet_domain,
-        )
-
-    with kpi_8:
-        st.metric(
-            "Driving side",
-            profile.driving_side,
-        )
-
-    st.markdown("")
-
-    language_column, regime_column = st.columns(
-        [1.1, 1.0],
-        gap="medium",
-    )
-
-    with language_column:
-        with st.container(border=True):
-            st.markdown("##### Official language(s)")
-            st.write(
-                profile.official_languages
+        with kpi_2:
+            st.metric(
+                "Population",
+                format_population(
+                    profile.population.value
+                ),
             )
 
-    with regime_column:
-        with st.container(border=True):
-            st.markdown("##### Government form")
-            st.write(
-                profile.government_form
+        with kpi_3:
+            st.metric("Currency", profile.currency)
+
+        with kpi_4:
+            st.metric(
+                "Area",
+                format_area(
+                    profile.area_km2
+                ),
             )
 
-    st.markdown("")
+        detail_left, detail_right = st.columns(
+            2,
+            gap="medium",
+        )
 
-    political_column, geography_column = st.columns(
-        [1.05, 1.25],
-        gap="large",
-    )
+        with detail_left:
+            with st.container(border=True):
+                st.markdown("##### Official language(s)")
+                st.write(profile.official_languages)
 
-    with political_column:
-        with st.container(border=True):
-            st.markdown(
-                '<div class="section-kicker">Leadership</div>',
-                unsafe_allow_html=True,
-            )
-            st.markdown(
-                '<div class="section-title">Government & leadership</div>',
-                unsafe_allow_html=True,
-            )
+        with detail_right:
+            with st.container(border=True):
+                st.markdown("##### Country profile")
+                st.write(profile.overview)
 
-            st.markdown(
-                "**Head of State**"
-            )
-            st.write(
-                profile.head_of_state
-            )
+    with government_tab:
+        government_left, government_right = st.columns(
+            2,
+            gap="medium",
+        )
 
-            if (
-                profile.head_of_state_office
-                != "Not available"
-            ):
-                st.caption(
+        with government_left:
+            with st.container(border=True):
+                st.markdown("##### Government form")
+                st.write(profile.government_form)
+
+                st.divider()
+
+                st.markdown("##### Head of State")
+                st.write(profile.head_of_state)
+
+                if (
                     profile.head_of_state_office
-                )
+                    != "Not available"
+                ):
+                    st.caption(
+                        profile.head_of_state_office
+                    )
 
-            st.divider()
+        with government_right:
+            with st.container(border=True):
+                st.markdown("##### Head of Government")
+                st.write(profile.head_of_government)
 
-            st.markdown(
-                "**Head of Government**"
-            )
-            st.write(
-                profile.head_of_government
-            )
-
-            if (
-                profile.head_of_government_office
-                != "Not available"
-            ):
-                st.caption(
+                if (
                     profile.head_of_government_office
+                    != "Not available"
+                ):
+                    st.caption(
+                        profile.head_of_government_office
+                    )
+
+                st.divider()
+
+                st.markdown("##### Practical")
+                st.write(
+                    f"Calling code: {profile.calling_code}"
+                )
+                st.write(
+                    f"Internet domain: {profile.internet_domain}"
+                )
+                st.write(
+                    f"Driving side: {profile.driving_side}"
                 )
 
-    with geography_column:
-        with st.container(border=True):
-            st.markdown(
-                '<div class="section-kicker">Geography</div>',
-                unsafe_allow_html=True,
-            )
-            st.markdown(
-                '<div class="section-title">Geographic location</div>',
-                unsafe_allow_html=True,
-            )
+    with geography_tab:
+        geo_left, geo_right = st.columns(
+            [1.4, 1.0],
+            gap="large",
+        )
+
+        with geo_left:
+            with st.container(border=True):
+                if (
+                    profile.latitude is not None
+                    and profile.longitude is not None
+                ):
+                    map_data = pd.DataFrame(
+                        [
+                            {
+                                "lat": profile.latitude,
+                                "lon": profile.longitude,
+                            }
+                        ]
+                    )
+
+                    st.map(
+                        map_data,
+                        latitude="lat",
+                        longitude="lon",
+                        zoom=3,
+                        use_container_width=True,
+                    )
+                else:
+                    st.info(
+                        "Geographic coordinates are not available."
+                    )
+
+        with geo_right:
+            metric_a, metric_b = st.columns(2)
+
+            with metric_a:
+                st.metric(
+                    "Continent",
+                    profile.continent,
+                )
+
+            with metric_b:
+                st.metric(
+                    "Area",
+                    format_area(
+                        profile.area_km2
+                    ),
+                )
 
             if (
                 profile.latitude is not None
                 and profile.longitude is not None
             ):
-                map_data = pd.DataFrame(
-                    [
-                        {
-                            "lat": profile.latitude,
-                            "lon": profile.longitude,
-                        }
-                    ]
-                )
-
-                st.map(
-                    map_data,
-                    latitude="lat",
-                    longitude="lon",
-                    zoom=3,
-                    use_container_width=True,
-                )
-
                 st.caption(
-                    "Approximate reference coordinates · "
+                    "Reference coordinates · "
                     f"{profile.latitude:.3f}, "
                     f"{profile.longitude:.3f}"
                 )
-            else:
-                st.info(
-                    "Geographic coordinates are not available for this entity."
-                )
-
-    if profile.overview != "Not available":
-        st.markdown("")
-        with st.container(border=True):
-            st.markdown(
-                '<div class="section-kicker">Country profile</div>',
-                unsafe_allow_html=True,
-            )
-            st.markdown(
-                '<div class="section-title">Overview · What it is known for</div>',
-                unsafe_allow_html=True,
-            )
-            st.write(
-                profile.overview
-            )
 
     st.markdown("")
     st.markdown(
         (
             '<div class="source-note">'
-            "Live metadata: Wikidata · Population: World Bank latest available "
-            "annual observation · Overview: Wikipedia · Live country data cached "
-            "for one hour."
+            "Live metadata: Wikidata · Population: World Bank · "
+            "Overview: Wikipedia · cached for one hour."
             "</div>"
         ),
         unsafe_allow_html=True,
