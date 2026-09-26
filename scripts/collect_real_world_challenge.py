@@ -66,7 +66,7 @@ def parse_args():
 
 def api_get(
     params: dict[str, str | int],
-    retries: int = 6,
+    retries: int = 3,
     base_delay: float = 2.0,
 ) -> dict:
     encoded = urllib.parse.urlencode({
@@ -95,7 +95,7 @@ def api_get(
                 if retry_after and retry_after.isdigit()
                 else base_delay * (2 ** attempt)
             )
-            delay = min(delay, 60.0)
+            delay = min(delay, 15.0)
             print(
                 f"Wikimedia rate limit (429). "
                 f"Retrying in {delay:.0f}s..."
@@ -156,49 +156,43 @@ def raw_hashes(raw_dir: Path) -> list[int]:
 
 
 def search_files(country_name: str, limit: int = 30) -> list[dict]:
-    queries = [
-        f'"flag of {country_name}"',
-        f'{country_name} flag waving',
-        f'{country_name} flag building',
-    ]
-
+    query = f'{country_name} flag'
     seen = set()
     results = []
 
-    for query in queries:
-        data = api_get({
-            "action": "query",
-            "generator": "search",
-            "gsrsearch": query,
-            "gsrnamespace": 6,
-            "gsrlimit": min(limit, 50),
-            "prop": "imageinfo",
-            "iiprop": "url|mime|extmetadata",
-            "iiurlwidth": 1000,
-            "iiextmetadatafilter": "LicenseShortName|Artist|ImageDescription",
-        })
+    data = api_get({
+        "action": "query",
+        "generator": "search",
+        "gsrsearch": query,
+        "gsrnamespace": 6,
+        "gsrlimit": min(limit, 50),
+        "prop": "imageinfo",
+        "iiprop": "url|mime|extmetadata",
+        "iiurlwidth": 1000,
+        "iiextmetadatafilter": "LicenseShortName|Artist|ImageDescription",
+    })
 
-        for page in data.get("query", {}).get("pages", []):
-            title = page.get("title", "")
-            key = title.lower()
-            if key in seen:
-                continue
-            seen.add(key)
+    for page in data.get("query", {}).get("pages", []):
+        title = page.get("title", "")
+        key = title.lower()
+        if key in seen:
+            continue
+        seen.add(key)
 
-            info = (page.get("imageinfo") or [{}])[0]
-            mime = info.get("mime", "")
-            if not mime.startswith("image/"):
-                continue
+        info = (page.get("imageinfo") or [{}])[0]
+        mime = info.get("mime", "")
+        if not mime.startswith("image/"):
+            continue
 
-            title_lower = title.lower()
-            if any(term in title_lower for term in EXCLUDE_TERMS):
-                continue
+        title_lower = title.lower()
+        if any(term in title_lower for term in EXCLUDE_TERMS):
+            continue
 
-            thumb = info.get("thumburl") or info.get("url")
-            if not thumb:
-                continue
+        thumb = info.get("thumburl") or info.get("url")
+        if not thumb:
+            continue
 
-            results.append({
+        results.append({
                 "title": title,
                 "page_url": "https://commons.wikimedia.org/wiki/"
                     + urllib.parse.quote(title.replace(" ", "_")),
@@ -218,7 +212,7 @@ def metadata_value(metadata: dict, key: str) -> str:
 
 def download_image(
     url: str,
-    retries: int = 5,
+    retries: int = 2,
     base_delay: float = 2.0,
 ) -> tuple[bytes, Image.Image]:
     request = urllib.request.Request(
@@ -230,7 +224,7 @@ def download_image(
         try:
             with urllib.request.urlopen(request, timeout=30) as response:
                 payload = response.read(12 * 1024 * 1024)
-            time.sleep(0.5)
+            time.sleep(2.5)
             image = Image.open(io.BytesIO(payload)).convert("RGB")
             return payload, image
         except urllib.error.HTTPError as exc:
@@ -243,7 +237,7 @@ def download_image(
                 if retry_after and retry_after.isdigit()
                 else base_delay * (2 ** attempt)
             )
-            delay = min(delay, 60.0)
+            delay = min(delay, 10.0)
             print(
                 f"Image rate limit (429). "
                 f"Retrying in {delay:.0f}s..."
@@ -342,7 +336,7 @@ def main():
                     f"{code} {name}: API rate-limited, skipping for this run"
                 )
                 save_manifest()
-                continue
+            continue
             raise
 
         for candidate in candidates:
@@ -353,10 +347,10 @@ def main():
                 payload, image = download_image(candidate["image_url"])
             except Exception as exc:
                 print(f"{code}: skip download error: {exc}")
-                continue
+            continue
 
             if min(image.size) < 120:
-                continue
+            continue
 
             candidate_hash = dhash_image(image)
             if any(
@@ -364,12 +358,12 @@ def main():
                 <= args.near_duplicate_hamming
                 for known_hash in training_hashes
             ):
-                continue
+            continue
             if any(
                 hamming(candidate_hash, known_hash) <= 2
                 for known_hash in accepted_hashes
             ):
-                continue
+            continue
 
             accepted_hashes.append(candidate_hash)
 
