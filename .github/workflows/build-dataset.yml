@@ -23,13 +23,19 @@ jobs:
       - name: Install dataset dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install Pillow PyYAML pandas
+          python -m pip install Pillow PyYAML pandas pycountry CairoSVG
 
-      - name: Import annotated Flagnet crops
+      - name: Import annotated Flagnet real-world crops
         env:
           PYTHONPATH: src
         run: |
           python scripts/import_flagnet.py
+
+      - name: Expand to worldwide ISO coverage
+        env:
+          PYTHONPATH: src
+        run: |
+          python scripts/expand_worldwide.py
 
       - name: Build reproducible seen/unseen split manifest
         env:
@@ -37,13 +43,14 @@ jobs:
         run: |
           python scripts/prepare_splits.py
 
-      - name: Build dataset package
+      - name: Build worldwide dataset package
         run: |
-          mkdir -p country-flag-recognition-dataset
-          cp -R data/raw country-flag-recognition-dataset/raw
-          cp -R data/splits country-flag-recognition-dataset/splits
-          cp -R data/source_metadata country-flag-recognition-dataset/source_metadata
-          cp data/README.md country-flag-recognition-dataset/README.md
+          mkdir -p country-flag-recognition-worldwide-dataset/data
+          cp -R data/raw country-flag-recognition-worldwide-dataset/data/raw
+          cp -R data/splits country-flag-recognition-worldwide-dataset/data/splits
+          cp -R data/source_metadata country-flag-recognition-worldwide-dataset/data/source_metadata
+          cp data/taxonomy.csv country-flag-recognition-worldwide-dataset/data/taxonomy.csv
+          cp data/README.md country-flag-recognition-worldwide-dataset/README.md
 
           python - <<'PY'
           from pathlib import Path
@@ -51,8 +58,9 @@ jobs:
           import hashlib
           from PIL import Image
 
-          root = Path("country-flag-recognition-dataset")
-          raw = root / "raw"
+          root = Path("country-flag-recognition-worldwide-dataset")
+          raw = root / "data" / "raw"
+          taxonomy_path = root / "data" / "taxonomy.csv"
 
           images = sorted(
               p for p in raw.rglob("*")
@@ -63,22 +71,31 @@ jobs:
           total_bytes = 0
           widths = []
           heights = []
+          source_mix = {"real_world": 0, "canonical_augmented": 0}
 
           for path in images:
               country = path.parent.name
               class_counts[country] = class_counts.get(country, 0) + 1
               total_bytes += path.stat().st_size
+              if path.name.startswith("canonical_"):
+                  source_mix["canonical_augmented"] += 1
+              else:
+                  source_mix["real_world"] += 1
+
               with Image.open(path) as image:
                   widths.append(image.width)
                   heights.append(image.height)
 
+          with taxonomy_path.open("r", encoding="utf-8") as handle:
+              taxonomy_rows = list(csv.DictReader(handle))
+
           with (root / "dataset_summary.csv").open("w", newline="", encoding="utf-8") as handle:
               writer = csv.writer(handle)
-              writer.writerow(["country_code", "image_count"])
+              writer.writerow(["class_code", "image_count"])
               for country, count in sorted(class_counts.items()):
                   writer.writerow([country, count])
 
-          manifest = root / "splits" / "split_manifest.csv"
+          manifest = root / "data" / "splits" / "split_manifest.csv"
           split_counts = {}
           with manifest.open("r", encoding="utf-8") as handle:
               reader = csv.DictReader(handle)
@@ -88,10 +105,14 @@ jobs:
                   split_counts[key] = split_counts.get(key, 0) + 1
 
           with (root / "PACKAGE_INFO.txt").open("w", encoding="utf-8") as handle:
-              handle.write("Country Flag Recognition Dataset\n")
-              handle.write("===============================\n\n")
-              handle.write(f"Country classes: {len(class_counts)}\n")
-              handle.write(f"Flag crops: {len(images)}\n")
+              handle.write("Country Flag Recognition — Worldwide Dataset\n")
+              handle.write("============================================\n\n")
+              handle.write(f"Flag classes: {len(class_counts)}\n")
+              handle.write(f"ISO 3166-1 classes: {sum(row['taxonomy'] == 'ISO 3166-1' for row in taxonomy_rows)}\n")
+              handle.write(f"Extra documented classes: {sum(row['taxonomy'] != 'ISO 3166-1' for row in taxonomy_rows)}\n")
+              handle.write(f"Total images: {len(images)}\n")
+              handle.write(f"Real-world annotated crops: {source_mix['real_world']}\n")
+              handle.write(f"Canonical/augmented coverage images: {source_mix['canonical_augmented']}\n")
               handle.write(f"Image bytes: {total_bytes}\n")
               handle.write(f"Minimum width: {min(widths) if widths else 0}\n")
               handle.write(f"Maximum width: {max(widths) if widths else 0}\n")
@@ -100,8 +121,11 @@ jobs:
               handle.write("Split counts:\n")
               for (regime, partition), count in sorted(split_counts.items()):
                   handle.write(f"  {regime}/{partition}: {count}\n")
-              handle.write("\nSource: https://github.com/iamvukasin/flagnet\n")
-              handle.write("Per-image attribution/license metadata: source_metadata/flagnet_credits.csv\n")
+              handle.write("\nSources:\n")
+              handle.write("  Real-world photos: https://github.com/iamvukasin/flagnet\n")
+              handle.write("  ISO canonical flags: https://github.com/emcrisostomo/flags\n")
+              handle.write("  Kosovo/XK canonical flag: https://github.com/lipis/flag-icons\n")
+              handle.write("\nSee data/source_metadata/ and data/taxonomy.csv for provenance and taxonomy details.\n")
 
           checksum = hashlib.sha256()
           for path in images:
@@ -114,11 +138,11 @@ jobs:
           )
           PY
 
-      - name: Upload full dataset ZIP
+      - name: Upload worldwide dataset ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: country-flag-recognition-dataset
-          path: country-flag-recognition-dataset/
+          name: country-flag-recognition-worldwide-dataset
+          path: country-flag-recognition-worldwide-dataset/
           if-no-files-found: error
           compression-level: 6
           retention-days: 30
