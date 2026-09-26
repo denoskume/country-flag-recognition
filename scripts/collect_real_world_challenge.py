@@ -336,7 +336,7 @@ def main():
                     f"{code} {name}: API rate-limited, skipping for this run"
                 )
                 save_manifest()
-            continue
+                continue
             raise
 
         for candidate in candidates:
@@ -347,10 +347,10 @@ def main():
                 payload, image = download_image(candidate["image_url"])
             except Exception as exc:
                 print(f"{code}: skip download error: {exc}")
-            continue
+                continue
 
             if min(image.size) < 120:
-            continue
+                continue
 
             candidate_hash = dhash_image(image)
             if any(
@@ -358,12 +358,13 @@ def main():
                 <= args.near_duplicate_hamming
                 for known_hash in training_hashes
             ):
-            continue
+                continue
+
             if any(
                 hamming(candidate_hash, known_hash) <= 2
                 for known_hash in accepted_hashes
             ):
-            continue
+                continue
 
             accepted_hashes.append(candidate_hash)
 
