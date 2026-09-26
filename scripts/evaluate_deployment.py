@@ -10,7 +10,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from PIL import Image
-from sklearn.metrics import recall_score
+from sklearn.metrics import (
+    f1_score,
+    precision_score,
+    recall_score,
+)
 import torch
 
 from flag_recognition.inference import load_inference_bundle
@@ -26,6 +30,11 @@ def parse_args():
     parser.add_argument("--benchmark-dir", type=Path, default=Path("data/external_benchmark"))
     parser.add_argument("--raw-dir", type=Path, default=Path("data/raw"))
     parser.add_argument("--metrics-dir", type=Path, default=Path("artifacts/metrics"))
+    parser.add_argument(
+        "--taxonomy-audit",
+        type=Path,
+        default=Path("artifacts/metrics/taxonomy_ambiguity_audit.json"),
+    )
     return parser.parse_args()
 
 
@@ -43,6 +52,91 @@ def file_hash(path: Path) -> str:
     return h.hexdigest()
 
 
+def load_identical_groups(path: Path) -> list[list[str]]:
+    if not path.is_file():
+        return []
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return [
+        sorted(str(code) for code in group)
+        for group in payload.get("identical_groups", [])
+        if len(group) > 1
+    ]
+
+
+def alias_map(
+    classes: list[str],
+    identical_groups: list[list[str]],
+) -> dict[str, str]:
+    mapping = {code: code for code in classes}
+
+    for group in identical_groups:
+        canonical = "|".join(sorted(group))
+        for code in group:
+            if code in mapping:
+                mapping[code] = canonical
+
+    return mapping
+
+
+def taxonomy_aware_summary(
+    probabilities_matrix: np.ndarray,
+    targets: np.ndarray,
+    index_to_class: dict[int, str],
+    class_aliases: dict[str, str],
+) -> dict[str, float]:
+    predictions = probabilities_matrix.argmax(axis=1)
+    top5 = np.argsort(probabilities_matrix, axis=1)[:, -5:][:, ::-1]
+
+    target_groups = np.asarray([
+        class_aliases[index_to_class[int(target)]]
+        for target in targets
+    ])
+    prediction_groups = np.asarray([
+        class_aliases[index_to_class[int(prediction)]]
+        for prediction in predictions
+    ])
+
+    top1_correct = target_groups == prediction_groups
+    top5_correct = np.asarray([
+        target_groups[row_index]
+        in {
+            class_aliases[index_to_class[int(candidate)]]
+            for candidate in top5[row_index]
+        }
+        for row_index in range(len(targets))
+    ])
+
+    return {
+        "top1_accuracy": float(np.mean(top1_correct)),
+        "top5_accuracy": float(np.mean(top5_correct)),
+        "macro_precision": float(
+            precision_score(
+                target_groups,
+                prediction_groups,
+                average="macro",
+                zero_division=0,
+            )
+        ),
+        "macro_recall": float(
+            recall_score(
+                target_groups,
+                prediction_groups,
+                average="macro",
+                zero_division=0,
+            )
+        ),
+        "macro_f1": float(
+            f1_score(
+                target_groups,
+                prediction_groups,
+                average="macro",
+                zero_division=0,
+            )
+        ),
+    }
+
+
 @torch.inference_mode()
 def probabilities(path: Path, bundle, transform) -> np.ndarray:
     with Image.open(path) as image:
@@ -57,6 +151,12 @@ def main():
 
     raw_hashes = {file_hash(p) for p in iter_images(args.raw_dir)}
     class_to_index = {name: index for index, name in bundle.index_to_class.items()}
+
+    identical_groups = load_identical_groups(args.taxonomy_audit)
+    class_aliases = alias_map(
+        classes=sorted(class_to_index),
+        identical_groups=identical_groups,
+    )
 
     known_probs = []
     known_targets = []
@@ -80,15 +180,30 @@ def main():
 
             known_probs.append(probs)
             known_targets.append(target)
+            prediction_name = bundle.index_to_class[pred]
+            taxonomy_correct_top1 = (
+                class_aliases[target_name]
+                == class_aliases[prediction_name]
+            )
+            taxonomy_correct_top5 = any(
+                class_aliases[target_name]
+                == class_aliases[bundle.index_to_class[int(candidate)]]
+                for candidate in top5
+            )
+
             rows.append({
                 "path": path.as_posix(),
                 "scope": "known",
                 "target": target_name,
-                "prediction": bundle.index_to_class[pred],
+                "prediction": prediction_name,
                 "confidence": conf,
                 "accepted_as_known": conf >= bundle.unknown_threshold,
                 "correct_top1": pred == target,
                 "correct_top5": target in top5,
+                "taxonomy_correct_top1": taxonomy_correct_top1,
+                "taxonomy_correct_top5": taxonomy_correct_top5,
+                "target_visual_group": class_aliases[target_name],
+                "prediction_visual_group": class_aliases[prediction_name],
             })
 
     unknown_scores = []
@@ -110,6 +225,10 @@ def main():
             "accepted_as_known": conf >= bundle.unknown_threshold,
             "correct_top1": False,
             "correct_top5": False,
+            "taxonomy_correct_top1": False,
+            "taxonomy_correct_top5": False,
+            "target_visual_group": "unknown",
+            "prediction_visual_group": class_aliases[bundle.index_to_class[pred]],
         })
 
     if not known_probs:
@@ -124,6 +243,12 @@ def main():
     unknown_scores = np.asarray(unknown_scores, dtype=float)
 
     closed_set = classification_summary(known_probs, known_targets)
+    taxonomy_aware_closed_set = taxonomy_aware_summary(
+        probabilities_matrix=known_probs,
+        targets=known_targets,
+        index_to_class=bundle.index_to_class,
+        class_aliases=class_aliases,
+    )
     open_set = open_set_summary(known_scores, unknown_scores)
     threshold = float(bundle.unknown_threshold)
 
@@ -136,15 +261,37 @@ def main():
         "images": [int(np.sum(known_targets == label)) for label in labels],
     }).sort_values(["recall", "country"])
 
-    errors = table[(table["scope"] == "known") & (~table["correct_top1"])]
-    if errors.empty:
-        confusions = []
-    else:
-        grouped = errors.groupby(["target", "prediction"], as_index=False).size().sort_values("size", ascending=False).head(20)
-        confusions = [
-            {"target": str(r["target"]), "prediction": str(r["prediction"]), "count": int(r["size"])}
-            for r in grouped.to_dict("records")
+    strict_errors = table[
+        (table["scope"] == "known")
+        & (~table["correct_top1"])
+    ]
+    taxonomy_errors = table[
+        (table["scope"] == "known")
+        & (~table["taxonomy_correct_top1"])
+    ]
+
+    def top_confusions(error_table: pd.DataFrame) -> list[dict[str, object]]:
+        if error_table.empty:
+            return []
+
+        grouped = (
+            error_table
+            .groupby(["target", "prediction"], as_index=False)
+            .size()
+            .sort_values("size", ascending=False)
+            .head(20)
+        )
+        return [
+            {
+                "target": str(row["target"]),
+                "prediction": str(row["prediction"]),
+                "count": int(row["size"]),
+            }
+            for row in grouped.to_dict("records")
         ]
+
+    strict_confusions = top_confusions(strict_errors)
+    taxonomy_confusions = top_confusions(taxonomy_errors)
 
     class_counts = table[table["scope"] == "known"].groupby("target").size()
     under_sampled = sorted(str(name) for name, count in class_counts.items() if int(count) < 3)
@@ -154,7 +301,17 @@ def main():
         "known_images": int(len(known_targets)),
         "known_classes_tested": int(table.loc[table["scope"] == "known", "target"].nunique()),
         "unknown_images": int(len(unknown_scores)),
-        "closed_set": closed_set,
+        "closed_set_strict": closed_set,
+        "closed_set_taxonomy_aware": taxonomy_aware_closed_set,
+        "taxonomy_ambiguity": {
+            "audit_path": str(args.taxonomy_audit),
+            "identical_groups": identical_groups,
+            "strict_top1_errors": int(len(strict_errors)),
+            "taxonomy_aware_top1_errors": int(len(taxonomy_errors)),
+            "errors_reclassified_as_visually_equivalent": int(
+                len(strict_errors) - len(taxonomy_errors)
+            ),
+        },
         "open_set": open_set,
         "threshold_audit": {
             "threshold": threshold,
@@ -164,7 +321,8 @@ def main():
             "unknown_false_acceptance_rate": float(np.mean(unknown_scores >= threshold)),
         },
         "classes_with_fewer_than_3_external_images": under_sampled,
-        "top_confusions": confusions,
+        "top_confusions_strict": strict_confusions,
+        "top_confusions_taxonomy_aware": taxonomy_confusions,
         "leakage_check": "passed",
     }
 
