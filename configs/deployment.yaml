@@ -1,0 +1,30 @@
+project:
+  seed: 42
+  image_size: 224
+
+data:
+  raw_dir: data/raw
+  allowed_extensions:
+    - .jpg
+    - .jpeg
+    - .png
+    - .webp
+
+model:
+  architecture: mobilenet_v3_small
+  pretrained: true
+  dropout: 0.2
+
+training:
+  batch_size: 32
+  epochs: 15
+  learning_rate: 0.0005
+  weight_decay: 0.0001
+  early_stopping_patience: 4
+
+open_set:
+  known_acceptance_quantile: 0.05
+
+artifacts:
+  model_path: artifacts/models/worldwide_mobilenet_v3_small.pt
+  metrics_dir: artifacts/metrics
