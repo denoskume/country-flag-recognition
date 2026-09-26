@@ -12,6 +12,7 @@ from flag_recognition.inference import (
     load_inference_bundle,
     predict_image,
 )
+from flag_recognition.taxonomy import country_name_from_code
 
 
 MODEL_PATH = Path(
@@ -394,7 +395,7 @@ with result_column:
         with result_1:
             st.metric(
                 "Prediction",
-                display_country(
+                country_name_from_code(
                     prediction.top1_country
                 ),
             )
@@ -445,7 +446,7 @@ with result_column:
                 {
                     "Rank": rank,
                     "Code": country.upper(),
-                    "Candidate": display_country(
+                    "Candidate": country_name_from_code(
                         country
                     ),
                     "Confidence": confidence,
