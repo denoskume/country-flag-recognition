@@ -11,7 +11,7 @@ import numpy as np
 from PIL import Image
 import torch
 
-from flag_recognition.inference import load_inference_bundle
+from flag_recognition.inference import load_inference_bundle, predict_scene
 from flag_recognition.metrics import classification_summary
 from flag_recognition.transforms import build_eval_transform
 
@@ -48,6 +48,11 @@ def probabilities(path: Path, bundle, transform) -> np.ndarray:
     return torch.softmax(bundle.model(tensor), dim=1)[0].cpu().numpy()
 
 
+def scene_prediction(path: Path, bundle):
+    with Image.open(path) as image:
+        return predict_scene(image.convert("RGB"), bundle, top_k=5)
+
+
 def main():
     args = parse_args()
 
@@ -72,6 +77,7 @@ def main():
     probs = []
     targets = []
     details = []
+    scene_details = []
 
     for row in rows:
         code = row["class_code"]
@@ -95,25 +101,58 @@ def main():
             "correct_top1": prediction == target,
         })
 
+        scene = scene_prediction(path, bundle)
+        scene_details.append({
+            "path": path.as_posix(),
+            "target": code,
+            "prediction": scene.top1_country,
+            "confidence": scene.top1_confidence,
+            "accepted": scene.top1_confidence >= args.deployment_threshold,
+            "correct_top1": scene.top1_country == code,
+            "top5": [country for country, _ in scene.top5],
+        })
+
     matrix = np.stack(probs)
     target_array = np.asarray(targets, dtype=int)
     summary = classification_summary(matrix, target_array)
     scores = matrix.max(axis=1)
 
+    scene_top1 = float(np.mean([
+        item["correct_top1"] for item in scene_details
+    ]))
+    scene_top5 = float(np.mean([
+        item["target"] in item["top5"]
+        for item in scene_details
+    ]))
+    scene_acceptance = float(np.mean([
+        item["accepted"] for item in scene_details
+    ]))
+
     report = {
         "approved_images": len(details),
         "classes_tested": len(set(item["target"] for item in details)),
         "deployment_threshold": args.deployment_threshold,
-        "closed_set": summary,
-        "known_acceptance_rate": float(
-            np.mean(scores >= args.deployment_threshold)
-        ),
-        "known_rejection_rate": float(
-            np.mean(scores < args.deployment_threshold)
-        ),
-        "top1_errors": [
-            item for item in details if not item["correct_top1"]
-        ],
+        "single_view": {
+            "closed_set": summary,
+            "known_acceptance_rate": float(
+                np.mean(scores >= args.deployment_threshold)
+            ),
+            "known_rejection_rate": float(
+                np.mean(scores < args.deployment_threshold)
+            ),
+            "top1_errors": [
+                item for item in details if not item["correct_top1"]
+            ],
+        },
+        "multi_region_scene": {
+            "top1_accuracy": scene_top1,
+            "top5_accuracy": scene_top5,
+            "known_acceptance_rate": scene_acceptance,
+            "known_rejection_rate": 1.0 - scene_acceptance,
+            "top1_errors": [
+                item for item in scene_details if not item["correct_top1"]
+            ],
+        },
     }
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
