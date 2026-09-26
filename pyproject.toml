@@ -18,6 +18,7 @@ dependencies = [
     "torch>=2.2",
     "torchvision>=0.17",
     "streamlit>=1.36",
+    "requests>=2.31",
 ]
 
 [project.optional-dependencies]
