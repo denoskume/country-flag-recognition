@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Environments
+.venv/
+venv/
+
+# Caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.ipynb_checkpoints/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Dataset and generated artifacts
+data/raw/*
+data/processed/*
+data/splits/*
+data/source_metadata/*
+artifacts/models/*
+artifacts/metrics/*
+artifacts/figures/*
+
+# Keep documentation/placeholders
+!data/**/README.md
+!artifacts/**/README.md
