@@ -202,3 +202,28 @@ Current deployment checkpoint:
 `artifacts/models/worldwide_mobilenet_v3_small.pt`
 
 The public deployment target remains **Streamlit Community Cloud**.
+
+
+## Product web interface
+
+The market-facing interface is served by FastAPI with a dedicated responsive
+HTML/CSS/JavaScript frontend. This is the recommended product UI; the Streamlit
+app remains available for internal inspection.
+
+Run locally:
+
+```bash
+pip install -r requirements.txt
+PYTHONPATH=src uvicorn serve:app --reload
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8000
+```
+
+The product interface includes drag-and-drop upload, user-controlled decision
+policy, threshold and Top-K controls, ranked candidates, accepted/rejected
+decision states, live country intelligence, browser-local history, JSON export,
+responsive layouts and service health information.
