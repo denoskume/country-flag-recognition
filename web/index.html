@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0f172a">
+  <title>Flag Intelligence</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">FI</div>
+        <div>
+          <div class="brand-name">Flag Intelligence</div>
+          <div class="brand-sub">Visual recognition platform</div>
+        </div>
+      </div>
+
+      <nav class="nav">
+        <button class="nav-item active" data-view="analyze">Analyze</button>
+        <button class="nav-item" data-view="history">History</button>
+        <button class="nav-item" data-view="about">System</button>
+      </nav>
+
+      <div class="sidebar-spacer"></div>
+
+      <div class="system-card">
+        <div class="system-row">
+          <span class="status-dot"></span>
+          <span>Model online</span>
+        </div>
+        <div class="system-meta" id="modelMeta">Loading system…</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <div class="breadcrumb">Workspace / <span id="viewName">Analyze</span></div>
+        </div>
+        <div class="top-actions">
+          <button class="icon-button" id="settingsBtn" aria-label="Open settings">Settings</button>
+        </div>
+      </header>
+
+      <section class="view active" id="analyzeView">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">Worldwide flag recognition</p>
+            <h1>Analyze an image</h1>
+            <p class="lead">Review the model decision, uncertainty, ranked candidates and country intelligence.</p>
+          </div>
+          <div class="mode-pill" id="modePill">Calibrated · 59.3%</div>
+        </div>
+
+        <div class="workspace-grid">
+          <section class="card upload-card">
+            <div class="card-head">
+              <div>
+                <h2>Input</h2>
+                <p>JPG, PNG or WebP · max 10 MB</p>
+              </div>
+              <button class="ghost-button" id="clearBtn" disabled>Clear</button>
+            </div>
+
+            <label class="dropzone" id="dropzone">
+              <input id="fileInput" type="file" accept="image/jpeg,image/png,image/webp">
+              <div class="drop-icon">↑</div>
+              <strong>Drop a flag image here</strong>
+              <span>or click to browse</span>
+            </label>
+
+            <div class="preview-wrap hidden" id="previewWrap">
+              <img id="preview" alt="Uploaded preview">
+              <div class="preview-meta">
+                <span id="fileName"></span>
+                <span id="imageMeta"></span>
+              </div>
+            </div>
+
+            <button class="primary-button" id="analyzeBtn" disabled>Analyze image</button>
+          </section>
+
+          <aside class="card session-card">
+            <div class="card-head">
+              <div>
+                <h2>Session controls</h2>
+                <p>Applied to this analysis</p>
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <div>
+                <span class="setting-label">Decision policy</span>
+                <span class="setting-help">Controls rejection strictness</span>
+              </div>
+              <select id="policySelect">
+                <option value="calibrated">Calibrated</option>
+                <option value="strict">Strict</option>
+                <option value="custom">Custom</option>
+              </select>
+            </div>
+
+            <div class="setting-row" id="thresholdRow">
+              <div>
+                <span class="setting-label">Threshold</span>
+                <span class="setting-help" id="thresholdValue">59.3%</span>
+              </div>
+              <input id="thresholdRange" type="range" min="5" max="99" step="1" value="59">
+            </div>
+
+            <div class="setting-row">
+              <div>
+                <span class="setting-label">Candidate depth</span>
+                <span class="setting-help">Ranked alternatives</span>
+              </div>
+              <select id="topKSelect">
+                <option>3</option>
+                <option selected>5</option>
+                <option>7</option>
+                <option>10</option>
+              </select>
+            </div>
+
+            <label class="switch-row">
+              <div>
+                <span class="setting-label">Country intelligence</span>
+                <span class="setting-help">Load live metadata after acceptance</span>
+              </div>
+              <input id="enrichmentToggle" type="checkbox" checked>
+              <span class="switch"></span>
+            </label>
+          </aside>
+        </div>
+
+        <section class="result-section hidden" id="resultSection">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Analysis result</p>
+              <h2>Recognition decision</h2>
+            </div>
+            <button class="ghost-button" id="downloadBtn">Export JSON</button>
+          </div>
+
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <span>Decision</span>
+              <strong id="decisionMetric">—</strong>
+            </div>
+            <div class="metric-card">
+              <span>Top candidate</span>
+              <strong id="candidateMetric">—</strong>
+            </div>
+            <div class="metric-card">
+              <span>Confidence</span>
+              <strong id="confidenceMetric">—</strong>
+            </div>
+            <div class="metric-card">
+              <span>Latency</span>
+              <strong id="latencyMetric">—</strong>
+            </div>
+          </div>
+
+          <div class="decision-banner" id="decisionBanner"></div>
+
+          <div class="result-grid">
+            <div class="card">
+              <div class="card-head">
+                <div>
+                  <h2>Candidate ranking</h2>
+                  <p>Model alternatives sorted by confidence</p>
+                </div>
+              </div>
+              <div id="candidateList" class="candidate-list"></div>
+            </div>
+
+            <div class="card" id="countryCard">
+              <div class="card-head">
+                <div>
+                  <h2>Country intelligence</h2>
+                  <p id="countrySub">Available after an accepted decision</p>
+                </div>
+              </div>
+              <div id="countryContent" class="country-placeholder">No accepted country yet.</div>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" id="historyView">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">Local workspace history</p>
+            <h1>Recent analyses</h1>
+            <p class="lead">Stored only in this browser.</p>
+          </div>
+          <button class="ghost-button" id="clearHistoryBtn">Clear history</button>
+        </div>
+        <div class="history-list" id="historyList"></div>
+      </section>
+
+      <section class="view" id="aboutView">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">System</p>
+            <h1>Model status</h1>
+            <p class="lead">Deployment information for the current recognition service.</p>
+          </div>
+        </div>
+        <div class="metrics-grid" id="systemMetrics"></div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast hidden" id="toast"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
