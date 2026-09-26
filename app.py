@@ -249,6 +249,11 @@ if uploaded_file is not None:
                         + profile.population.year
                     )
 
+            st.markdown(
+                "**Official language(s)**  \n"
+                + profile.official_languages
+            )
+
             st.divider()
 
             political_column, geography_column = st.columns(
