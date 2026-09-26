@@ -19,6 +19,7 @@ dependencies = [
     "torchvision>=0.17",
     "streamlit>=1.36",
     "requests>=2.31",
+    "pycountry>=24.6",
 ]
 
 [project.optional-dependencies]
