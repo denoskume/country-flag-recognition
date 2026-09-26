@@ -203,6 +203,14 @@ st.markdown(
             font-weight: 800;
         }
 
+        .section-title {
+            color: var(--text);
+            font-size: 1.28rem;
+            font-weight: 850;
+            letter-spacing: -.02em;
+            margin-bottom: .7rem;
+        }
+
         .panel-copy {
             color: var(--muted);
             font-size: .82rem;
@@ -659,22 +667,13 @@ with decision_col:
             ],
         }
 
-        action_1, action_2 = st.columns(2)
-        with action_1:
-            st.download_button(
-                "Download result",
-                data=json.dumps(report, indent=2),
-                file_name="flag_analysis.json",
-                mime="application/json",
-                use_container_width=True,
-            )
-        with action_2:
-            st.button(
-                "Settings",
-                use_container_width=True,
-                disabled=True,
-                help="Use the Settings control in the top bar.",
-            )
+        st.download_button(
+            "Download analysis report",
+            data=json.dumps(report, indent=2),
+            file_name="flag_analysis.json",
+            mime="application/json",
+            use_container_width=True,
+        )
 
         if st.session_state.show_technical:
             st.markdown(
