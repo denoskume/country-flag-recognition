@@ -89,9 +89,9 @@ st.markdown(
         }
 
         .block-container {
-            max-width: 1380px;
-            padding-top: 2rem;
-            padding-bottom: 4rem;
+            max-width: 1360px;
+            padding-top: 1.35rem;
+            padding-bottom: 3rem;
         }
 
         h1, h2, h3 {
@@ -99,7 +99,7 @@ st.markdown(
         }
 
         .hero {
-            padding: 0.4rem 0 1.2rem 0;
+            padding: 0.15rem 0 0.85rem 0;
         }
 
         .eyebrow {
@@ -117,7 +117,7 @@ st.markdown(
         }
 
         .hero-title {
-            font-size: clamp(2.2rem, 4vw, 4.2rem);
+            font-size: clamp(2.15rem, 3.4vw, 3.55rem);
             font-weight: 800;
             line-height: 1.02;
             margin: 0;
@@ -125,19 +125,24 @@ st.markdown(
         }
 
         .hero-subtitle {
-            max-width: 820px;
+            max-width: 900px;
             color: #5f6b7a;
-            font-size: 1.05rem;
-            line-height: 1.65;
-            margin-top: 0.8rem;
+            font-size: 1rem;
+            line-height: 1.55;
+            margin-top: 0.55rem;
         }
 
         div[data-testid="stFileUploader"] {
-            background: rgba(255, 255, 255, 0.9);
-            border: 1px solid #e3e8ef;
-            border-radius: 18px;
-            padding: 1.05rem 1.15rem 0.45rem 1.15rem;
-            box-shadow: 0 8px 28px rgba(15, 23, 42, 0.045);
+            background: transparent;
+            border: 0;
+            padding: 0;
+            box-shadow: none;
+        }
+
+        div[data-testid="stFileUploaderDropzone"] {
+            border: 1px dashed #cbd5e1;
+            border-radius: 14px;
+            background: #fbfcfe;
         }
 
         div[data-testid="stMetric"] {
@@ -241,6 +246,77 @@ st.markdown(
             color: #8a5a00;
         }
 
+        .scope-card {
+            padding: 0.95rem 1rem;
+            border: 1px solid #e5e9f0;
+            border-radius: 14px;
+            background: #fbfcfe;
+        }
+
+        .scope-title {
+            font-weight: 750;
+            color: #111827;
+            margin-bottom: 0.45rem;
+        }
+
+        .scope-copy {
+            color: #697586;
+            line-height: 1.5;
+            font-size: 0.9rem;
+        }
+
+        .scope-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.45rem;
+            margin-top: 0.8rem;
+        }
+
+        .scope-badge {
+            padding: 0.28rem 0.55rem;
+            border-radius: 999px;
+            background: #eef4ff;
+            border: 1px solid #d9e6ff;
+            color: #315fbe;
+            font-size: 0.74rem;
+            font-weight: 700;
+        }
+
+        .workflow-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 0.75rem;
+            margin-top: 0.55rem;
+        }
+
+        .workflow-card {
+            min-height: 118px;
+            padding: 0.95rem 1rem;
+            border: 1px solid #e5e9f0;
+            border-radius: 14px;
+            background: #fbfcfe;
+        }
+
+        .workflow-number {
+            color: #315fbe;
+            font-size: 0.73rem;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            margin-bottom: 0.45rem;
+        }
+
+        .workflow-title {
+            color: #111827;
+            font-weight: 750;
+            margin-bottom: 0.25rem;
+        }
+
+        .workflow-copy {
+            color: #697586;
+            font-size: 0.86rem;
+            line-height: 1.45;
+        }
+
         .source-note {
             color: #7a8697;
             font-size: 0.78rem;
@@ -258,6 +334,10 @@ st.markdown(
 
             .hero-title {
                 font-size: 2.25rem;
+            }
+
+            .workflow-grid {
+                grid-template-columns: 1fr 1fr;
             }
         }
     </style>
@@ -308,15 +388,21 @@ with st.container(border=True):
 
     with upload_right:
         st.markdown(
-            "##### Recognition scope"
-        )
-        st.caption(
-            "Designed for different flag presentations: landscape, portrait, "
-            "circular, rotated, perspective, low-resolution and partially visible."
-        )
-        st.caption(
-            "Accepted predictions unlock live geographic, demographic and "
-            "government information."
+            """
+            <div class="scope-card">
+                <div class="scope-title">Recognition scope</div>
+                <div class="scope-copy">
+                    Worldwide flag recognition with confidence-aware rejection
+                    for uncertain inputs and varied real-world presentations.
+                </div>
+                <div class="scope-badges">
+                    <span class="scope-badge">250 classes</span>
+                    <span class="scope-badge">Open-set gate</span>
+                    <span class="scope-badge">CPU ready</span>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
 
 
@@ -344,26 +430,33 @@ if uploaded_file is None:
             unsafe_allow_html=True,
         )
 
-        step_1, step_2, step_3, step_4 = st.columns(
-            4,
-            gap="medium",
+        st.markdown(
+            """
+            <div class="workflow-grid">
+                <div class="workflow-card">
+                    <div class="workflow-number">01</div>
+                    <div class="workflow-title">Upload</div>
+                    <div class="workflow-copy">Provide a JPG, PNG or WebP flag image.</div>
+                </div>
+                <div class="workflow-card">
+                    <div class="workflow-number">02</div>
+                    <div class="workflow-title">Recognize</div>
+                    <div class="workflow-copy">MobileNetV3 ranks worldwide candidates.</div>
+                </div>
+                <div class="workflow-card">
+                    <div class="workflow-number">03</div>
+                    <div class="workflow-title">Validate</div>
+                    <div class="workflow-copy">Confidence gating accepts or rejects the result.</div>
+                </div>
+                <div class="workflow-card">
+                    <div class="workflow-number">04</div>
+                    <div class="workflow-title">Enrich</div>
+                    <div class="workflow-copy">Accepted results unlock live country intelligence.</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
-
-        with step_1:
-            st.markdown("**01 · Upload**")
-            st.caption("Provide a flag image in JPG, PNG or WebP.")
-
-        with step_2:
-            st.markdown("**02 · Recognize**")
-            st.caption("MobileNetV3 predicts the flag and confidence.")
-
-        with step_3:
-            st.markdown("**03 · Validate**")
-            st.caption("The open-set threshold decides known vs possible unknown.")
-
-        with step_4:
-            st.markdown("**04 · Enrich**")
-            st.caption("Live country facts are loaded from external reference sources.")
 
     st.stop()
 
