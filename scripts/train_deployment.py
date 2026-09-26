@@ -49,6 +49,7 @@ def set_seed(seed: int) -> None:
 def build_deployment_manifest(
     class_to_images: dict[str, list[Path]],
     seed: int,
+    scene_to_images: dict[str, list[Path]] | None = None,
 ) -> pd.DataFrame:
     """Use every class while keeping one validation source per class."""
     rows: list[dict[str, str]] = []
@@ -100,6 +101,21 @@ def build_deployment_manifest(
                     "partition": partition,
                 }
             )
+
+    if scene_to_images:
+        for country, paths in sorted(scene_to_images.items()):
+            if country not in class_to_images:
+                continue
+
+            for path in sorted(Path(path) for path in paths):
+                rows.append(
+                    {
+                        "path": path.as_posix(),
+                        "country": country,
+                        "regime": "scene_aware_synthetic",
+                        "partition": "train",
+                    }
+                )
 
     manifest = pd.DataFrame(rows)
 
@@ -178,9 +194,23 @@ def main() -> None:
         ),
     )
 
+    scene_to_images = None
+    scene_train_dir = config["data"].get("scene_train_dir")
+
+    if scene_train_dir:
+        scene_path = Path(scene_train_dir)
+        if scene_path.exists():
+            scene_to_images = discover_country_images(
+                raw_dir=scene_path,
+                allowed_extensions=set(
+                    config["data"]["allowed_extensions"]
+                ),
+            )
+
     manifest = build_deployment_manifest(
         class_to_images,
         seed=seed,
+        scene_to_images=scene_to_images,
     )
 
     train_manifest = manifest[
@@ -249,6 +279,12 @@ def main() -> None:
     )
     print(
         f"Validation images   : {len(validation_manifest)}"
+    )
+    scene_train_count = int(
+        np.sum(train_manifest["regime"] == "scene_aware_synthetic")
+    )
+    print(
+        f"Scene-aware images  : {scene_train_count}"
     )
 
     model_cfg = config["model"]
@@ -441,7 +477,9 @@ def main() -> None:
             "validation_macro_f1": best_f1,
             "seed": seed,
             "training_scope": (
-                "worldwide_250_class_deployment"
+                "worldwide_250_class_scene_aware"
+                if scene_to_images
+                else "worldwide_250_class_deployment"
             ),
         },
         model_path,
@@ -481,6 +519,9 @@ def main() -> None:
         ),
         "validation_images": int(
             len(validation_manifest)
+        ),
+        "scene_training_images": int(
+            np.sum(train_manifest["regime"] == "scene_aware_synthetic")
         ),
         "best_validation_macro_f1": best_f1,
         "unknown_threshold": (
