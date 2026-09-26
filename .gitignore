@@ -27,6 +27,7 @@ data/raw/*
 data/processed/*
 data/splits/*
 data/source_metadata/*
+data/scene_train/*
 data/external_benchmark/*
 !data/external_benchmark/README.md
 artifacts/models/*
