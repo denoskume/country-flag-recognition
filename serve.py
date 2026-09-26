@@ -11,6 +11,7 @@ from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, UnidentifiedImageError
+import yaml
 
 from flag_recognition.country_info import fetch_country_profile
 from flag_recognition.inference import load_inference_bundle, predict_image
@@ -20,6 +21,7 @@ from flag_recognition.taxonomy import country_name_from_code
 BASE_DIR = Path(__file__).resolve().parent
 WEB_DIR = BASE_DIR / "web"
 MODEL_PATH = BASE_DIR / "artifacts/models/worldwide_mobilenet_v3_small.pt"
+DEPLOYMENT_CONFIG_PATH = BASE_DIR / "configs/deployment.yaml"
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
@@ -31,6 +33,12 @@ app = FastAPI(
 )
 
 bundle = load_inference_bundle(MODEL_PATH, device="cpu")
+deployment_config = yaml.safe_load(
+    DEPLOYMENT_CONFIG_PATH.read_text(encoding="utf-8")
+)
+DEPLOYMENT_THRESHOLD = float(
+    deployment_config["open_set"]["deployment_threshold"]
+)
 
 app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 
@@ -46,6 +54,7 @@ def health():
         "status": "ok",
         "model": "mobilenet_v3_small",
         "classes": len(bundle.index_to_class),
+        "deployment_threshold": DEPLOYMENT_THRESHOLD,
         "checkpoint_threshold": bundle.unknown_threshold,
         "device": str(bundle.device),
     }
@@ -82,7 +91,7 @@ async def analyze(
     active_threshold = (
         float(threshold)
         if threshold is not None
-        else float(bundle.unknown_threshold)
+        else DEPLOYMENT_THRESHOLD
     )
     accepted = prediction.top1_confidence >= active_threshold
 
@@ -101,6 +110,7 @@ async def analyze(
         "confidence": prediction.top1_confidence,
         "latency_ms": prediction.inference_ms,
         "active_threshold": active_threshold,
+        "deployment_threshold": DEPLOYMENT_THRESHOLD,
         "checkpoint_threshold": bundle.unknown_threshold,
         "image": {
             "width": image.width,
