@@ -23,6 +23,10 @@ if [ ! -f "data/splits/split_manifest.csv" ]; then
 fi
 
 echo
+echo "=== Dataset verification ==="
+PYTHONPATH=src python scripts/verify_dataset.py
+
+echo
 echo "=== 1/3 Research baseline: 200 seen / 50 unseen ==="
 PYTHONPATH=src python scripts/train.py
 
