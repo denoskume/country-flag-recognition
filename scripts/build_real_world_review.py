@@ -26,6 +26,14 @@ def parse_args():
 def main():
     args = parse_args()
 
+    if not args.manifest.is_file():
+        raise SystemExit(
+            "Challenge manifest not found: "
+            f"{args.manifest}\n"
+            "Run this first:\n"
+            "  PYTHONPATH=src python scripts/collect_real_world_challenge.py"
+        )
+
     with args.manifest.open(newline="", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
 
