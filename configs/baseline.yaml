@@ -1,0 +1,38 @@
+project:
+  seed: 42
+  image_size: 224
+
+data:
+  raw_dir: data/raw
+  split_manifest: data/splits/split_manifest.csv
+  unseen_fraction: 0.20
+  validation_fraction: 0.15
+  test_fraction: 0.15
+  minimum_images_per_seen_class: 5
+  allowed_extensions:
+    - .jpg
+    - .jpeg
+    - .png
+    - .webp
+
+model:
+  architecture: mobilenet_v3_small
+  pretrained: true
+  dropout: 0.2
+
+training:
+  batch_size: 32
+  epochs: 20
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  early_stopping_patience: 5
+
+open_set:
+  score: max_softmax_probability
+  threshold_selection: validation_quantile
+  known_acceptance_quantile: 0.05
+
+artifacts:
+  model_path: artifacts/models/baseline_mobilenet_v3_small.pt
+  metrics_dir: artifacts/metrics
+  figures_dir: artifacts/figures
