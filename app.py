@@ -254,6 +254,48 @@ if uploaded_file is not None:
                 + profile.official_languages
             )
 
+            quick_1, quick_2, quick_3, quick_4 = st.columns(4)
+
+            with quick_1:
+                area_label = (
+                    f"{profile.area_km2:,.0f} km²".replace(",", " ")
+                    if profile.area_km2 is not None
+                    else "Not available"
+                )
+                st.metric(
+                    "Area",
+                    area_label,
+                )
+
+            with quick_2:
+                st.metric(
+                    "Calling code",
+                    profile.calling_code,
+                )
+
+            with quick_3:
+                st.metric(
+                    "Internet domain",
+                    profile.internet_domain,
+                )
+
+            with quick_4:
+                st.metric(
+                    "Driving side",
+                    profile.driving_side,
+                )
+
+            if profile.overview != "Not available":
+                st.subheader(
+                    "Country overview / What it is known for"
+                )
+                st.write(
+                    profile.overview
+                )
+                st.caption(
+                    "Overview source: Wikipedia"
+                )
+
             st.divider()
 
             political_column, geography_column = st.columns(
@@ -336,8 +378,9 @@ if uploaded_file is not None:
             st.divider()
 
             st.caption(
-                "Political/geographic metadata: Wikidata · "
-                "Population: World Bank latest non-empty annual observation. "
+                "Political/geographic/practical metadata: Wikidata · "
+                "Population: World Bank latest non-empty annual observation · "
+                "Country overview: Wikipedia. "
                 "Country information is fetched at runtime and cached for one hour."
             )
 
