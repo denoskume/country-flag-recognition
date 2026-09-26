@@ -1,13 +1,4 @@
-"""Expand the flag dataset to worldwide ISO 3166-1 coverage plus Kosovo.
-
-This script supplements the real-world Flagnet crops with canonical public-domain
-flags for all ISO 3166-1 entities. It also adds Kosovo as a separately documented
-non-ISO class using the commonly used XK code.
-
-Canonical images are used to create deterministic coverage variants so every
-class has enough samples to enter the training pipeline. Real-world and canonical
-sources are kept distinguishable in metadata for honest evaluation.
-"""
+"""Expand the dataset to worldwide coverage with presentation diversity."""
 
 from __future__ import annotations
 
@@ -19,7 +10,13 @@ import tempfile
 from urllib.request import urlretrieve
 import zipfile
 
-from PIL import Image, ImageEnhance, ImageFilter, ImageOps
+from PIL import (
+    Image,
+    ImageDraw,
+    ImageEnhance,
+    ImageFilter,
+    ImageOps,
+)
 import pycountry
 
 
@@ -31,6 +28,8 @@ KOSOVO_SVG_URL = (
     "https://raw.githubusercontent.com/lipis/flag-icons/"
     "main/flags/4x3/xk.svg"
 )
+
+NEUTRAL = (245, 245, 245)
 
 
 def parse_args() -> argparse.Namespace:
@@ -55,7 +54,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--variants-per-class",
         type=int,
-        default=6,
+        default=12,
     )
     parser.add_argument(
         "--seed",
@@ -65,91 +64,285 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def to_rgb_preserving_alpha(
+    image: Image.Image,
+    background: tuple[int, int, int] = NEUTRAL,
+) -> Image.Image:
+    """Composite transparent/non-rectangular flags onto a neutral background."""
+    rgba = image.convert("RGBA")
+    canvas = Image.new(
+        "RGBA",
+        rgba.size,
+        (*background, 255),
+    )
+    canvas.alpha_composite(rgba)
+    return canvas.convert("RGB")
+
+
 def fit_on_canvas(
     image: Image.Image,
-    size: tuple[int, int] = (320, 240),
-    background: tuple[int, int, int] = (245, 245, 245),
+    size: tuple[int, int],
+    background: tuple[int, int, int] = NEUTRAL,
+    margin_fraction: float = 0.08,
 ) -> Image.Image:
-    """Fit a flag on a neutral canvas without stretching its aspect ratio."""
-    canvas = Image.new("RGB", size, background)
+    """Fit a full flag onto a canvas without stretching its proportions."""
+    image = to_rgb_preserving_alpha(
+        image,
+        background,
+    )
+
+    canvas = Image.new(
+        "RGB",
+        size,
+        background,
+    )
+
+    margin_x = round(
+        size[0] * margin_fraction
+    )
+    margin_y = round(
+        size[1] * margin_fraction
+    )
+
     fitted = ImageOps.contain(
-        image.convert("RGB"),
-        (size[0] - 32, size[1] - 32),
+        image,
+        (
+            max(1, size[0] - 2 * margin_x),
+            max(1, size[1] - 2 * margin_y),
+        ),
         method=Image.Resampling.LANCZOS,
     )
+
     x = (size[0] - fitted.width) // 2
     y = (size[1] - fitted.height) // 2
-    canvas.paste(fitted, (x, y))
+
+    canvas.paste(
+        fitted,
+        (x, y),
+    )
+
     return canvas
+
+
+def apply_shape_mask(
+    image: Image.Image,
+    shape: str,
+    background: tuple[int, int, int] = NEUTRAL,
+) -> Image.Image:
+    """Simulate flags shown as circular or rounded visual assets."""
+    image = image.convert("RGB")
+    mask = Image.new(
+        "L",
+        image.size,
+        0,
+    )
+    draw = ImageDraw.Draw(mask)
+
+    if shape == "circle":
+        draw.ellipse(
+            (
+                0,
+                0,
+                image.width - 1,
+                image.height - 1,
+            ),
+            fill=255,
+        )
+    elif shape == "rounded":
+        radius = max(
+            4,
+            round(
+                min(image.size) * 0.12
+            ),
+        )
+        draw.rounded_rectangle(
+            (
+                0,
+                0,
+                image.width - 1,
+                image.height - 1,
+            ),
+            radius=radius,
+            fill=255,
+        )
+    else:
+        raise ValueError(
+            f"Unsupported shape: {shape}"
+        )
+
+    output = Image.new(
+        "RGB",
+        image.size,
+        background,
+    )
+    output.paste(
+        image,
+        (0, 0),
+        mask,
+    )
+
+    return output
 
 
 def make_variants(
     canonical: Image.Image,
     count: int,
     seed: int,
-) -> list[Image.Image]:
-    """Create deterministic, moderate visual variants from one canonical flag."""
-    if count < 1:
-        raise ValueError("count must be at least 1.")
+) -> list[tuple[str, Image.Image]]:
+    """Create deterministic identity-preserving presentation variants."""
+    if count < 6:
+        raise ValueError(
+            "count must be at least 6."
+        )
 
     rng = random.Random(seed)
-    base = fit_on_canvas(canonical)
-    variants: list[Image.Image] = [base]
 
-    operations = [
-        "rotate",
-        "brightness",
-        "contrast",
-        "blur",
-        "resolution",
-        "combined",
+    base_landscape = fit_on_canvas(
+        canonical,
+        (360, 240),
+    )
+
+    variants: list[
+        tuple[str, Image.Image]
+    ] = [
+        (
+            "canonical_landscape",
+            base_landscape,
+        ),
+        (
+            "portrait_frame",
+            fit_on_canvas(
+                canonical,
+                (240, 360),
+            ),
+        ),
+        (
+            "square_frame",
+            fit_on_canvas(
+                canonical,
+                (320, 320),
+            ),
+        ),
+        (
+            "rotated_90",
+            base_landscape.rotate(
+                90,
+                resample=Image.Resampling.BICUBIC,
+                expand=True,
+                fillcolor=NEUTRAL,
+            ),
+        ),
+        (
+            "circle_mask",
+            apply_shape_mask(
+                fit_on_canvas(
+                    canonical,
+                    (320, 320),
+                ),
+                "circle",
+            ),
+        ),
+        (
+            "rounded_mask",
+            apply_shape_mask(
+                fit_on_canvas(
+                    canonical,
+                    (360, 240),
+                ),
+                "rounded",
+            ),
+        ),
+        (
+            "rotated_small",
+            base_landscape.rotate(
+                rng.choice(
+                    [-18, -12, 12, 18]
+                ),
+                resample=Image.Resampling.BICUBIC,
+                expand=False,
+                fillcolor=NEUTRAL,
+            ),
+        ),
+        (
+            "low_resolution",
+            base_landscape.resize(
+                (144, 96),
+                Image.Resampling.BILINEAR,
+            ).resize(
+                base_landscape.size,
+                Image.Resampling.BILINEAR,
+            ),
+        ),
+        (
+            "brightness_low",
+            ImageEnhance.Brightness(
+                base_landscape
+            ).enhance(0.78),
+        ),
+        (
+            "contrast_high",
+            ImageEnhance.Contrast(
+                base_landscape
+            ).enhance(1.22),
+        ),
+        (
+            "blur",
+            base_landscape.filter(
+                ImageFilter.GaussianBlur(
+                    radius=1.1
+                )
+            ),
+        ),
     ]
 
-    for index in range(1, count):
-        operation = operations[(index - 1) % len(operations)]
-        image = base.copy()
+    # Partial visibility: remove a small edge region, then restore output size.
+    crop = base_landscape.crop(
+        (
+            round(
+                base_landscape.width
+                * 0.08
+            ),
+            0,
+            base_landscape.width,
+            base_landscape.height,
+        )
+    )
+    variants.append(
+        (
+            "partial_visibility",
+            ImageOps.pad(
+                crop,
+                base_landscape.size,
+                method=Image.Resampling.LANCZOS,
+                color=NEUTRAL,
+            ),
+        )
+    )
 
-        if operation == "rotate":
-            angle = rng.choice([-8, -5, 5, 8])
-            image = image.rotate(
-                angle,
-                resample=Image.Resampling.BICUBIC,
-                expand=False,
-                fillcolor=(245, 245, 245),
-            )
-        elif operation == "brightness":
-            image = ImageEnhance.Brightness(image).enhance(
-                rng.choice([0.78, 0.88, 1.12, 1.22])
-            )
-        elif operation == "contrast":
-            image = ImageEnhance.Contrast(image).enhance(
-                rng.choice([0.82, 0.90, 1.12, 1.20])
-            )
-        elif operation == "blur":
-            image = image.filter(
-                ImageFilter.GaussianBlur(
-                    radius=rng.choice([0.6, 1.0, 1.4])
-                )
-            )
-        elif operation == "resolution":
-            reduced = image.resize(
-                (160, 120),
-                Image.Resampling.BILINEAR,
-            )
-            image = reduced.resize(
-                image.size,
-                Image.Resampling.BILINEAR,
-            )
-        else:
-            image = ImageEnhance.Brightness(image).enhance(0.9)
-            image = image.rotate(
-                rng.choice([-4, 4]),
-                resample=Image.Resampling.BICUBIC,
-                expand=False,
-                fillcolor=(245, 245, 245),
-            )
+    if count <= len(variants):
+        return variants[:count]
 
-        variants.append(image)
+    # Additional requested samples combine mild geometry/photometric changes.
+    while len(variants) < count:
+        index = len(variants)
+        image = base_landscape.rotate(
+            rng.uniform(-20, 20),
+            resample=Image.Resampling.BICUBIC,
+            expand=False,
+            fillcolor=NEUTRAL,
+        )
+        image = ImageEnhance.Brightness(
+            image
+        ).enhance(
+            rng.uniform(0.82, 1.18)
+        )
+
+        variants.append(
+            (
+                f"combined_{index:02d}",
+                image,
+            )
+        )
 
     return variants
 
@@ -158,9 +351,16 @@ def write_taxonomy(
     path: Path,
     entries: list[dict[str, str]],
 ) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
 
-    with path.open("w", newline="", encoding="utf-8") as handle:
+    with path.open(
+        "w",
+        newline="",
+        encoding="utf-8",
+    ) as handle:
         writer = csv.DictWriter(
             handle,
             fieldnames=[
@@ -176,30 +376,121 @@ def write_taxonomy(
         writer.writerows(entries)
 
 
+def save_variants(
+    image: Image.Image,
+    class_dir: Path,
+    class_code: str,
+    class_name: str,
+    count: int,
+    seed: int,
+    source_dataset: str,
+    source_license: str,
+    source_url: str,
+    metadata: list[dict[str, str]],
+) -> None:
+    class_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    variants = make_variants(
+        image,
+        count=count,
+        seed=seed,
+    )
+
+    for index, (
+        presentation_variant,
+        variant,
+    ) in enumerate(variants):
+        output_path = (
+            class_dir
+            / f"canonical_{index:02d}.jpg"
+        )
+
+        variant.save(
+            output_path,
+            format="JPEG",
+            quality=94,
+        )
+
+        metadata.append(
+            {
+                "derived_path": (
+                    output_path.as_posix()
+                ),
+                "class_code": (
+                    class_code
+                ),
+                "name": class_name,
+                "source_type": (
+                    "canonical_augmented"
+                ),
+                "presentation_variant": (
+                    presentation_variant
+                ),
+                "source_dataset": (
+                    source_dataset
+                ),
+                "source_license": (
+                    source_license
+                ),
+                "source_url": (
+                    source_url
+                ),
+            }
+        )
+
+
 def main() -> None:
     args = parse_args()
 
-    if args.variants_per_class < 5:
+    if args.variants_per_class < 6:
         raise ValueError(
-            "--variants-per-class must be at least 5 "
-            "to satisfy the current training split contract."
+            "--variants-per-class must be at least 6."
         )
 
-    args.raw_dir.mkdir(parents=True, exist_ok=True)
-    args.metadata_path.parent.mkdir(parents=True, exist_ok=True)
+    args.raw_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+    args.metadata_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
 
-    taxonomy: list[dict[str, str]] = []
-    metadata: list[dict[str, str]] = []
+    taxonomy: list[
+        dict[str, str]
+    ] = []
+    metadata: list[
+        dict[str, str]
+    ] = []
 
     with tempfile.TemporaryDirectory() as temporary_directory:
-        temporary = Path(temporary_directory)
+        temporary = Path(
+            temporary_directory
+        )
 
-        iso_archive = temporary / "iso_flags.zip"
-        print("Downloading public-domain ISO flag archive...")
-        urlretrieve(ISO_FLAGS_ARCHIVE, iso_archive)
+        iso_archive = (
+            temporary
+            / "iso_flags.zip"
+        )
 
-        with zipfile.ZipFile(iso_archive) as archive:
-            archive.extractall(temporary)
+        print(
+            "Downloading public-domain ISO flag archive..."
+        )
+
+        urlretrieve(
+            ISO_FLAGS_ARCHIVE,
+            iso_archive,
+        )
+
+        with zipfile.ZipFile(
+            iso_archive
+        ) as archive:
+            archive.extractall(
+                temporary
+            )
 
         iso_root = (
             temporary
@@ -210,132 +501,155 @@ def main() -> None:
 
         if not iso_root.is_dir():
             raise RuntimeError(
-                "ISO canonical flag directory was not found in the archive."
+                "ISO canonical flag directory was not found."
             )
 
         for country in sorted(
             pycountry.countries,
             key=lambda item: item.alpha_2,
         ):
-            code_upper = country.alpha_2
-            code = code_upper.lower()
-            source_path = iso_root / f"{code_upper}.png"
+            code_upper = (
+                country.alpha_2
+            )
+            code = (
+                code_upper.lower()
+            )
+            source_path = (
+                iso_root
+                / f"{code_upper}.png"
+            )
 
             if not source_path.is_file():
                 raise FileNotFoundError(
-                    f"Canonical flag missing for ISO code {code_upper}."
+                    "Canonical flag missing for "
+                    f"ISO code {code_upper}."
                 )
 
-            class_dir = args.raw_dir / code
-            class_dir.mkdir(parents=True, exist_ok=True)
-
-            with Image.open(source_path) as image:
-                variants = make_variants(
-                    image,
-                    count=args.variants_per_class,
-                    seed=args.seed + int(country.numeric),
-                )
-
-            for index, variant in enumerate(variants):
-                output_path = (
-                    class_dir
-                    / f"canonical_{index:02d}.jpg"
-                )
-                variant.save(
-                    output_path,
-                    format="JPEG",
-                    quality=94,
-                )
-
-                metadata.append(
-                    {
-                        "derived_path": output_path.as_posix(),
-                        "class_code": code,
-                        "name": country.name,
-                        "source_type": "canonical_augmented",
-                        "source_dataset": "emcrisostomo/flags",
-                        "source_license": "Public Domain",
-                        "source_url": (
-                            "https://github.com/emcrisostomo/flags"
-                        ),
-                    }
+            with Image.open(
+                source_path
+            ) as image:
+                save_variants(
+                    image=image.copy(),
+                    class_dir=(
+                        args.raw_dir
+                        / code
+                    ),
+                    class_code=code,
+                    class_name=country.name,
+                    count=(
+                        args.variants_per_class
+                    ),
+                    seed=(
+                        args.seed
+                        + int(
+                            country.numeric
+                        )
+                    ),
+                    source_dataset=(
+                        "emcrisostomo/flags"
+                    ),
+                    source_license=(
+                        "Public Domain"
+                    ),
+                    source_url=(
+                        "https://github.com/"
+                        "emcrisostomo/flags"
+                    ),
+                    metadata=metadata,
                 )
 
             taxonomy.append(
                 {
                     "class_code": code,
                     "name": country.name,
-                    "taxonomy": "ISO 3166-1",
-                    "iso_alpha3": country.alpha_3,
-                    "iso_numeric": country.numeric,
+                    "taxonomy": (
+                        "ISO 3166-1"
+                    ),
+                    "iso_alpha3": (
+                        country.alpha_3
+                    ),
+                    "iso_numeric": (
+                        country.numeric
+                    ),
                     "notes": "",
                 }
             )
 
-        # Kosovo is included separately because XK is not an official ISO 3166-1 code.
-        kosovo_svg = temporary / "xk.svg"
-        urlretrieve(KOSOVO_SVG_URL, kosovo_svg)
+        # Kosovo is separate because XK is not an official ISO 3166-1 code.
+        kosovo_svg = (
+            temporary
+            / "xk.svg"
+        )
+
+        urlretrieve(
+            KOSOVO_SVG_URL,
+            kosovo_svg,
+        )
 
         try:
             import cairosvg
         except ImportError as exc:
             raise RuntimeError(
-                "CairoSVG is required to rasterize the Kosovo source flag."
+                "CairoSVG is required to rasterize Kosovo."
             ) from exc
 
-        kosovo_png = temporary / "xk.png"
+        kosovo_png = (
+            temporary
+            / "xk.png"
+        )
+
         cairosvg.svg2png(
-            url=str(kosovo_svg),
-            write_to=str(kosovo_png),
+            url=str(
+                kosovo_svg
+            ),
+            write_to=str(
+                kosovo_png
+            ),
             output_width=512,
         )
 
-        with Image.open(kosovo_png) as image:
-            variants = make_variants(
-                image,
-                count=args.variants_per_class,
-                seed=args.seed + 999,
-            )
-
-        kosovo_dir = args.raw_dir / "xk"
-        kosovo_dir.mkdir(parents=True, exist_ok=True)
-
-        for index, variant in enumerate(variants):
-            output_path = (
-                kosovo_dir
-                / f"canonical_{index:02d}.jpg"
-            )
-            variant.save(
-                output_path,
-                format="JPEG",
-                quality=94,
-            )
-
-            metadata.append(
-                {
-                    "derived_path": output_path.as_posix(),
-                    "class_code": "xk",
-                    "name": "Kosovo",
-                    "source_type": "canonical_augmented",
-                    "source_dataset": "lipis/flag-icons",
-                    "source_license": "MIT",
-                    "source_url": (
-                        "https://github.com/lipis/flag-icons"
-                    ),
-                }
+        with Image.open(
+            kosovo_png
+        ) as image:
+            save_variants(
+                image=image.copy(),
+                class_dir=(
+                    args.raw_dir
+                    / "xk"
+                ),
+                class_code="xk",
+                class_name="Kosovo",
+                count=(
+                    args.variants_per_class
+                ),
+                seed=(
+                    args.seed
+                    + 999
+                ),
+                source_dataset=(
+                    "lipis/flag-icons"
+                ),
+                source_license="MIT",
+                source_url=(
+                    "https://github.com/"
+                    "lipis/flag-icons"
+                ),
+                metadata=metadata,
             )
 
         taxonomy.append(
             {
                 "class_code": "xk",
                 "name": "Kosovo",
-                "taxonomy": "Extra non-ISO class",
+                "taxonomy": (
+                    "Extra non-ISO class"
+                ),
                 "iso_alpha3": "",
                 "iso_numeric": "",
                 "notes": (
-                    "XK is an unofficial code used in some international "
-                    "and European data systems; it is not an official "
-                    "ISO 3166-1 assignment."
+                    "XK is an unofficial code; "
+                    "it is not an official ISO "
+                    "3166-1 assignment."
                 ),
             }
         )
@@ -344,7 +658,9 @@ def main() -> None:
         args.taxonomy_path,
         sorted(
             taxonomy,
-            key=lambda row: row["class_code"],
+            key=lambda row: (
+                row["class_code"]
+            ),
         ),
     )
 
@@ -360,28 +676,44 @@ def main() -> None:
                 "class_code",
                 "name",
                 "source_type",
+                "presentation_variant",
                 "source_dataset",
                 "source_license",
                 "source_url",
             ],
         )
         writer.writeheader()
-        writer.writerows(metadata)
+        writer.writerows(
+            metadata
+        )
 
-    print(f"Worldwide classes : {len(taxonomy)}")
     print(
-        "ISO classes       : "
+        f"Worldwide classes   : {len(taxonomy)}"
+    )
+    print(
+        "ISO classes         : "
         f"{sum(row['taxonomy'] == 'ISO 3166-1' for row in taxonomy)}"
     )
-    print("Extra classes     : 1 (Kosovo / XK)")
     print(
-        f"Canonical variants: {len(metadata)}"
+        "Extra classes       : 1 (Kosovo / XK)"
     )
     print(
-        f"Taxonomy saved    : {args.taxonomy_path}"
+        "Coverage images     : "
+        f"{len(metadata)}"
     )
     print(
-        f"Metadata saved    : {args.metadata_path}"
+        "Presentation forms  : "
+        "landscape, portrait, square, "
+        "90-degree rotation, circle, "
+        "rounded, small rotation, "
+        "low-resolution, photometric, "
+        "blur, partial visibility"
+    )
+    print(
+        f"Taxonomy saved      : {args.taxonomy_path}"
+    )
+    print(
+        f"Metadata saved      : {args.metadata_path}"
     )
 
 
