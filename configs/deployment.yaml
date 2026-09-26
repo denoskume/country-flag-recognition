@@ -24,6 +24,9 @@ training:
 
 open_set:
   known_acceptance_quantile: 0.05
+  deployment_threshold: 0.8804835677146912
+  calibration_target_far: 0.05
+  calibration_report: artifacts/metrics/open_set_calibration_validation.json
 
 artifacts:
   model_path: artifacts/models/worldwide_mobilenet_v3_small.pt
