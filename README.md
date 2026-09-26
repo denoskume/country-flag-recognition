@@ -143,30 +143,62 @@ country-flag-recognition/
 └── requirements.txt
 ```
 
-## Demo target
+## Deployment interface
 
-The public app will support:
+The Streamlit interface presents the model decision separately from the raw
+top candidate:
 
 ```text
-Upload flag image
-       ↓
-Image preview
-       ↓
-Country prediction
-       ↓
-Top-5 candidates
-       ↓
-Confidence
-       ↓
-Known / Possible Unknown
-       ↓
-Inference time
+Upload image
+    ↓
+Worldwide classifier
+    ↓
+Confidence threshold
+    ├── accepted → country decision + live country dashboard
+    └── rejected → Unknown + top candidate for inspection only
 ```
 
-The deployment target is **Streamlit Community Cloud**.
+The result view keeps four primary signals visible:
+
+- decision;
+- top candidate;
+- confidence;
+- inference latency.
+
+Accepted predictions unlock a structured country dashboard organized into
+Overview, Government and Geography tabs. Rejected predictions do not assert
+country metadata.
+
+## External deployment benchmark
+
+The worldwide checkpoint is evaluated separately from its training data with:
+
+```bash
+PYTHONPATH=src python scripts/evaluate_deployment.py
+```
+
+External images live under `data/external_benchmark/`. The evaluator reports:
+
+- Top-1 and Top-5 accuracy;
+- macro precision, recall and F1;
+- calibration metrics;
+- per-country recall;
+- strongest confusion pairs;
+- known acceptance and rejection rates;
+- unknown rejection and false-acceptance rates;
+- AUROC, AUPR and FPR@95TPR;
+- SHA-256 leakage checks against `data/raw`.
+
+The benchmark does not change the model or threshold. Measurement comes first;
+threshold tuning or retraining is performed only after external evidence is
+available.
 
 ## Project status
 
-**Phase 1 — architecture, reproducible class-aware splitting, baseline model, and evaluation foundation.**
+**Worldwide deployment model trained — external validation and threshold audit in progress.**
 
-The next milestone is the dataset pipeline: country metadata, image collection, source-level deduplication, seen/unseen class partitioning, and dataset quality checks.
+Current deployment checkpoint:
+
+`artifacts/models/worldwide_mobilenet_v3_small.pt`
+
+The public deployment target remains **Streamlit Community Cloud**.
