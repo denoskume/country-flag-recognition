@@ -15,7 +15,7 @@ from flag_recognition.inference import (
 
 
 MODEL_PATH = Path(
-    "artifacts/models/baseline_mobilenet_v3_small.pt"
+    "artifacts/models/worldwide_mobilenet_v3_small.pt"
 )
 
 
