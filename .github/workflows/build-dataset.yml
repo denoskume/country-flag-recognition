@@ -5,6 +5,9 @@ on:
     branches: ["main"]
     paths:
       - ".github/workflows/build-dataset.yml"
+      - "scripts/expand_worldwide.py"
+      - "src/flag_recognition/splits.py"
+      - "data/README.md"
   workflow_dispatch:
 
 jobs:
