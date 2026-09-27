@@ -102,7 +102,7 @@ st.markdown(
 
         .flag-banner {
             position: relative;
-            height: 190px;
+            height: 230px;
             overflow: hidden;
             background:
                 linear-gradient(180deg, rgba(255,255,255,0) 52%, rgba(255,255,255,.98) 100%),
@@ -128,11 +128,7 @@ st.markdown(
         }
 
         .banner-fade {
-            position: absolute;
-            inset: auto 0 0 0;
-            height: 90px;
-            background: linear-gradient(180deg, rgba(255,255,255,0), #fff 92%);
-            pointer-events: none;
+            display: none;
         }
 
         .intro {
@@ -236,7 +232,7 @@ st.markdown(
                 padding-top: 1.5rem;
             }
             .flag-banner {
-                height: 135px;
+                height: 185px;
             }
             .flag-strip {
                 grid-template-columns: repeat(8, 1fr);
