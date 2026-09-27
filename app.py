@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 from io import BytesIO
 from pathlib import Path
@@ -17,7 +18,6 @@ from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.lib.utils import ImageReader
 from reportlab.lib.units import mm
 from reportlab.platypus import (
     HRFlowable,
@@ -110,20 +110,13 @@ def _pdf_text(value: object) -> str:
     return text if text else "Not available"
 
 
-def get_pdf_logo_reader():
-    """Return the verified RGB logo used in PDF headers."""
-    logo_path = (
-        ROOT_DIR
-        / "assets"
-        / "flag_intelligence_logo_verified.jpg"
-    )
-
-    if not logo_path.is_file():
-        raise FileNotFoundError(
-            f"Missing PDF header logo: {logo_path}"
-        )
-
-    return ImageReader(str(logo_path))
+def get_pdf_logo_image() -> Image.Image:
+    """Return a fully decoded RGB logo for direct PDF embedding."""
+    logo_bytes = base64.b64decode(PDF_LOGO_BASE64)
+    with Image.open(BytesIO(logo_bytes)) as source:
+        source.load()
+        logo = source.convert("RGB").copy()
+    return logo
 
 
 def draw_pdf_watermark(canvas, document) -> None:
@@ -145,18 +138,17 @@ def draw_pdf_watermark(canvas, document) -> None:
         stroke=0,
     )
 
-    logo_reader = get_pdf_logo_reader()
+    logo_image = get_pdf_logo_image()
     logo_size = 11 * mm
     logo_y = page_height - 15.5 * mm
 
-    canvas.drawImage(
-        logo_reader,
+    canvas.drawInlineImage(
+        logo_image,
         left,
         logo_y,
         width=logo_size,
         height=logo_size,
         preserveAspectRatio=True,
-        mask=None,
     )
     brand_x = left + 14 * mm
 
