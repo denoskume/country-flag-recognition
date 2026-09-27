@@ -98,18 +98,22 @@ st.markdown(
         }
 
         header[data-testid="stHeader"] {
-            background: rgba(246,248,251,.94);
-            border-bottom: 1px solid var(--line);
-            backdrop-filter: blur(12px);
+            background: transparent;
+            height: 0;
         }
 
         #MainMenu, footer {
             visibility: hidden;
         }
 
+        [data-testid="stToolbar"] {
+            top: .55rem;
+            right: .8rem;
+        }
+
         .block-container {
-            max-width: 1440px;
-            padding-top: .8rem;
+            max-width: 1280px;
+            padding-top: 1.25rem;
             padding-bottom: 2.5rem;
         }
 
@@ -118,9 +122,13 @@ st.markdown(
             align-items: center;
             justify-content: space-between;
             gap: 1rem;
-            padding: .15rem 0 .95rem 0;
-            border-bottom: 1px solid var(--line);
-            margin-bottom: 1rem;
+            padding: .85rem 1rem;
+            margin: 0 0 1.15rem 0;
+            border: 1px solid rgba(208,213,221,.85);
+            border-radius: 16px;
+            background: rgba(255,255,255,.92);
+            box-shadow: 0 8px 30px rgba(16,24,40,.05);
+            backdrop-filter: blur(14px);
         }
 
         .product-left {
@@ -130,16 +138,16 @@ st.markdown(
         }
 
         .brand-icon {
-            width: 38px;
-            height: 38px;
-            border-radius: 11px;
+            width: 42px;
+            height: 42px;
+            border-radius: 13px;
             display: grid;
             place-items: center;
-            background: linear-gradient(135deg, #2f5bea, #3da0ff);
+            background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 45%, #60a5fa 100%);
             color: #fff;
             font-weight: 900;
-            font-size: .85rem;
-            box-shadow: 0 8px 18px rgba(47,91,234,.18);
+            font-size: .86rem;
+            box-shadow: 0 10px 24px rgba(37,99,235,.25);
         }
 
         .brand-name {
@@ -173,11 +181,21 @@ st.markdown(
         }
 
         .page-head {
+            position: relative;
+            overflow: hidden;
             display: flex;
             align-items: flex-end;
             justify-content: space-between;
             gap: 1rem;
-            margin: .55rem 0 1rem 0;
+            margin: 0 0 1.25rem 0;
+            padding: 1.55rem 1.65rem;
+            border-radius: 22px;
+            border: 1px solid #dbe3f0;
+            background:
+                radial-gradient(circle at 88% 18%, rgba(59,130,246,.18), transparent 24%),
+                radial-gradient(circle at 72% 80%, rgba(99,102,241,.10), transparent 24%),
+                linear-gradient(135deg, #ffffff 0%, #f8fbff 58%, #eef4ff 100%);
+            box-shadow: 0 14px 40px rgba(16,24,40,.06);
         }
 
         .page-kicker {
@@ -191,19 +209,20 @@ st.markdown(
 
         .page-title {
             margin: 0;
-            color: var(--text);
-            font-size: clamp(1.9rem, 3vw, 2.75rem);
-            line-height: 1.02;
-            letter-spacing: -.035em;
-            font-weight: 850;
+            color: #0b1220;
+            font-size: clamp(2.15rem, 4vw, 3.35rem);
+            line-height: .98;
+            letter-spacing: -.045em;
+            font-weight: 900;
+            max-width: 760px;
         }
 
         .page-subtitle {
-            margin-top: .45rem;
-            color: var(--muted);
-            font-size: .93rem;
-            line-height: 1.5;
-            max-width: 760px;
+            margin-top: .7rem;
+            color: #667085;
+            font-size: .98rem;
+            line-height: 1.55;
+            max-width: 680px;
         }
 
         .panel {
@@ -243,10 +262,10 @@ st.markdown(
         }
 
         div[data-testid="stVerticalBlockBorderWrapper"] {
-            border: 1px solid var(--line) !important;
-            border-radius: 18px !important;
-            background: var(--surface);
-            box-shadow: 0 8px 24px rgba(16,24,40,.035);
+            border: 1px solid #dfe5ee !important;
+            border-radius: 20px !important;
+            background: rgba(255,255,255,.96);
+            box-shadow: 0 10px 34px rgba(16,24,40,.045);
         }
 
         div[data-testid="stFileUploader"] {
@@ -256,11 +275,27 @@ st.markdown(
         }
 
         div[data-testid="stFileUploaderDropzone"] {
-            min-height: 220px;
-            border: 1.5px dashed #b8c0cc;
-            border-radius: 16px;
+            min-height: 210px;
+            border: 1.5px dashed #9fb7e8;
+            border-radius: 18px;
             background:
-                linear-gradient(180deg, #fbfcfe 0%, #f8fafc 100%);
+                radial-gradient(circle at 50% 0%, rgba(37,99,235,.08), transparent 42%),
+                linear-gradient(180deg, #fbfdff 0%, #f7faff 100%);
+            transition: .2s ease;
+        }
+
+        div[data-testid="stFileUploaderDropzone"]:hover {
+            border-color: #2563eb;
+            box-shadow: inset 0 0 0 1px rgba(37,99,235,.08), 0 10px 28px rgba(37,99,235,.07);
+            transform: translateY(-1px);
+        }
+
+        div[data-testid="stFileUploaderDropzone"] button {
+            border-radius: 10px;
+            border: 1px solid #cdd8ef;
+            background: #fff;
+            font-weight: 750;
+            box-shadow: 0 3px 10px rgba(16,24,40,.06);
         }
 
         div[data-testid="stMetric"] {
@@ -294,10 +329,10 @@ st.markdown(
             justify-content: space-between;
             align-items: center;
             gap: .8rem;
-            padding: .65rem .72rem;
-            border: 1px solid var(--line);
-            border-radius: 12px;
-            background: var(--surface-2);
+            padding: .78rem .86rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 13px;
+            background: linear-gradient(180deg,#fbfcfe 0%,#f8fafc 100%);
         }
 
         .config-label {
@@ -376,6 +411,26 @@ st.markdown(
         button[data-baseweb="tab"] {
             padding-left: 0;
             padding-right: 0;
+        }
+
+        .hero-badges {
+            display: flex;
+            gap: .55rem;
+            flex-wrap: wrap;
+            margin-top: 1rem;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: .35rem;
+            padding: .42rem .68rem;
+            border-radius: 999px;
+            border: 1px solid #d7e2f7;
+            background: rgba(255,255,255,.78);
+            color: #344054;
+            font-size: .74rem;
+            font-weight: 750;
         }
 
         @media (max-width: 900px) {
@@ -479,14 +534,19 @@ with top_right:
 effective_threshold = get_effective_threshold()
 
 st.markdown(
-    """
+    f"""
     <div class="page-head">
         <div>
-            <div class="page-kicker">Analyze</div>
-            <h1 class="page-title">Flag recognition workspace</h1>
+            <div class="page-kicker">AI FLAG INTELLIGENCE</div>
+            <h1 class="page-title">Recognize flags with confidence.</h1>
             <div class="page-subtitle">
-                Upload an image, review the model decision, and inspect uncertainty before
-                accepting a country result.
+                Upload an image and get a ranked country prediction with confidence-aware
+                decision logic and live country intelligence.
+            </div>
+            <div class="hero-badges">
+                <span class="hero-badge">250 classes</span>
+                <span class="hero-badge">{deployment_threshold:.1%} production threshold</span>
+                <span class="hero-badge">Top {st.session_state.top_k} candidates</span>
             </div>
         </div>
     </div>
@@ -494,7 +554,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-upload_col, config_col = st.columns([1.75, 0.85], gap="large")
+upload_col, config_col = st.columns([1.65, 0.75], gap="large")
 
 with upload_col:
     with st.container(border=True):
