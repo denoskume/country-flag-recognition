@@ -126,18 +126,35 @@ def draw_pdf_watermark(canvas, document) -> None:
         stroke=0,
     )
 
+    logo_path = ROOT_DIR / "assets" / "flag_intelligence_logo.png"
+    logo_size = 11 * mm
+    logo_y = page_height - 15.5 * mm
+
+    if logo_path.is_file():
+        canvas.drawImage(
+            str(logo_path),
+            left,
+            logo_y,
+            width=logo_size,
+            height=logo_size,
+            preserveAspectRatio=True,
+            mask="auto",
+        )
+
+    brand_x = left + 14 * mm
+
     canvas.setFillColor(colors.white)
-    canvas.setFont("Helvetica-Bold", 12)
+    canvas.setFont("Helvetica-Bold", 11)
     canvas.drawString(
-        left,
+        brand_x,
         page_height - 10.5 * mm,
         "FLAG INTELLIGENCE",
     )
 
-    canvas.setFont("Helvetica", 7.5)
+    canvas.setFont("Helvetica", 7.2)
     canvas.setFillColor(colors.HexColor("#CBD5E1"))
     canvas.drawString(
-        left,
+        brand_x,
         page_height - 14 * mm,
         "Country Flag Recognition System",
     )
