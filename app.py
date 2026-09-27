@@ -27,6 +27,21 @@ from flag_recognition.taxonomy import country_name_from_code
 MODEL_PATH = ROOT_DIR / "artifacts/models/worldwide_mobilenet_v3_small.pt"
 CONFIG_PATH = ROOT_DIR / "configs/deployment.yaml"
 
+BANNER_FLAG_CODES = [
+    "us","ca","mx","gt","bz","sv","hn","ni","cr","pa","cu","do","ht","jm","bs","bb","tt","gd","dm","lc","vc","ag","kn","pr",
+    "br","ar","cl","pe","co","ve","ec","bo","py","uy","gy","sr",
+    "gb","ie","fr","de","es","pt","it","ch","at","be","nl","lu","dk","se","no","fi","is","gr","mt","cy",
+    "pl","cz","sk","hu","ro","bg","hr","si","ba","rs","me","mk","al","ee","lv","lt","ua","md","by","tr","ru",
+    "ma","dz","tn","ly","eg","mr","ml","sn","gm","gw","gn","sl","lr","ci","gh","tg","bj","ng","ne","bf","cv",
+    "cm","td","ga","cg","cd","gq","st","ao","zm","zw","mw","mz","na","bw","za","ls","sz","mg","mu","sc","km",
+    "et","er","dj","so","sd","ss","ke","ug","tz","rw","bi",
+    "sa","ae","qa","bh","kw","om","ye","jo","il","lb","sy","iq","ir","ps",
+    "af","pk","in","bd","np","bt","lk","mv",
+    "cn","mn","kp","kr","jp","tw","hk","mo","vn","la","kh","th","mm","my","sg","bn","id","ph","tl",
+    "kz","kg","tj","tm","uz","az","am","ge",
+    "au","nz","pg","fj","sb","vu","ws","to","tv","nr","ki","fm","mh","pw",
+]
+
 
 st.set_page_config(
     page_title="Flag Intelligence",
@@ -57,6 +72,26 @@ def get_deployment_threshold() -> float:
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_country_profile(country_code: str):
     return fetch_country_profile(country_code)
+
+
+def build_flag_banner_html() -> str:
+    flags_html = "".join(
+        f'<img src="https://flagcdn.com/w80/{code}.png" loading="lazy" alt="{code} flag">'
+        for code in BANNER_FLAG_CODES
+    )
+    return f"""
+    <div class="shell">
+        <div class="flag-banner">
+            <div class="flag-strip">
+                {flags_html}
+            </div>
+        </div>
+        <div class="intro">
+            <div class="app-title">Flag Intelligence</div>
+            <div class="app-subtitle">Select an image and run recognition.</div>
+        </div>
+    </div>
+    """
 
 
 st.markdown(
@@ -102,33 +137,29 @@ st.markdown(
 
         .flag-banner {
             position: relative;
-            height: 230px;
+            height: 300px;
             overflow: hidden;
-            background:
-                linear-gradient(180deg, rgba(255,255,255,0) 52%, rgba(255,255,255,.98) 100%),
-                url("https://flagcdn.com/w1600/us.png");
+            background: #ffffff;
+            border-bottom: 1px solid #eef2f7;
         }
 
         .flag-strip {
             display: grid;
-            grid-template-columns: repeat(13, 1fr);
-            grid-template-rows: repeat(4, 1fr);
+            grid-template-columns: repeat(20, 1fr);
+            grid-auto-rows: 28px;
+            gap: 3px;
+            padding: 10px;
             height: 100%;
-            gap: 2px;
-            padding: 2px;
-            background: #fff;
+            align-content: start;
+            background: #ffffff;
         }
 
         .flag-strip img {
             width: 100%;
             height: 100%;
             object-fit: cover;
-            filter: saturate(.98) contrast(.98);
-            border-radius: 3px;
-        }
-
-        .banner-fade {
-            display: none;
+            border-radius: 2px;
+            display: block;
         }
 
         .intro {
@@ -232,14 +263,13 @@ st.markdown(
                 padding-top: 1.5rem;
             }
             .flag-banner {
-                height: 185px;
+                height: 260px;
             }
             .flag-strip {
-                grid-template-columns: repeat(8, 1fr);
-                grid-template-rows: repeat(7, 1fr);
-            }
-            .flag-strip img:nth-child(n+53) {
-                display: none;
+                grid-template-columns: repeat(10, 1fr);
+                grid-auto-rows: 22px;
+                gap: 2px;
+                padding: 8px;
             }
         }
     </style>
@@ -257,71 +287,7 @@ bundle = get_model()
 deployment_threshold = get_deployment_threshold()
 
 st.markdown(
-    """
-    <div class="shell">
-        <div class="flag-banner">
-            <div class="flag-strip">
-                <img src="https://flagcdn.com/w320/us.png">
-                <img src="https://flagcdn.com/w320/gb.png">
-                <img src="https://flagcdn.com/w320/ca.png">
-                <img src="https://flagcdn.com/w320/jp.png">
-                <img src="https://flagcdn.com/w320/br.png">
-                <img src="https://flagcdn.com/w320/fr.png">
-                <img src="https://flagcdn.com/w320/de.png">
-                <img src="https://flagcdn.com/w320/in.png">
-                <img src="https://flagcdn.com/w320/kr.png">
-                <img src="https://flagcdn.com/w320/it.png">
-                <img src="https://flagcdn.com/w320/es.png">
-                <img src="https://flagcdn.com/w320/au.png">
-                <img src="https://flagcdn.com/w320/za.png">
-                <img src="https://flagcdn.com/w320/mx.png">
-                <img src="https://flagcdn.com/w320/ar.png">
-                <img src="https://flagcdn.com/w320/ng.png">
-                <img src="https://flagcdn.com/w320/ci.png">
-                <img src="https://flagcdn.com/w320/gh.png">
-                <img src="https://flagcdn.com/w320/se.png">
-                <img src="https://flagcdn.com/w320/no.png">
-                <img src="https://flagcdn.com/w320/pt.png">
-                <img src="https://flagcdn.com/w320/ch.png">
-                <img src="https://flagcdn.com/w320/ma.png">
-                <img src="https://flagcdn.com/w320/eg.png">
-                <img src="https://flagcdn.com/w320/nl.png">
-                <img src="https://flagcdn.com/w320/be.png">
-                <img src="https://flagcdn.com/w320/ie.png">
-                <img src="https://flagcdn.com/w320/pl.png">
-                <img src="https://flagcdn.com/w320/cz.png">
-                <img src="https://flagcdn.com/w320/at.png">
-                <img src="https://flagcdn.com/w320/gr.png">
-                <img src="https://flagcdn.com/w320/tr.png">
-                <img src="https://flagcdn.com/w320/sa.png">
-                <img src="https://flagcdn.com/w320/ae.png">
-                <img src="https://flagcdn.com/w320/il.png">
-                <img src="https://flagcdn.com/w320/pk.png">
-                <img src="https://flagcdn.com/w320/bd.png">
-                <img src="https://flagcdn.com/w320/id.png">
-                <img src="https://flagcdn.com/w320/th.png">
-                <img src="https://flagcdn.com/w320/vn.png">
-                <img src="https://flagcdn.com/w320/ph.png">
-                <img src="https://flagcdn.com/w320/my.png">
-                <img src="https://flagcdn.com/w320/sg.png">
-                <img src="https://flagcdn.com/w320/nz.png">
-                <img src="https://flagcdn.com/w320/cl.png">
-                <img src="https://flagcdn.com/w320/co.png">
-                <img src="https://flagcdn.com/w320/pe.png">
-                <img src="https://flagcdn.com/w320/uy.png">
-                <img src="https://flagcdn.com/w320/py.png">
-                <img src="https://flagcdn.com/w320/bo.png">
-                <img src="https://flagcdn.com/w320/ke.png">
-                <img src="https://flagcdn.com/w320/tz.png">
-            </div>
-            <div class="banner-fade"></div>
-        </div>
-        <div class="intro">
-            <div class="app-title">Flag Intelligence</div>
-            <div class="app-subtitle">Select an image and run recognition.</div>
-        </div>
-    </div>
-    """,
+    build_flag_banner_html(),
     unsafe_allow_html=True,
 )
 
