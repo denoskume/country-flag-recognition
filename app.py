@@ -109,41 +109,14 @@ def _pdf_text(value: object) -> str:
 
 
 def get_pdf_logo_reader():
-    """Return a ReportLab-safe RGB logo, or None if loading fails."""
-    logo_path = ROOT_DIR / "assets" / "flag_intelligence_logo.png"
+    """Return the pre-rendered RGB logo for ReportLab."""
+    logo_path = ROOT_DIR / "assets" / "flag_intelligence_logo_rgb.jpg"
 
     if not logo_path.is_file():
         return None
 
     try:
-        with Image.open(logo_path) as source:
-            source.load()
-
-            if source.mode in ("RGBA", "LA"):
-                rgba = source.convert("RGBA")
-                background = Image.new(
-                    "RGB",
-                    rgba.size,
-                    "white",
-                )
-                background.paste(
-                    rgba,
-                    mask=rgba.getchannel("A"),
-                )
-                safe_logo = background
-            else:
-                safe_logo = source.convert("RGB")
-
-            logo_buffer = BytesIO()
-            safe_logo.save(
-                logo_buffer,
-                format="PNG",
-                optimize=False,
-            )
-            logo_buffer.seek(0)
-
-        return ImageReader(logo_buffer)
-
+        return ImageReader(str(logo_path))
     except (OSError, ValueError):
         return None
 
