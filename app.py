@@ -109,26 +109,6 @@ def _pdf_text(value: object) -> str:
     return text if text else "Not available"
 
 
-def get_pdf_logo_image() -> Image.Image:
-    """Load the verified RGB logo used in PDF headers."""
-    logo_path = (
-        ROOT_DIR
-        / "assets"
-        / "flag_intelligence_logo_final.jpg"
-    )
-
-    if not logo_path.is_file():
-        raise FileNotFoundError(
-            f"Missing PDF header logo: {logo_path}"
-        )
-
-    with Image.open(logo_path) as source:
-        source.load()
-        logo = source.convert("RGB").copy()
-
-    return logo
-
-
 def draw_pdf_watermark(canvas, document) -> None:
     """Draw a fixed corporate header, footer and subtle signature watermark."""
     canvas.saveState()
@@ -148,18 +128,56 @@ def draw_pdf_watermark(canvas, document) -> None:
         stroke=0,
     )
 
-    logo_image = get_pdf_logo_image()
+    # Vector Flag Intelligence mark.
+    # Drawn directly with ReportLab: no Pillow/image decoding dependency.
     logo_size = 11 * mm
+    logo_x = left
     logo_y = page_height - 15.5 * mm
+    cx = logo_x + logo_size / 2
+    cy = logo_y + logo_size / 2
+    radius = logo_size / 2
 
-    canvas.drawInlineImage(
-        logo_image,
-        left,
-        logo_y,
-        width=logo_size,
-        height=logo_size,
-        preserveAspectRatio=True,
+    canvas.setFillColor(colors.HexColor("#F50012"))
+    canvas.circle(
+        cx,
+        cy,
+        radius,
+        fill=1,
+        stroke=0,
     )
+
+    canvas.setStrokeColor(colors.white)
+    canvas.setFillColor(colors.white)
+    canvas.setLineWidth(1.15 * mm)
+    canvas.setLineCap(1)
+
+    pole_x = logo_x + 3.35 * mm
+    pole_bottom = logo_y + 3.0 * mm
+    pole_top = logo_y + 8.2 * mm
+    canvas.line(
+        pole_x,
+        pole_bottom,
+        pole_x,
+        pole_top,
+    )
+
+    # Three white flag bands.
+    band_x0 = logo_x + 4.15 * mm
+    band_x1 = logo_x + 8.65 * mm
+    for offset in (7.45, 5.75, 4.05):
+        y0 = logo_y + offset * mm
+        path = canvas.beginPath()
+        path.moveTo(band_x0, y0)
+        path.curveTo(
+            logo_x + 5.55 * mm,
+            y0 + 0.8 * mm,
+            logo_x + 6.85 * mm,
+            y0 - 0.8 * mm,
+            band_x1,
+            y0 + 0.1 * mm,
+        )
+        canvas.drawPath(path, stroke=1, fill=0)
+
     brand_x = left + 14 * mm
 
     canvas.setFillColor(colors.white)
