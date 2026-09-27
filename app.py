@@ -105,6 +105,27 @@ def _pdf_text(value: object) -> str:
     return text if text else "Not available"
 
 
+def draw_pdf_watermark(canvas, document) -> None:
+    """Draw a subtle signature watermark on every PDF page."""
+    canvas.saveState()
+
+    page_width, page_height = A4
+
+    canvas.setFillAlpha(0.08)
+    canvas.setFillColor(colors.HexColor("#111827"))
+    canvas.setFont("Helvetica-Oblique", 34)
+
+    canvas.translate(page_width / 2, page_height / 2)
+    canvas.rotate(32)
+    canvas.drawCentredString(
+        0,
+        0,
+        "Denos Kume",
+    )
+
+    canvas.restoreState()
+
+
 def build_pdf_report(
     report: dict[str, object],
     image: Image.Image,
@@ -336,7 +357,11 @@ def build_pdf_report(
         ),
     ])
 
-    document.build(story)
+    document.build(
+        story,
+        onFirstPage=draw_pdf_watermark,
+        onLaterPages=draw_pdf_watermark,
+    )
     buffer.seek(0)
     return buffer.getvalue()
 
