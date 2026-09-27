@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import json
 from io import BytesIO
 from pathlib import Path
@@ -111,11 +110,22 @@ def _pdf_text(value: object) -> str:
 
 
 def get_pdf_logo_image() -> Image.Image:
-    """Return a fully decoded RGB logo for direct PDF embedding."""
-    logo_bytes = base64.b64decode(PDF_LOGO_BASE64)
-    with Image.open(BytesIO(logo_bytes)) as source:
+    """Load the verified RGB logo used in PDF headers."""
+    logo_path = (
+        ROOT_DIR
+        / "assets"
+        / "flag_intelligence_logo_final.jpg"
+    )
+
+    if not logo_path.is_file():
+        raise FileNotFoundError(
+            f"Missing PDF header logo: {logo_path}"
+        )
+
+    with Image.open(logo_path) as source:
         source.load()
         logo = source.convert("RGB").copy()
+
     return logo
 
 
