@@ -69,7 +69,7 @@ st.markdown(
             --blue: #2563eb;
             --blue-dark: #1d4ed8;
             --surface: #ffffff;
-            --bg: #f7f8fa;
+            --bg: #f5f7fb;
         }
 
         .stApp {
@@ -86,37 +86,87 @@ st.markdown(
         }
 
         .block-container {
-            max-width: 760px;
-            padding-top: 3.2rem;
+            max-width: 900px;
+            padding-top: 2.6rem;
             padding-bottom: 2rem;
         }
 
-        .app-title {
+        .shell {
+            overflow: hidden;
+            border: 1px solid var(--line);
+            border-radius: 20px;
+            background: #fff;
+            box-shadow: 0 18px 50px rgba(15,23,42,.08);
+            margin-bottom: 1rem;
+        }
+
+        .flag-banner {
+            position: relative;
+            height: 190px;
+            overflow: hidden;
+            background:
+                linear-gradient(180deg, rgba(255,255,255,0) 52%, rgba(255,255,255,.98) 100%),
+                url("https://flagcdn.com/w1600/us.png");
+        }
+
+        .flag-strip {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            height: 100%;
+            gap: 0;
+        }
+
+        .flag-strip img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            filter: saturate(.95) contrast(.96);
+        }
+
+        .flag-strip img:nth-child(odd) {
+            transform: translateY(-8px) scale(1.04);
+        }
+
+        .flag-strip img:nth-child(even) {
+            transform: translateY(8px) scale(1.04);
+        }
+
+        .banner-fade {
+            position: absolute;
+            inset: auto 0 0 0;
+            height: 90px;
+            background: linear-gradient(180deg, rgba(255,255,255,0), #fff 92%);
+            pointer-events: none;
+        }
+
+        .intro {
             text-align: center;
-            font-size: 1.7rem;
-            font-weight: 850;
-            letter-spacing: -.035em;
+            padding: .35rem 1.5rem 1.45rem;
+        }
+
+        .app-title {
+            font-size: 1.9rem;
+            font-weight: 900;
+            letter-spacing: -.04em;
             color: var(--text);
-            margin-bottom: .25rem;
+            margin-bottom: .3rem;
         }
 
         .app-subtitle {
-            text-align: center;
             color: var(--muted);
-            font-size: .92rem;
-            margin-bottom: 1.6rem;
+            font-size: .94rem;
         }
 
         div[data-testid="stVerticalBlockBorderWrapper"] {
             border: 1px solid var(--line) !important;
-            border-radius: 18px !important;
+            border-radius: 16px !important;
             background: var(--surface);
-            box-shadow: 0 10px 30px rgba(16,24,40,.055);
+            box-shadow: 0 8px 24px rgba(16,24,40,.04);
         }
 
         div[data-testid="stFileUploaderDropzone"] {
-            min-height: 180px;
-            border: 1.5px dashed #b9c4d5;
+            min-height: 145px;
+            border: 1.5px dashed #c2cad6;
             border-radius: 14px;
             background: #fafbfc;
         }
@@ -136,7 +186,7 @@ st.markdown(
             border: 0;
             border-radius: 12px;
             background: var(--blue);
-            font-weight: 800;
+            font-weight: 850;
             font-size: .95rem;
             box-shadow: 0 8px 18px rgba(37,99,235,.18);
         }
@@ -187,7 +237,16 @@ st.markdown(
 
         @media (max-width: 700px) {
             .block-container {
-                padding-top: 2rem;
+                padding-top: 1.5rem;
+            }
+            .flag-banner {
+                height: 135px;
+            }
+            .flag-strip {
+                grid-template-columns: repeat(3, 1fr);
+            }
+            .flag-strip img:nth-child(n+4) {
+                display: none;
             }
         }
     </style>
@@ -204,9 +263,26 @@ if not MODEL_PATH.is_file():
 bundle = get_model()
 deployment_threshold = get_deployment_threshold()
 
-st.markdown('<div class="app-title">Flag Intelligence</div>', unsafe_allow_html=True)
 st.markdown(
-    '<div class="app-subtitle">Select an image and run recognition.</div>',
+    """
+    <div class="shell">
+        <div class="flag-banner">
+            <div class="flag-strip">
+                <img src="https://flagcdn.com/w640/us.png">
+                <img src="https://flagcdn.com/w640/gb.png">
+                <img src="https://flagcdn.com/w640/ca.png">
+                <img src="https://flagcdn.com/w640/jp.png">
+                <img src="https://flagcdn.com/w640/br.png">
+                <img src="https://flagcdn.com/w640/fr.png">
+            </div>
+            <div class="banner-fade"></div>
+        </div>
+        <div class="intro">
+            <div class="app-title">Flag Intelligence</div>
+            <div class="app-subtitle">Select an image and run recognition.</div>
+        </div>
+    </div>
+    """,
     unsafe_allow_html=True,
 )
 
