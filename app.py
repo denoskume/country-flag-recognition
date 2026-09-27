@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import json
 from io import BytesIO
 from pathlib import Path
@@ -112,13 +111,19 @@ def _pdf_text(value: object) -> str:
 
 
 def get_pdf_logo_reader():
-    """Return an in-memory RGB logo embedded directly in the app."""
-    try:
-        logo_bytes = base64.b64decode(PDF_LOGO_BASE64)
-        logo_buffer = BytesIO(logo_bytes)
-        return ImageReader(logo_buffer)
-    except (ValueError, OSError):
-        return None
+    """Return the verified RGB logo used in PDF headers."""
+    logo_path = (
+        ROOT_DIR
+        / "assets"
+        / "flag_intelligence_logo_verified.jpg"
+    )
+
+    if not logo_path.is_file():
+        raise FileNotFoundError(
+            f"Missing PDF header logo: {logo_path}"
+        )
+
+    return ImageReader(str(logo_path))
 
 
 def draw_pdf_watermark(canvas, document) -> None:
@@ -144,22 +149,16 @@ def draw_pdf_watermark(canvas, document) -> None:
     logo_size = 11 * mm
     logo_y = page_height - 15.5 * mm
 
-    if logo_reader is not None:
-        try:
-            canvas.drawImage(
-                logo_reader,
-                left,
-                logo_y,
-                width=logo_size,
-                height=logo_size,
-                preserveAspectRatio=True,
-                mask=None,
-            )
-            brand_x = left + 14 * mm
-        except (OSError, ValueError):
-            brand_x = left
-    else:
-        brand_x = left
+    canvas.drawImage(
+        logo_reader,
+        left,
+        logo_y,
+        width=logo_size,
+        height=logo_size,
+        preserveAspectRatio=True,
+        mask=None,
+    )
+    brand_x = left + 14 * mm
 
     canvas.setFillColor(colors.white)
     canvas.setFont("Helvetica-Bold", 11)
