@@ -547,6 +547,12 @@ def show_result(image: Image.Image):
                     )
                     st.metric("Area", area)
 
+                d1, d2 = st.columns(2)
+                with d1:
+                    st.metric("National Day", profile.national_day)
+                with d2:
+                    st.metric("Independence", profile.independence_day)
+
                 info_left, info_right = st.columns(2, gap="large")
                 with info_left:
                     st.markdown("**Official language(s)**")
@@ -670,6 +676,8 @@ def show_result(image: Image.Image):
                 "continent": profile.continent,
                 "area_km2": profile.area_km2,
                 "overview": profile.overview,
+                "national_day": profile.national_day,
+                "independence_day": profile.independence_day,
                 "government_form": profile.government_form,
                 "head_of_state": profile.head_of_state,
                 "head_of_state_office": profile.head_of_state_office,
