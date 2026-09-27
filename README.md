@@ -231,20 +231,24 @@ responsive layouts and service health information.
 
 ## Real-world robustness status
 
-The current production candidate remains the original worldwide classifier.
+The current production reference remains the original worldwide classifier (V1).
 
-A scene-aware V2 trained with synthetic compositing was evaluated on the same
-102 human-approved real-world challenge images. It did **not** improve Top-1
-recognition and therefore is not promoted to production.
+Three approaches were evaluated on the same 102 human-approved real-world
+challenge images:
 
-Current real-world findings:
+- **V1 classifier:** Top-1 19.61%, Top-5 27.45%
+- **Scene-aware V2:** Top-1 17.65%, Top-5 30.39%
+- **Flag detector + V1 classifier:** Top-1 19.61%, Top-5 30.39%
+- Detector localization rate: 73.53%
 
-- V1 Top-1 accuracy: 19.61%
-- V1 Top-5 accuracy: 27.45%
-- V2 Top-1 accuracy: 17.65%
-- V2 Top-5 accuracy: 30.39%
-- V2 fixed 4 V1 errors but introduced 6 regressions
+The scene-aware V2 is not promoted because its Top-1 accuracy is lower than V1.
+The detect-then-classify pipeline is also not promoted because it does not
+improve Top-1 accuracy over V1.
 
-The next architecture step is flag localization/detection followed by
-classification, rather than additional whole-scene classification augmentation.
-The Wikimedia challenge set remains evaluation-only.
+The evaluation shows that the dominant limitation is real-world recognition
+generalization, not only flag localization. Further progress requires a larger,
+cleaner, current real-world flag dataset with verified labels and appropriate
+train/validation/test separation.
+
+The Wikimedia challenge set remains evaluation-only and is not used for
+training.
