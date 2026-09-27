@@ -1,3 +1,8 @@
+<p>
+  <img align="left" src="assets/flag-intelligence-logo.png" alt="Flag Intelligence" height="64">
+</p>
+<br clear="both">
+
 <h1 align="center">Country Flag Recognition</h1>
 
 **Seen, Unseen and Zero-Shot Evaluation**
