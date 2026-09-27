@@ -55,6 +55,8 @@ class CountryProfile:
     overview: str
     national_day: str
     independence_day: str
+    national_motto: str
+    national_anthem: str
     political_source: str
     population_source: str
     overview_source: str
@@ -181,6 +183,8 @@ def fetch_wikidata_profile(
       ?callingCode
       ?internetDomainLabel
       ?drivingSideLabel
+      ?nationalMotto
+      ?nationalAnthemLabel
       ?coord
       ?article
     WHERE {{
@@ -366,6 +370,16 @@ def fetch_wikidata_profile(
         "driving_side": _unique_join(
             values(
                 "drivingSideLabel"
+            )
+        ),
+        "national_motto": _unique_join(
+            values(
+                "nationalMotto"
+            )
+        ),
+        "national_anthem": _unique_join(
+            values(
+                "nationalAnthemLabel"
             )
         ),
         "latitude": latitude,
@@ -761,6 +775,12 @@ def fetch_country_profile(
         ),
         independence_day=str(
             country_dates["independence_day"]
+        ),
+        national_motto=str(
+            wikidata["national_motto"]
+        ),
+        national_anthem=str(
+            wikidata["national_anthem"]
         ),
         political_source=(
             "Wikidata"
