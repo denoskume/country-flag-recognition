@@ -891,8 +891,15 @@ def get_deployment_threshold() -> float:
     return float(get_model().unknown_threshold)
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def get_country_profile(country_code: str):
+COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-27-v2"
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def get_country_profile_v2(
+    country_code: str,
+    schema_version: str = COUNTRY_PROFILE_SCHEMA_VERSION,
+):
+    # schema_version is intentionally part of the cache key.
+    _ = schema_version
     return fetch_country_profile(country_code)
 
 
@@ -1242,7 +1249,7 @@ def show_result(image: Image.Image):
 
     if accepted:
         try:
-            profile = get_country_profile(decision_code)
+            profile = get_country_profile_v2(decision_code)
 
             st.divider()
             st.markdown("### Country profile")
@@ -1277,14 +1284,22 @@ def show_result(image: Image.Image):
                     )
                     st.metric("Area", area)
 
-                if profile.gdp.value_usd is not None:
+                profile_gdp = getattr(profile, "gdp", None)
+                if (
+                    profile_gdp is not None
+                    and getattr(profile_gdp, "value_usd", None) is not None
+                ):
                     st.metric(
                         "GDP",
-                        f"$ {profile.gdp.value_usd / 1_000_000_000:,.1f}B",
+                        f"$ {profile_gdp.value_usd / 1_000_000_000:,.1f}B",
                     )
-                    gdp_note = profile.gdp.source
-                    if profile.gdp.year:
-                        gdp_note += f" · {profile.gdp.year}"
+                    gdp_note = getattr(
+                        profile_gdp,
+                        "source",
+                        "World Bank",
+                    )
+                    if getattr(profile_gdp, "year", None):
+                        gdp_note += f" · {profile_gdp.year}"
                     st.caption(gdp_note)
 
                 d1, d2 = st.columns(2)
@@ -1303,11 +1318,12 @@ def show_result(image: Image.Image):
 
                     st.markdown("**Region / Subregion**")
                     st.write(
-                        f"{profile.region} · {profile.subregion}"
+                        f"{getattr(profile, 'region', 'Not available')} · "
+                        f"{getattr(profile, 'subregion', 'Not available')}"
                     )
 
                     st.markdown("**Demonym**")
-                    st.write(profile.demonym)
+                    st.write(getattr(profile, "demonym", "Not available"))
 
                     st.markdown("**National motto**")
                     st.write(profile.national_motto)
@@ -1338,10 +1354,10 @@ def show_result(image: Image.Image):
 
                 with g2:
                     st.markdown("**Official religion**")
-                    st.write(profile.official_religion)
+                    st.write(getattr(profile, "official_religion", "Not available"))
 
                     st.markdown("**International organizations**")
-                    st.write(profile.international_organizations)
+                    st.write(getattr(profile, "international_organizations", "Not available"))
 
                     st.markdown("**Calling code**")
                     st.write(profile.calling_code)
@@ -1387,19 +1403,19 @@ def show_result(image: Image.Image):
                     )
 
                     st.markdown("**Largest cities**")
-                    st.write(profile.largest_cities)
+                    st.write(getattr(profile, "largest_cities", "Not available"))
 
                     st.markdown("**Borders**")
-                    st.write(profile.borders)
+                    st.write(getattr(profile, "borders", "Not available"))
 
                     st.markdown("**Time zones**")
-                    st.write(profile.timezones)
+                    st.write(getattr(profile, "timezones", "Not available"))
 
                     st.markdown("**Highest point**")
-                    st.write(profile.highest_point)
+                    st.write(getattr(profile, "highest_point", "Not available"))
 
                     st.markdown("**Lowest point**")
-                    st.write(profile.lowest_point)
+                    st.write(getattr(profile, "lowest_point", "Not available"))
 
                     st.markdown("**Coordinates**")
                     if (
@@ -1452,7 +1468,7 @@ def show_result(image: Image.Image):
 
     if accepted:
         try:
-            profile = get_country_profile(decision_code)
+            profile = get_country_profile_v2(decision_code)
             report["country_profile"] = {
                 "name": profile.name,
                 "capital": profile.capital,
@@ -1468,20 +1484,30 @@ def show_result(image: Image.Image):
                 "independence_day": profile.independence_day,
                 "national_motto": profile.national_motto,
                 "national_anthem": profile.national_anthem,
-                "region": profile.region,
-                "subregion": profile.subregion,
-                "demonym": profile.demonym,
-                "iso_alpha3": profile.iso_alpha3,
-                "timezones": profile.timezones,
-                "borders": profile.borders,
-                "largest_cities": profile.largest_cities,
-                "international_organizations": profile.international_organizations,
-                "official_religion": profile.official_religion,
-                "highest_point": profile.highest_point,
-                "lowest_point": profile.lowest_point,
-                "gdp_usd": profile.gdp.value_usd,
-                "gdp_year": profile.gdp.year,
-                "gdp_source": profile.gdp.source,
+                "region": getattr(profile, "region", "Not available"),
+                "subregion": getattr(profile, "subregion", "Not available"),
+                "demonym": getattr(profile, "demonym", "Not available"),
+                "iso_alpha3": getattr(profile, "iso_alpha3", "Not available"),
+                "timezones": getattr(profile, "timezones", "Not available"),
+                "borders": getattr(profile, "borders", "Not available"),
+                "largest_cities": getattr(profile, "largest_cities", "Not available"),
+                "international_organizations": getattr(profile, "international_organizations", "Not available"),
+                "official_religion": getattr(profile, "official_religion", "Not available"),
+                "highest_point": getattr(profile, "highest_point", "Not available"),
+                "lowest_point": getattr(profile, "lowest_point", "Not available"),
+                "gdp_usd": (
+                    getattr(getattr(profile, "gdp", None), "value_usd", None)
+                ),
+                "gdp_year": (
+                    getattr(getattr(profile, "gdp", None), "year", None)
+                ),
+                "gdp_source": (
+                    getattr(
+                        getattr(profile, "gdp", None),
+                        "source",
+                        "World Bank",
+                    )
+                ),
                 "government_form": profile.government_form,
                 "head_of_state": profile.head_of_state,
                 "head_of_state_office": profile.head_of_state_office,
