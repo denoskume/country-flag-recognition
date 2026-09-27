@@ -240,21 +240,8 @@ def fetch_wikidata_profile(
                  schema:isPartOf <https://en.wikipedia.org/>.
       }}
 
-      OPTIONAL {{
-        ?country p:P35 ?headOfStateStatement.
-        ?headOfStateStatement ps:P35 ?headOfState.
-        FILTER NOT EXISTS {{
-          ?headOfStateStatement pq:P582 ?headOfStateEnd.
-        }}
-      }}
-
-      OPTIONAL {{
-        ?country p:P6 ?headOfGovernmentStatement.
-        ?headOfGovernmentStatement ps:P6 ?headOfGovernment.
-        FILTER NOT EXISTS {{
-          ?headOfGovernmentStatement pq:P582 ?headOfGovernmentEnd.
-        }}
-      }}
+      OPTIONAL {{ ?country wdt:P35 ?headOfState. }}
+      OPTIONAL {{ ?country wdt:P6 ?headOfGovernment. }}
 
       SERVICE wikibase:label {{
         bd:serviceParam wikibase:language "en,fr".
