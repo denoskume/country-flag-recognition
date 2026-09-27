@@ -64,6 +64,39 @@ def display_country_name(code: str) -> str:
     )
 
 
+VISUAL_EQUIVALENCE_GROUPS = {
+    "fr": {"fr", "bl", "mf", "re", "yt"},
+    "us": {"us", "um"},
+    "nl": {"nl", "bq"},
+    "no": {"no", "bv", "sj"},
+    "au": {"au", "hm"},
+    "gb": {"gb", "sh"},
+}
+
+VISUAL_EQUIVALENCE_LOOKUP = {
+    member: canonical
+    for canonical, members in VISUAL_EQUIVALENCE_GROUPS.items()
+    for member in members
+}
+
+
+def merge_visually_identical_candidates(
+    candidates: tuple[tuple[str, float], ...],
+) -> list[tuple[str, float]]:
+    """Merge probabilities for labels that use the same visible flag."""
+    merged: dict[str, float] = {}
+
+    for code, confidence in candidates:
+        canonical = VISUAL_EQUIVALENCE_LOOKUP.get(code, code)
+        merged[canonical] = merged.get(canonical, 0.0) + float(confidence)
+
+    return sorted(
+        merged.items(),
+        key=lambda item: item[1],
+        reverse=True,
+    )
+
+
 def _pdf_text(value: object) -> str:
     if value is None:
         return "Not available"
@@ -697,11 +730,17 @@ def show_result(image: Image.Image):
         prediction = predict_image(
             image,
             bundle,
-            top_k=5,
+            top_k=20,
         )
 
-    accepted = prediction.top1_confidence >= deployment_threshold
-    country = display_country_name(prediction.top1_country)
+    grouped_candidates = merge_visually_identical_candidates(
+        prediction.top5
+    )
+    decision_code, decision_confidence = grouped_candidates[0]
+    display_candidates = grouped_candidates[:5]
+
+    accepted = decision_confidence >= deployment_threshold
+    country = display_country_name(decision_code)
 
     preview_col, result_col = st.columns([.9, 1.1], gap="large")
 
@@ -714,13 +753,13 @@ def show_result(image: Image.Image):
             unsafe_allow_html=True,
         )
         st.markdown(
-            f'<div class="result-code">Top candidate · {country} ({prediction.top1_country.upper()})</div>',
+            f'<div class="result-code">Top candidate · {country} ({decision_code.upper()})</div>',
             unsafe_allow_html=True,
         )
 
         m1, m2 = st.columns(2)
         with m1:
-            st.metric("Confidence", f"{prediction.top1_confidence:.1%}")
+            st.metric("Confidence", f"{decision_confidence:.1%}")
         with m2:
             st.metric("Threshold", f"{deployment_threshold:.1%}")
 
@@ -729,6 +768,17 @@ def show_result(image: Image.Image):
                 '<div class="decision-ok">Accepted prediction</div>',
                 unsafe_allow_html=True,
             )
+            if decision_code in VISUAL_EQUIVALENCE_GROUPS:
+                equivalents = ", ".join(
+                    code.upper()
+                    for code in sorted(
+                        VISUAL_EQUIVALENCE_GROUPS[decision_code]
+                    )
+                )
+                st.caption(
+                    "Equivalent official flag labels merged: "
+                    + equivalents
+                )
         else:
             st.markdown(
                 '<div class="decision-no">Prediction rejected by confidence threshold</div>',
@@ -744,7 +794,7 @@ def show_result(image: Image.Image):
                 "Confidence": confidence,
             }
             for rank, (code, confidence) in enumerate(
-                prediction.top5,
+                display_candidates,
                 start=1,
             )
         ]
@@ -759,7 +809,7 @@ def show_result(image: Image.Image):
 
     if accepted:
         try:
-            profile = get_country_profile(prediction.top1_country)
+            profile = get_country_profile(decision_code)
 
             st.divider()
             st.markdown("### Country profile")
@@ -900,22 +950,32 @@ def show_result(image: Image.Image):
         "accepted": accepted,
         "decision": country if accepted else "Unknown",
         "top_candidate": country,
-        "country_code": prediction.top1_country,
-        "confidence": prediction.top1_confidence,
+        "country_code": decision_code,
+        "confidence": decision_confidence,
         "deployment_threshold": deployment_threshold,
+        "visual_equivalence_applied": (
+            decision_code
+            in VISUAL_EQUIVALENCE_GROUPS
+        ),
+        "equivalent_flag_codes": sorted(
+            VISUAL_EQUIVALENCE_GROUPS.get(
+                decision_code,
+                {decision_code},
+            )
+        ),
         "top_candidates": [
             {
                 "country": display_country_name(code),
                 "code": code,
                 "confidence": confidence,
             }
-            for code, confidence in prediction.top5
+            for code, confidence in display_candidates
         ],
     }
 
     if accepted:
         try:
-            profile = get_country_profile(prediction.top1_country)
+            profile = get_country_profile(decision_code)
             report["country_profile"] = {
                 "name": profile.name,
                 "capital": profile.capital,
