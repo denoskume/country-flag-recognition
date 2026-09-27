@@ -227,3 +227,24 @@ The product interface includes drag-and-drop upload, user-controlled decision
 policy, threshold and Top-K controls, ranked candidates, accepted/rejected
 decision states, live country intelligence, browser-local history, JSON export,
 responsive layouts and service health information.
+
+
+## Real-world robustness status
+
+The current production candidate remains the original worldwide classifier.
+
+A scene-aware V2 trained with synthetic compositing was evaluated on the same
+102 human-approved real-world challenge images. It did **not** improve Top-1
+recognition and therefore is not promoted to production.
+
+Current real-world findings:
+
+- V1 Top-1 accuracy: 19.61%
+- V1 Top-5 accuracy: 27.45%
+- V2 Top-1 accuracy: 17.65%
+- V2 Top-5 accuracy: 30.39%
+- V2 fixed 4 V1 errors but introduced 6 regressions
+
+The next architecture step is flag localization/detection followed by
+classification, rather than additional whole-scene classification augmentation.
+The Wikimedia challenge set remains evaluation-only.
