@@ -24,6 +24,32 @@ from flag_recognition.inference import load_inference_bundle, predict_image
 from flag_recognition.taxonomy import country_name_from_code
 
 
+DISPLAY_NAME_OVERRIDES = {
+    "kr": "South Korea",
+    "kp": "North Korea",
+    "ir": "Iran",
+    "bo": "Bolivia",
+    "ve": "Venezuela",
+    "tz": "Tanzania",
+    "md": "Moldova",
+    "la": "Laos",
+    "bn": "Brunei",
+    "sy": "Syria",
+    "ps": "Palestine",
+    "tw": "Taiwan",
+    "ru": "Russia",
+    "vn": "Vietnam",
+    "cz": "Czechia",
+}
+
+
+def display_country_name(code: str) -> str:
+    return DISPLAY_NAME_OVERRIDES.get(
+        code.lower(),
+        display_country_name(code),
+    )
+
+
 MODEL_PATH = ROOT_DIR / "artifacts/models/worldwide_mobilenet_v3_small.pt"
 CONFIG_PATH = ROOT_DIR / "configs/deployment.yaml"
 
@@ -433,7 +459,7 @@ def show_result(image: Image.Image):
         )
 
     accepted = prediction.top1_confidence >= deployment_threshold
-    country = country_name_from_code(prediction.top1_country)
+    country = display_country_name(prediction.top1_country)
 
     preview_col, result_col = st.columns([.9, 1.1], gap="large")
 
@@ -471,7 +497,7 @@ def show_result(image: Image.Image):
         [
             {
                 "Rank": rank,
-                "Country": country_name_from_code(code),
+                "Country": display_country_name(code),
                 "Code": code.upper(),
                 "Confidence": confidence,
             }
@@ -518,7 +544,7 @@ def show_result(image: Image.Image):
         "deployment_threshold": deployment_threshold,
         "top_candidates": [
             {
-                "country": country_name_from_code(code),
+                "country": display_country_name(code),
                 "code": code,
                 "confidence": confidence,
             }
