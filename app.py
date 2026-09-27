@@ -19,7 +19,9 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import (
+    HRFlowable,
     Image as PDFImage,
+    KeepTogether,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -106,31 +108,114 @@ def _pdf_text(value: object) -> str:
 
 
 def draw_pdf_watermark(canvas, document) -> None:
-    """Draw a subtle signature watermark on every PDF page."""
+    """Draw report chrome, page number and a subtle signature watermark."""
     canvas.saveState()
 
     page_width, page_height = A4
 
-    canvas.setFillAlpha(0.08)
-    canvas.setFillColor(colors.HexColor("#111827"))
-    canvas.setFont("Helvetica-Oblique", 34)
+    # Brand line.
+    canvas.setFillColor(colors.HexColor("#2563EB"))
+    canvas.rect(
+        0,
+        page_height - 5 * mm,
+        page_width,
+        5 * mm,
+        fill=1,
+        stroke=0,
+    )
 
+    # Signature watermark.
+    canvas.setFillAlpha(0.035)
+    canvas.setFillColor(colors.HexColor("#111827"))
+    canvas.setFont("Helvetica-Oblique", 28)
     canvas.translate(page_width / 2, page_height / 2)
     canvas.rotate(32)
-    canvas.drawCentredString(
-        0,
-        0,
-        "Denos Kume",
+    canvas.drawCentredString(0, 0, "Denos Kume")
+    canvas.rotate(-32)
+    canvas.translate(-page_width / 2, -page_height / 2)
+
+    # Footer.
+    canvas.setFillAlpha(1)
+    canvas.setStrokeColor(colors.HexColor("#E5E7EB"))
+    canvas.setLineWidth(0.5)
+    canvas.line(
+        16 * mm,
+        12 * mm,
+        page_width - 16 * mm,
+        12 * mm,
+    )
+    canvas.setFillColor(colors.HexColor("#667085"))
+    canvas.setFont("Helvetica", 7.5)
+    canvas.drawString(
+        16 * mm,
+        7.5 * mm,
+        "Flag Intelligence - Country Flag Recognition Report",
+    )
+    canvas.drawRightString(
+        page_width - 16 * mm,
+        7.5 * mm,
+        f"Page {document.page}",
     )
 
     canvas.restoreState()
+
+
+def _pdf_value(value: object, style: ParagraphStyle) -> Paragraph:
+    return Paragraph(_pdf_text(value), style)
+
+
+def _profile_card(
+    title: str,
+    rows: list[tuple[str, object]],
+    label_style: ParagraphStyle,
+    value_style: ParagraphStyle,
+) -> KeepTogether:
+    data = [
+        [
+            Paragraph(f"<b>{label}</b>", label_style),
+            _pdf_value(value, value_style),
+        ]
+        for label, value in rows
+    ]
+
+    table = Table(
+        data,
+        colWidths=[43 * mm, 113 * mm],
+        hAlign="LEFT",
+    )
+    table.setStyle(
+        TableStyle([
+            ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#F8FAFC")),
+            ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#E2E8F0")),
+            ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#EEF2F6")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 7),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ])
+    )
+
+    return KeepTogether([
+        Paragraph(title, ParagraphStyle(
+            f"CardTitle_{title}",
+            parent=value_style,
+            fontName="Helvetica-Bold",
+            fontSize=10,
+            leading=12,
+            textColor=colors.HexColor("#1D4ED8"),
+            spaceBefore=3 * mm,
+            spaceAfter=1.5 * mm,
+        )),
+        table,
+    ])
 
 
 def build_pdf_report(
     report: dict[str, object],
     image: Image.Image,
 ) -> bytes:
-    """Build a printable A4 recognition report."""
+    """Build a polished printable A4 recognition report."""
     buffer = BytesIO()
     document = SimpleDocTemplate(
         buffer,
@@ -138,107 +223,242 @@ def build_pdf_report(
         rightMargin=16 * mm,
         leftMargin=16 * mm,
         topMargin=15 * mm,
-        bottomMargin=15 * mm,
+        bottomMargin=17 * mm,
         title="Flag Intelligence - Recognition Report",
-        author="Flag Intelligence",
+        author="Denos Kume",
+        subject="Country flag recognition result",
     )
 
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
-        "FlagTitle",
+        "ReportTitle",
         parent=styles["Title"],
-        alignment=TA_CENTER,
-        fontSize=20,
-        leading=24,
-        spaceAfter=4 * mm,
+        fontName="Helvetica-Bold",
+        fontSize=22,
+        leading=25,
+        textColor=colors.HexColor("#0F172A"),
+        spaceAfter=1.5 * mm,
     )
     subtitle_style = ParagraphStyle(
-        "FlagSubtitle",
+        "ReportSubtitle",
         parent=styles["Normal"],
-        alignment=TA_CENTER,
-        fontSize=9,
-        textColor=colors.HexColor("#667085"),
-        spaceAfter=6 * mm,
-    )
-    section_style = ParagraphStyle(
-        "FlagSection",
-        parent=styles["Heading2"],
-        fontSize=12,
-        leading=15,
-        spaceBefore=4 * mm,
-        spaceAfter=2 * mm,
-        textColor=colors.HexColor("#101828"),
-    )
-    body_style = ParagraphStyle(
-        "FlagBody",
-        parent=styles["BodyText"],
         fontSize=9,
         leading=12,
+        textColor=colors.HexColor("#64748B"),
+    )
+    section_style = ParagraphStyle(
+        "SectionTitle",
+        parent=styles["Heading2"],
+        fontName="Helvetica-Bold",
+        fontSize=12.5,
+        leading=15,
+        textColor=colors.HexColor("#0F172A"),
+        spaceBefore=5 * mm,
+        spaceAfter=2 * mm,
+    )
+    body_style = ParagraphStyle(
+        "ReportBody",
+        parent=styles["BodyText"],
+        fontSize=8.8,
+        leading=12,
+        textColor=colors.HexColor("#334155"),
+    )
+    label_style = ParagraphStyle(
+        "ReportLabel",
+        parent=body_style,
+        fontSize=8.3,
+        leading=11,
+        textColor=colors.HexColor("#475569"),
+    )
+    value_style = ParagraphStyle(
+        "ReportValue",
+        parent=body_style,
+        fontSize=8.8,
+        leading=11.5,
+        textColor=colors.HexColor("#0F172A"),
     )
     small_style = ParagraphStyle(
-        "FlagSmall",
-        parent=styles["BodyText"],
-        fontSize=8,
+        "ReportSmall",
+        parent=body_style,
+        fontSize=7.6,
         leading=10,
-        textColor=colors.HexColor("#475467"),
+        textColor=colors.HexColor("#64748B"),
+    )
+    metric_label_style = ParagraphStyle(
+        "MetricLabel",
+        parent=small_style,
+        fontName="Helvetica-Bold",
+        fontSize=7.2,
+        leading=9,
+        textColor=colors.HexColor("#64748B"),
+        alignment=TA_CENTER,
+    )
+    metric_value_style = ParagraphStyle(
+        "MetricValue",
+        parent=body_style,
+        fontName="Helvetica-Bold",
+        fontSize=14,
+        leading=17,
+        textColor=colors.HexColor("#0F172A"),
+        alignment=TA_CENTER,
     )
 
-    story = [
-        Paragraph("Flag Intelligence", title_style),
-        Paragraph("Country Flag Recognition Report", subtitle_style),
-    ]
+    generated_at = _pdf_text(report.get("generated_at"))
+    decision = _pdf_text(report.get("decision"))
+    country_code = _pdf_text(report.get("country_code")).upper()
+    confidence = float(report.get("confidence", 0.0))
+    threshold = float(report.get("deployment_threshold", 0.0))
+    accepted = bool(report.get("accepted"))
+    status = "ACCEPTED" if accepted else "REJECTED"
 
+    story: list[object] = []
+
+    # Header.
+    header = Table(
+        [[
+            Paragraph("Flag Intelligence", title_style),
+            Paragraph(
+                f"<b>Recognition Report</b><br/>{generated_at}",
+                ParagraphStyle(
+                    "HeaderMeta",
+                    parent=small_style,
+                    alignment=2,
+                    leading=11,
+                ),
+            ),
+        ]],
+        colWidths=[105 * mm, 55 * mm],
+    )
+    header.setStyle(
+        TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ])
+    )
+    story.extend([
+        header,
+        Paragraph(
+            "AI-assisted worldwide country flag recognition",
+            subtitle_style,
+        ),
+        Spacer(1, 3 * mm),
+        HRFlowable(
+            width="100%",
+            thickness=0.8,
+            color=colors.HexColor("#CBD5E1"),
+            spaceAfter=5 * mm,
+        ),
+    ])
+
+    # Image preview.
     image_buffer = BytesIO()
-    image.copy().convert("RGB").thumbnail((1200, 900))
-    image.save(image_buffer, format="JPEG", quality=90)
+    preview_image = image.copy().convert("RGB")
+    preview_image.thumbnail((1200, 900))
+    preview_image.save(image_buffer, format="JPEG", quality=92)
     image_buffer.seek(0)
 
     preview = PDFImage(image_buffer)
-    preview._restrictSize(160 * mm, 70 * mm)
-    story.extend([preview, Spacer(1, 5 * mm)])
+    preview._restrictSize(78 * mm, 54 * mm)
 
-    confidence = float(report.get("confidence", 0.0))
-    threshold = float(report.get("deployment_threshold", 0.0))
-    status = "Accepted" if report.get("accepted") else "Rejected"
+    status_bg = "#DCFCE7" if accepted else "#FEE2E2"
+    status_fg = "#166534" if accepted else "#991B1B"
 
-    recognition_rows = [
-        ["Status", status],
-        ["Decision", _pdf_text(report.get("decision"))],
-        ["Top candidate", _pdf_text(report.get("top_candidate"))],
-        ["Country code", _pdf_text(report.get("country_code")).upper()],
-        ["Confidence", f"{confidence:.2%}"],
-        ["Deployment threshold", f"{threshold:.2%}"],
-        ["Generated at", _pdf_text(report.get("generated_at"))],
-    ]
-
-    recognition_table = Table(
-        recognition_rows,
-        colWidths=[52 * mm, 108 * mm],
-        hAlign="LEFT",
+    summary = Table(
+        [
+            [
+                Paragraph(
+                    f"<font color='{status_fg}'><b>{status}</b></font>",
+                    ParagraphStyle(
+                        "StatusBadge",
+                        parent=value_style,
+                        fontSize=8,
+                        leading=10,
+                        alignment=TA_CENTER,
+                    ),
+                )
+            ],
+            [Paragraph(decision, ParagraphStyle(
+                "DecisionName",
+                parent=value_style,
+                fontName="Helvetica-Bold",
+                fontSize=18,
+                leading=22,
+                textColor=colors.HexColor("#0F172A"),
+                spaceBefore=2 * mm,
+                spaceAfter=1 * mm,
+            ))],
+            [Paragraph(
+                f"Country code: <b>{country_code}</b>",
+                value_style,
+            )],
+            [Spacer(1, 1.5 * mm)],
+            [Table(
+                [
+                    [
+                        Paragraph("CONFIDENCE", metric_label_style),
+                        Paragraph("THRESHOLD", metric_label_style),
+                    ],
+                    [
+                        Paragraph(f"{confidence:.2%}", metric_value_style),
+                        Paragraph(f"{threshold:.2%}", metric_value_style),
+                    ],
+                ],
+                colWidths=[38 * mm, 38 * mm],
+                style=TableStyle([
+                    ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+                    ("INNERGRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#E2E8F0")),
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F8FAFC")),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ]),
+            )],
+        ],
+        colWidths=[78 * mm],
     )
-    recognition_table.setStyle(
+    summary.setStyle(
         TableStyle([
-            ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#F2F4F7")),
-            ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#101828")),
-            ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-            ("FONTNAME", (1, 0), (1, -1), "Helvetica"),
-            ("FONTSIZE", (0, 0), (-1, -1), 9),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#D0D5DD")),
-            ("LEFTPADDING", (0, 0), (-1, -1), 6),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-            ("TOPPADDING", (0, 0), (-1, -1), 5),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("BACKGROUND", (0, 0), (0, 0), colors.HexColor(status_bg)),
+            ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#E2E8F0")),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 7),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
         ])
     )
 
-    story.extend([
-        Paragraph("Recognition", section_style),
-        recognition_table,
-        Paragraph("Top candidates", section_style),
-    ])
+    hero = Table(
+        [[preview, summary]],
+        colWidths=[82 * mm, 78 * mm],
+        hAlign="LEFT",
+    )
+    hero.setStyle(
+        TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("BOX", (0, 0), (0, 0), 0.6, colors.HexColor("#E2E8F0")),
+            ("BACKGROUND", (0, 0), (0, 0), colors.HexColor("#F8FAFC")),
+            ("LEFTPADDING", (0, 0), (0, 0), 5),
+            ("RIGHTPADDING", (0, 0), (0, 0), 5),
+            ("TOPPADDING", (0, 0), (0, 0), 5),
+            ("BOTTOMPADDING", (0, 0), (0, 0), 5),
+            ("LEFTPADDING", (1, 0), (1, 0), 4),
+            ("RIGHTPADDING", (1, 0), (1, 0), 0),
+        ])
+    )
+    story.append(hero)
 
-    top_rows = [["Rank", "Country", "Code", "Confidence"]]
+    # Ranking.
+    story.append(Paragraph("Top candidates", section_style))
+    top_rows = [[
+        Paragraph("<b>Rank</b>", small_style),
+        Paragraph("<b>Country</b>", small_style),
+        Paragraph("<b>Code</b>", small_style),
+        Paragraph("<b>Confidence</b>", small_style),
+    ]]
+
     for index, candidate in enumerate(report.get("top_candidates", []), start=1):
         top_rows.append([
             str(index),
@@ -249,110 +469,156 @@ def build_pdf_report(
 
     top_table = Table(
         top_rows,
-        colWidths=[16 * mm, 90 * mm, 20 * mm, 34 * mm],
+        colWidths=[14 * mm, 94 * mm, 20 * mm, 32 * mm],
         repeatRows=1,
     )
-    top_table.setStyle(
-        TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#101828")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-            ("FONTSIZE", (0, 0), (-1, -1), 8.5),
-            ("ALIGN", (0, 0), (0, -1), "CENTER"),
-            ("ALIGN", (2, 1), (-1, -1), "CENTER"),
-            ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#D0D5DD")),
-            ("TOPPADDING", (0, 0), (-1, -1), 5),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ])
-    )
+    ranking_styles = [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0F172A")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8.2),
+        ("ALIGN", (0, 0), (0, -1), "CENTER"),
+        ("ALIGN", (2, 1), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#E2E8F0")),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]
+    for row_index in range(1, len(top_rows)):
+        if row_index % 2 == 0:
+            ranking_styles.append(
+                ("BACKGROUND", (0, row_index), (-1, row_index), colors.HexColor("#F8FAFC"))
+            )
+    top_table.setStyle(TableStyle(ranking_styles))
     story.append(top_table)
 
     profile = report.get("country_profile")
     if isinstance(profile, dict):
         story.append(Paragraph("Country profile", section_style))
 
-        profile_fields = [
-            ("Name", profile.get("name")),
-            ("Capital", profile.get("capital")),
-            (
-                "Population",
-                (
-                    f"{int(profile['population']):,}"
-                    if profile.get("population") is not None
-                    else "Not available"
-                ),
-            ),
-            ("Population year", profile.get("population_year")),
-            ("Population source", profile.get("population_source")),
-            ("Currency", profile.get("currency")),
-            ("Official language(s)", profile.get("official_languages")),
-            ("Continent", profile.get("continent")),
-            ("Area", (
-                f"{float(profile['area_km2']):,.0f} km²"
-                if profile.get("area_km2") is not None
-                else "Not available"
-            )),
-            ("National Day", profile.get("national_day")),
-            ("Independence", profile.get("independence_day")),
-            ("National motto", profile.get("national_motto")),
-            ("National anthem", profile.get("national_anthem")),
-            ("Government form", profile.get("government_form")),
-            ("Head of State", profile.get("head_of_state")),
-            ("Head of State office", profile.get("head_of_state_office")),
-            ("Head of Government", profile.get("head_of_government")),
-            ("Head of Government office", profile.get("head_of_government_office")),
-            ("Calling code", profile.get("calling_code")),
-            ("Internet domain", profile.get("internet_domain")),
-            ("Driving side", profile.get("driving_side")),
-            ("Latitude", profile.get("latitude")),
-            ("Longitude", profile.get("longitude")),
-        ]
+        population_value = (
+            f"{int(profile['population']):,}"
+            if profile.get("population") is not None
+            else "Not available"
+        )
+        area_value = (
+            f"{float(profile['area_km2']):,.0f} km²"
+            if profile.get("area_km2") is not None
+            else "Not available"
+        )
+        coordinates = (
+            f"{float(profile['latitude']):.3f}, {float(profile['longitude']):.3f}"
+            if (
+                profile.get("latitude") is not None
+                and profile.get("longitude") is not None
+            )
+            else "Not available"
+        )
 
-        profile_rows = [
+        population_ref = population_value
+        if profile.get("population_year"):
+            population_ref += f" ({profile.get('population_year')})"
+
+        identity_card = _profile_card(
+            "Identity & geography",
             [
-                Paragraph(f"<b>{label}</b>", body_style),
-                Paragraph(_pdf_text(value), body_style),
-            ]
-            for label, value in profile_fields
-        ]
+                ("Official name", profile.get("name")),
+                ("Capital", profile.get("capital")),
+                ("Continent", profile.get("continent")),
+                ("Population", population_ref),
+                ("Population source", profile.get("population_source")),
+                ("Area", area_value),
+                ("Coordinates", coordinates),
+            ],
+            label_style,
+            value_style,
+        )
 
-        profile_table = Table(
-            profile_rows,
-            colWidths=[52 * mm, 108 * mm],
-            hAlign="LEFT",
+        symbols_card = _profile_card(
+            "National symbols",
+            [
+                ("National Day", profile.get("national_day")),
+                ("Independence", profile.get("independence_day")),
+                ("National motto", profile.get("national_motto")),
+                ("National anthem", profile.get("national_anthem")),
+            ],
+            label_style,
+            value_style,
         )
-        profile_table.setStyle(
-            TableStyle([
-                ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#F9FAFB")),
-                ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#EAECF0")),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                ("TOPPADDING", (0, 0), (-1, -1), 5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-            ])
+
+        government_card = _profile_card(
+            "Government",
+            [
+                ("Government form", profile.get("government_form")),
+                ("Head of State", profile.get("head_of_state")),
+                ("Head of State office", profile.get("head_of_state_office")),
+                ("Head of Government", profile.get("head_of_government")),
+                ("Head of Government office", profile.get("head_of_government_office")),
+            ],
+            label_style,
+            value_style,
         )
-        story.append(profile_table)
+
+        practical_card = _profile_card(
+            "Practical information",
+            [
+                ("Currency", profile.get("currency")),
+                ("Official language(s)", profile.get("official_languages")),
+                ("Calling code", profile.get("calling_code")),
+                ("Internet domain", profile.get("internet_domain")),
+                ("Driving side", profile.get("driving_side")),
+            ],
+            label_style,
+            value_style,
+        )
+
+        story.extend([
+            identity_card,
+            symbols_card,
+            government_card,
+            practical_card,
+        ])
 
         overview = _pdf_text(profile.get("overview"))
         if overview != "Not available":
+            overview_box = Table(
+                [[Paragraph(overview, body_style)]],
+                colWidths=[156 * mm],
+            )
+            overview_box.setStyle(
+                TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F8FAFC")),
+                    ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#E2E8F0")),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                    ("TOPPADDING", (0, 0), (-1, -1), 7),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                ])
+            )
             story.extend([
-                Paragraph("Overview", section_style),
-                Paragraph(overview, small_style),
+                Paragraph("Country overview", section_style),
+                overview_box,
             ])
 
     story.extend([
         Spacer(1, 5 * mm),
+        HRFlowable(
+            width="100%",
+            thickness=0.5,
+            color=colors.HexColor("#CBD5E1"),
+            spaceBefore=1 * mm,
+            spaceAfter=2 * mm,
+        ),
         Paragraph(
-            "Profile values and the Wikipedia overview can use different "
-            "reference years or geographic/statistical definitions. "
-            "Population year and source are shown explicitly above.",
+            "<b>Data note.</b> Profile values and the encyclopedic overview "
+            "may use different reference years or geographic/statistical "
+            "definitions. Population year and source are shown explicitly.",
             small_style,
         ),
-        Spacer(1, 2 * mm),
+        Spacer(1, 1.5 * mm),
         Paragraph(
-            "Sources: Wikidata, World Bank and Wikipedia where available.",
+            "<b>Sources:</b> Wikidata, World Bank and Wikipedia where available.",
             small_style,
         ),
     ])
