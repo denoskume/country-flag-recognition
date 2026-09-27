@@ -225,7 +225,7 @@ st.markdown(
 
         .flag-banner {
             position: relative;
-            height: 300px;
+            height: auto;
             overflow: hidden;
             background: #ffffff;
             border-bottom: 1px solid #eef2f7;
@@ -236,8 +236,7 @@ st.markdown(
             grid-template-columns: repeat(20, 1fr);
             grid-auto-rows: 28px;
             gap: 3px;
-            padding: 10px;
-            height: 100%;
+            padding: 10px 10px 8px;
             align-content: start;
             background: #ffffff;
         }
@@ -252,7 +251,7 @@ st.markdown(
 
         .intro {
             text-align: center;
-            padding: .35rem 1.5rem 1.45rem;
+            padding: 1rem 1.5rem 1.35rem;
         }
 
         .app-title {
@@ -351,7 +350,7 @@ st.markdown(
                 padding-top: 1.5rem;
             }
             .flag-banner {
-                height: 260px;
+                height: auto;
             }
             .flag-strip {
                 grid-template-columns: repeat(10, 1fr);
