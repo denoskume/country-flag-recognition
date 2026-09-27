@@ -111,8 +111,8 @@ st.markdown(
 
         .flag-strip {
             display: grid;
-            grid-template-columns: repeat(12, 1fr);
-            grid-template-rows: repeat(2, 1fr);
+            grid-template-columns: repeat(13, 1fr);
+            grid-template-rows: repeat(4, 1fr);
             height: 100%;
             gap: 2px;
             padding: 2px;
@@ -239,10 +239,10 @@ st.markdown(
                 height: 135px;
             }
             .flag-strip {
-                grid-template-columns: repeat(6, 1fr);
-                grid-template-rows: repeat(3, 1fr);
+                grid-template-columns: repeat(8, 1fr);
+                grid-template-rows: repeat(7, 1fr);
             }
-            .flag-strip img:nth-child(n+19) {
+            .flag-strip img:nth-child(n+53) {
                 display: none;
             }
         }
@@ -289,6 +289,34 @@ st.markdown(
                 <img src="https://flagcdn.com/w320/ch.png">
                 <img src="https://flagcdn.com/w320/ma.png">
                 <img src="https://flagcdn.com/w320/eg.png">
+                <img src="https://flagcdn.com/w320/nl.png">
+                <img src="https://flagcdn.com/w320/be.png">
+                <img src="https://flagcdn.com/w320/ie.png">
+                <img src="https://flagcdn.com/w320/pl.png">
+                <img src="https://flagcdn.com/w320/cz.png">
+                <img src="https://flagcdn.com/w320/at.png">
+                <img src="https://flagcdn.com/w320/gr.png">
+                <img src="https://flagcdn.com/w320/tr.png">
+                <img src="https://flagcdn.com/w320/sa.png">
+                <img src="https://flagcdn.com/w320/ae.png">
+                <img src="https://flagcdn.com/w320/il.png">
+                <img src="https://flagcdn.com/w320/pk.png">
+                <img src="https://flagcdn.com/w320/bd.png">
+                <img src="https://flagcdn.com/w320/id.png">
+                <img src="https://flagcdn.com/w320/th.png">
+                <img src="https://flagcdn.com/w320/vn.png">
+                <img src="https://flagcdn.com/w320/ph.png">
+                <img src="https://flagcdn.com/w320/my.png">
+                <img src="https://flagcdn.com/w320/sg.png">
+                <img src="https://flagcdn.com/w320/nz.png">
+                <img src="https://flagcdn.com/w320/cl.png">
+                <img src="https://flagcdn.com/w320/co.png">
+                <img src="https://flagcdn.com/w320/pe.png">
+                <img src="https://flagcdn.com/w320/uy.png">
+                <img src="https://flagcdn.com/w320/py.png">
+                <img src="https://flagcdn.com/w320/bo.png">
+                <img src="https://flagcdn.com/w320/ke.png">
+                <img src="https://flagcdn.com/w320/tz.png">
             </div>
             <div class="banner-fade"></div>
         </div>
