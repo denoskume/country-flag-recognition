@@ -275,10 +275,25 @@ st.markdown(
         }
 
         div[data-testid="stFileUploaderDropzone"] {
-            min-height: 145px;
+            min-height: 118px;
             border: 1.5px dashed #c2cad6;
             border-radius: 14px;
             background: #fafbfc;
+        }
+
+        .preview-placeholder {
+            min-height: 118px;
+            border: 1.5px dashed #c2cad6;
+            border-radius: 14px;
+            background: #fafbfc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #98a2b3;
+            font-size: .78rem;
+            font-weight: 700;
+            text-align: center;
+            padding: .8rem;
         }
 
         div[data-testid="stFileUploaderDropzone"]:hover {
@@ -379,16 +394,26 @@ st.markdown(
 )
 
 with st.container(border=True):
-    uploaded_file = st.file_uploader(
-        "Select image",
-        type=["jpg", "jpeg", "png", "webp"],
-        label_visibility="collapsed",
-    )
+    upload_col, preview_col = st.columns([1.35, 0.65], gap="medium")
+
+    with upload_col:
+        uploaded_file = st.file_uploader(
+            "Select image",
+            type=["jpg", "jpeg", "png", "webp"],
+            label_visibility="collapsed",
+        )
 
     image = None
-    if uploaded_file is not None:
-        image = Image.open(uploaded_file).convert("RGB")
-        st.image(image, use_container_width=True)
+
+    with preview_col:
+        if uploaded_file is not None:
+            image = Image.open(uploaded_file).convert("RGB")
+            st.image(image, use_container_width=True)
+        else:
+            st.markdown(
+                '<div class="preview-placeholder">Image preview</div>',
+                unsafe_allow_html=True,
+            )
 
     process = st.button(
         "Process image",
