@@ -216,23 +216,6 @@ def draw_pdf_watermark(canvas, document) -> None:
     )
 
     # ------------------------------------------------------------------
-    # Subtle signature watermark
-    # ------------------------------------------------------------------
-    canvas.setFillAlpha(0.02)
-    canvas.setFillColor(colors.HexColor("#111111"))
-    canvas.setFont("Helvetica-Oblique", 23)
-    canvas.translate(page_width / 2, page_height / 2)
-    canvas.rotate(32)
-    canvas.drawCentredString(
-        0,
-        0,
-        "Denos Kume",
-    )
-    canvas.rotate(-32)
-    canvas.translate(-page_width / 2, -page_height / 2)
-    canvas.setFillAlpha(1)
-
-    # ------------------------------------------------------------------
     # Final template footer
     # ------------------------------------------------------------------
     canvas.setFillColor(colors.HexColor("#111111"))
