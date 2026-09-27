@@ -13,6 +13,7 @@ import pycountry
 
 WIKIDATA_ENDPOINT = "https://query.wikidata.org/sparql"
 WORLD_BANK_BASE = "https://api.worldbank.org/v2"
+REST_COUNTRIES_BASE = "https://restcountries.com/v3.1"
 WIKIPEDIA_SUMMARY_BASE = (
     "https://en.wikipedia.org/api/rest_v1/page/summary"
 )
@@ -46,6 +47,13 @@ class PopulationRecord:
 
 
 @dataclass(frozen=True)
+class GDPRecord:
+    value_usd: float | None
+    year: str | None
+    source: str
+
+
+@dataclass(frozen=True)
 class CountryProfile:
     code: str
     name: str
@@ -70,6 +78,18 @@ class CountryProfile:
     independence_day: str
     national_motto: str
     national_anthem: str
+    region: str
+    subregion: str
+    demonym: str
+    iso_alpha3: str
+    timezones: str
+    borders: str
+    largest_cities: str
+    international_organizations: str
+    official_religion: str
+    highest_point: str
+    lowest_point: str
+    gdp: GDPRecord
     political_source: str
     population_source: str
     overview_source: str
@@ -215,6 +235,10 @@ def fetch_wikidata_profile(
       ?drivingSideLabel
       ?nationalMotto
       ?nationalAnthemLabel
+      ?officialReligionLabel
+      ?highestPointLabel
+      ?lowestPointLabel
+      ?organizationLabel
       ?coord
       ?article
     WHERE {{
@@ -231,6 +255,10 @@ def fetch_wikidata_profile(
       OPTIONAL {{ ?country wdt:P1622 ?drivingSide. }}
       OPTIONAL {{ ?country wdt:P1451 ?nationalMotto. }}
       OPTIONAL {{ ?country wdt:P85 ?nationalAnthem. }}
+      OPTIONAL {{ ?country wdt:P3075 ?officialReligion. }}
+      OPTIONAL {{ ?country wdt:P610 ?highestPoint. }}
+      OPTIONAL {{ ?country wdt:P1589 ?lowestPoint. }}
+      OPTIONAL {{ ?country wdt:P463 ?organization. }}
       OPTIONAL {{ ?country wdt:P1906 ?headOfStateOffice. }}
       OPTIONAL {{ ?country wdt:P1313 ?headOfGovernmentOffice. }}
       OPTIONAL {{ ?country wdt:P625 ?coord. }}
@@ -401,6 +429,26 @@ def fetch_wikidata_profile(
                 "nationalAnthemLabel"
             )
         ),
+        "official_religion": _unique_join(
+            values(
+                "officialReligionLabel"
+            )
+        ),
+        "highest_point": _unique_join(
+            values(
+                "highestPointLabel"
+            )
+        ),
+        "lowest_point": _unique_join(
+            values(
+                "lowestPointLabel"
+            )
+        ),
+        "international_organizations": _unique_join(
+            values(
+                "organizationLabel"
+            )
+        ),
         "latitude": latitude,
         "longitude": longitude,
         "wikipedia_title": (
@@ -519,6 +567,172 @@ def fetch_country_dates(
         "national_day": national_day,
         "independence_day": independence_day,
     }
+
+
+def fetch_rest_country_profile(
+    code: str,
+    timeout: float = 12.0,
+) -> dict[str, str]:
+    """Fetch stable geographic and identity metadata from REST Countries."""
+    normalized_code = code.lower().strip()
+
+    if normalized_code == "xk":
+        return {
+            "region": "Europe",
+            "subregion": "Southeast Europe",
+            "demonym": "Kosovan",
+            "iso_alpha3": "XKX",
+            "timezones": "UTC+01:00",
+            "borders": "Albania, Montenegro, North Macedonia, Serbia",
+        }
+
+    response = requests.get(
+        f"{REST_COUNTRIES_BASE}/alpha/{normalized_code}",
+        params={
+            "fields": (
+                "region,subregion,demonyms,cca3,"
+                "timezones,borders"
+            )
+        },
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    payload = response.json()
+
+    if isinstance(payload, list):
+        item = payload[0] if payload else {}
+    elif isinstance(payload, dict):
+        item = payload
+    else:
+        item = {}
+
+    demonyms = item.get("demonyms") or {}
+    eng_demonym = demonyms.get("eng") or {}
+    demonym = (
+        eng_demonym.get("m")
+        or eng_demonym.get("f")
+        or "Not available"
+    )
+
+    border_codes = item.get("borders") or []
+    border_names = []
+    for border_code in border_codes:
+        country = pycountry.countries.get(alpha_3=str(border_code))
+        border_names.append(
+            country.name if country is not None else str(border_code)
+        )
+
+    return {
+        "region": str(item.get("region") or "Not available"),
+        "subregion": str(item.get("subregion") or "Not available"),
+        "demonym": str(demonym),
+        "iso_alpha3": str(item.get("cca3") or "Not available"),
+        "timezones": _unique_join(item.get("timezones") or []),
+        "borders": _unique_join(border_names),
+    }
+
+
+def fetch_latest_gdp(
+    code: str,
+    timeout: float = 12.0,
+) -> GDPRecord:
+    """Fetch latest nominal GDP (current US$) from the World Bank."""
+    normalized_code = code.lower().strip()
+
+    if normalized_code in WORLD_BANK_OVERRIDES:
+        lookup_code = WORLD_BANK_OVERRIDES[normalized_code]
+    else:
+        country = pycountry.countries.get(alpha_2=normalized_code.upper())
+        lookup_code = (
+            country.alpha_3
+            if country is not None
+            else normalized_code.upper()
+        )
+
+    response = requests.get(
+        (
+            f"{WORLD_BANK_BASE}/country/{lookup_code}"
+            "/indicator/NY.GDP.MKTP.CD"
+        ),
+        params={
+            "format": "json",
+            "mrnev": 1,
+            "per_page": 1,
+        },
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    payload = response.json()
+
+    if (
+        not isinstance(payload, list)
+        or len(payload) < 2
+        or not payload[1]
+    ):
+        return GDPRecord(
+            value_usd=None,
+            year=None,
+            source="World Bank",
+        )
+
+    observation = payload[1][0]
+    value = observation.get("value")
+    year = observation.get("date")
+
+    return GDPRecord(
+        value_usd=float(value) if value is not None else None,
+        year=str(year) if year is not None else None,
+        source="World Bank",
+    )
+
+
+def fetch_largest_cities(
+    code: str,
+    timeout: float = 12.0,
+) -> str:
+    """Fetch up to five largest populated cities from Wikidata."""
+    selector = _country_selector(code)
+
+    query = f"""
+    SELECT ?cityLabel ?population WHERE {{
+      {selector}
+      ?city wdt:P17 ?country;
+            wdt:P31/wdt:P279* wd:Q515;
+            wdt:P1082 ?population.
+      SERVICE wikibase:label {{
+        bd:serviceParam wikibase:language "en,fr".
+      }}
+    }}
+    ORDER BY DESC(?population)
+    LIMIT 5
+    """
+
+    response = requests.get(
+        WIKIDATA_ENDPOINT,
+        params={"query": query, "format": "json"},
+        headers={
+            "Accept": "application/sparql-results+json",
+            "User-Agent": (
+                "country-flag-recognition/0.1 "
+                "(educational portfolio project)"
+            ),
+        },
+        timeout=timeout,
+    )
+    response.raise_for_status()
+
+    bindings = (
+        response.json()
+        .get("results", {})
+        .get("bindings", [])
+    )
+
+    cities = [
+        row["cityLabel"]["value"]
+        for row in bindings
+        if row.get("cityLabel", {}).get("value")
+    ]
+    return _unique_join(cities)
 
 
 def fetch_wikipedia_overview(
@@ -775,6 +989,52 @@ def fetch_country_profile(
         }
 
     try:
+        supplemental = fetch_rest_country_profile(
+            code,
+            timeout=timeout,
+        )
+    except (
+        requests.RequestException,
+        ValueError,
+        LookupError,
+    ):
+        supplemental = {
+            "region": "Not available",
+            "subregion": "Not available",
+            "demonym": "Not available",
+            "iso_alpha3": "Not available",
+            "timezones": "Not available",
+            "borders": "Not available",
+        }
+
+    try:
+        gdp = fetch_latest_gdp(
+            code,
+            timeout=timeout,
+        )
+    except (
+        requests.RequestException,
+        ValueError,
+    ):
+        gdp = GDPRecord(
+            value_usd=None,
+            year=None,
+            source="World Bank",
+        )
+
+    try:
+        largest_cities = fetch_largest_cities(
+            code,
+            timeout=timeout,
+        )
+    except (
+        requests.RequestException,
+        ValueError,
+        LookupError,
+    ):
+        largest_cities = "Not available"
+
+    try:
         overview = (
             fetch_wikipedia_overview(
                 str(
@@ -943,6 +1203,26 @@ def fetch_country_profile(
         independence_day=independence_day,
         national_motto=national_motto,
         national_anthem=national_anthem,
+        region=str(supplemental["region"]),
+        subregion=str(supplemental["subregion"]),
+        demonym=str(supplemental["demonym"]),
+        iso_alpha3=str(supplemental["iso_alpha3"]),
+        timezones=str(supplemental["timezones"]),
+        borders=str(supplemental["borders"]),
+        largest_cities=largest_cities,
+        international_organizations=str(
+            wikidata["international_organizations"]
+        ),
+        official_religion=str(
+            wikidata["official_religion"]
+        ),
+        highest_point=str(
+            wikidata["highest_point"]
+        ),
+        lowest_point=str(
+            wikidata["lowest_point"]
+        ),
+        gdp=gdp,
         political_source=(
             "Wikidata"
         ),
