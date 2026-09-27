@@ -46,7 +46,7 @@ DISPLAY_NAME_OVERRIDES = {
 def display_country_name(code: str) -> str:
     return DISPLAY_NAME_OVERRIDES.get(
         code.lower(),
-        display_country_name(code),
+        country_name_from_code(code),
     )
 
 
