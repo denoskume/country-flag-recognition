@@ -76,24 +76,29 @@ st.markdown(
     """
     <style>
         :root {
-            --bg: #f6f8fb;
-            --surface: #ffffff;
-            --surface-2: #f9fafb;
-            --text: #101828;
+            --bg: #eef3fb;
+            --surface: rgba(255,255,255,.78);
+            --surface-strong: rgba(255,255,255,.92);
+            --text: #0b1220;
             --muted: #667085;
-            --line: #e4e7ec;
-            --line-strong: #d0d5dd;
-            --brand: #2f5bea;
-            --brand-soft: #eef3ff;
-            --success: #067647;
-            --success-soft: #ecfdf3;
-            --warning: #b54708;
-            --warning-soft: #fffaeb;
-            --danger: #b42318;
+            --line: rgba(148,163,184,.22);
+            --blue: #2563eb;
+            --blue-2: #4f46e5;
+            --cyan: #06b6d4;
+            --success: #16a34a;
+            --warning: #b45309;
+        }
+
+        html, body, [class*="css"] {
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         }
 
         .stApp {
-            background: var(--bg);
+            background:
+                radial-gradient(circle at 10% 5%, rgba(37,99,235,.14), transparent 28%),
+                radial-gradient(circle at 88% 10%, rgba(79,70,229,.16), transparent 24%),
+                radial-gradient(circle at 50% 100%, rgba(6,182,212,.08), transparent 30%),
+                linear-gradient(180deg, #f8fbff 0%, #eef3fb 100%);
             color: var(--text);
         }
 
@@ -107,14 +112,14 @@ st.markdown(
         }
 
         [data-testid="stToolbar"] {
-            top: .55rem;
-            right: .8rem;
+            top: .7rem;
+            right: 1rem;
         }
 
         .block-container {
-            max-width: 1280px;
-            padding-top: 1.25rem;
-            padding-bottom: 2.5rem;
+            max-width: 1320px;
+            padding-top: 1.2rem;
+            padding-bottom: 3rem;
         }
 
         .product-bar {
@@ -122,53 +127,58 @@ st.markdown(
             align-items: center;
             justify-content: space-between;
             gap: 1rem;
-            padding: .85rem 1rem;
-            margin: 0 0 1.15rem 0;
-            border: 1px solid rgba(208,213,221,.85);
-            border-radius: 16px;
-            background: rgba(255,255,255,.92);
-            box-shadow: 0 8px 30px rgba(16,24,40,.05);
-            backdrop-filter: blur(14px);
+            padding: .78rem 1rem;
+            margin-bottom: 1rem;
+            border: 1px solid rgba(255,255,255,.8);
+            border-radius: 18px;
+            background: rgba(255,255,255,.72);
+            box-shadow:
+                0 12px 40px rgba(15,23,42,.06),
+                inset 0 1px 0 rgba(255,255,255,.75);
+            backdrop-filter: blur(20px);
         }
 
         .product-left {
             display: flex;
             align-items: center;
-            gap: .75rem;
+            gap: .8rem;
         }
 
         .brand-icon {
             width: 42px;
             height: 42px;
-            border-radius: 13px;
+            border-radius: 14px;
             display: grid;
             place-items: center;
-            background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 45%, #60a5fa 100%);
+            background:
+                linear-gradient(135deg, rgba(255,255,255,.18), rgba(255,255,255,0)),
+                linear-gradient(135deg, #2563eb 0%, #4f46e5 55%, #06b6d4 100%);
             color: #fff;
             font-weight: 900;
-            font-size: .86rem;
-            box-shadow: 0 10px 24px rgba(37,99,235,.25);
+            font-size: .83rem;
+            box-shadow: 0 10px 24px rgba(37,99,235,.28);
         }
 
         .brand-name {
-            font-size: 1rem;
+            font-size: .98rem;
             line-height: 1.1;
-            font-weight: 800;
+            font-weight: 850;
             color: var(--text);
+            letter-spacing: -.015em;
         }
 
         .brand-meta {
-            margin-top: .2rem;
-            font-size: .76rem;
+            margin-top: .18rem;
+            font-size: .73rem;
             color: var(--muted);
         }
 
         .top-status {
             display: flex;
             align-items: center;
-            gap: .5rem;
-            font-size: .78rem;
-            font-weight: 700;
+            gap: .45rem;
+            font-size: .75rem;
+            font-weight: 800;
             color: #475467;
         }
 
@@ -176,60 +186,161 @@ st.markdown(
             width: 8px;
             height: 8px;
             border-radius: 999px;
-            background: #12b76a;
-            box-shadow: 0 0 0 4px rgba(18,183,106,.10);
+            background: #22c55e;
+            box-shadow: 0 0 0 5px rgba(34,197,94,.10);
         }
 
         .page-head {
             position: relative;
             overflow: hidden;
-            display: flex;
-            align-items: flex-end;
-            justify-content: space-between;
-            gap: 1rem;
-            margin: 0 0 1.25rem 0;
-            padding: 1.55rem 1.65rem;
-            border-radius: 22px;
-            border: 1px solid #dbe3f0;
+            margin: 0 0 1.15rem 0;
+            padding: 2rem 2rem 1.85rem 2rem;
+            min-height: 290px;
+            border-radius: 28px;
+            border: 1px solid rgba(255,255,255,.78);
             background:
-                radial-gradient(circle at 88% 18%, rgba(59,130,246,.18), transparent 24%),
-                radial-gradient(circle at 72% 80%, rgba(99,102,241,.10), transparent 24%),
-                linear-gradient(135deg, #ffffff 0%, #f8fbff 58%, #eef4ff 100%);
-            box-shadow: 0 14px 40px rgba(16,24,40,.06);
+                linear-gradient(120deg, rgba(255,255,255,.96) 0%, rgba(248,250,252,.93) 50%, rgba(239,246,255,.88) 100%);
+            box-shadow:
+                0 22px 60px rgba(15,23,42,.08),
+                inset 0 1px 0 rgba(255,255,255,.9);
+        }
+
+        .page-head::before {
+            content: "";
+            position: absolute;
+            width: 330px;
+            height: 330px;
+            border-radius: 50%;
+            right: -70px;
+            top: -110px;
+            background: radial-gradient(circle, rgba(59,130,246,.28) 0%, rgba(79,70,229,.14) 38%, transparent 70%);
+            filter: blur(2px);
+        }
+
+        .page-head::after {
+            content: "";
+            position: absolute;
+            width: 210px;
+            height: 210px;
+            border-radius: 50%;
+            right: 170px;
+            bottom: -110px;
+            background: radial-gradient(circle, rgba(6,182,212,.18) 0%, transparent 72%);
+        }
+
+        .hero-grid {
+            position: relative;
+            z-index: 2;
+            display: grid;
+            grid-template-columns: minmax(0,1.5fr) minmax(280px,.75fr);
+            gap: 2rem;
+            align-items: center;
+            min-height: 245px;
         }
 
         .page-kicker {
-            color: var(--brand);
-            font-size: .72rem;
-            font-weight: 800;
-            letter-spacing: .08em;
+            color: var(--blue);
+            font-size: .69rem;
+            font-weight: 900;
+            letter-spacing: .13em;
             text-transform: uppercase;
-            margin-bottom: .28rem;
+            margin-bottom: .7rem;
         }
 
         .page-title {
             margin: 0;
-            color: #0b1220;
-            font-size: clamp(2.15rem, 4vw, 3.35rem);
-            line-height: .98;
-            letter-spacing: -.045em;
-            font-weight: 900;
-            max-width: 760px;
+            color: #0a1020;
+            font-size: clamp(2.5rem, 5vw, 4.65rem);
+            line-height: .94;
+            letter-spacing: -.055em;
+            font-weight: 920;
+            max-width: 780px;
         }
 
         .page-subtitle {
-            margin-top: .7rem;
-            color: #667085;
-            font-size: .98rem;
-            line-height: 1.55;
-            max-width: 680px;
+            margin-top: .95rem;
+            color: #64748b;
+            font-size: 1rem;
+            line-height: 1.62;
+            max-width: 700px;
         }
 
-        .panel {
-            border: 1px solid var(--line);
-            border-radius: 18px;
-            background: var(--surface);
-            box-shadow: 0 8px 24px rgba(16,24,40,.035);
+        .hero-badges {
+            display: flex;
+            gap: .55rem;
+            flex-wrap: wrap;
+            margin-top: 1.15rem;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: .43rem .72rem;
+            border-radius: 999px;
+            border: 1px solid rgba(148,163,184,.25);
+            background: rgba(255,255,255,.72);
+            color: #334155;
+            font-size: .72rem;
+            font-weight: 800;
+            box-shadow: 0 6px 18px rgba(15,23,42,.04);
+        }
+
+        .hero-orbit {
+            position: relative;
+            width: 250px;
+            height: 250px;
+            margin-left: auto;
+        }
+
+        .hero-core {
+            position: absolute;
+            inset: 55px;
+            border-radius: 28px;
+            display: grid;
+            place-items: center;
+            font-size: 2.2rem;
+            background:
+                linear-gradient(145deg, rgba(255,255,255,.98), rgba(239,246,255,.84));
+            border: 1px solid rgba(147,197,253,.55);
+            box-shadow:
+                0 20px 50px rgba(37,99,235,.16),
+                inset 0 1px 0 rgba(255,255,255,.95);
+        }
+
+        .hero-ring {
+            position: absolute;
+            inset: 18px;
+            border-radius: 50%;
+            border: 1px solid rgba(96,165,250,.30);
+        }
+
+        .hero-ring.r2 {
+            inset: 0;
+            border-style: dashed;
+            opacity: .65;
+        }
+
+        .signal-dot {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: linear-gradient(135deg,#2563eb,#06b6d4);
+            box-shadow: 0 0 0 6px rgba(37,99,235,.08);
+        }
+
+        .signal-dot.a { top: 38px; left: 32px; }
+        .signal-dot.b { right: 28px; top: 95px; }
+        .signal-dot.c { bottom: 32px; left: 95px; }
+
+        div[data-testid="stVerticalBlockBorderWrapper"] {
+            border: 1px solid rgba(255,255,255,.8) !important;
+            border-radius: 22px !important;
+            background: rgba(255,255,255,.74);
+            box-shadow:
+                0 14px 34px rgba(15,23,42,.05),
+                inset 0 1px 0 rgba(255,255,255,.8);
+            backdrop-filter: blur(16px);
         }
 
         .panel-head {
@@ -237,35 +348,21 @@ st.markdown(
             align-items: center;
             justify-content: space-between;
             gap: .75rem;
-            margin-bottom: .85rem;
+            margin-bottom: .9rem;
         }
 
         .panel-title {
             color: var(--text);
-            font-size: 1.02rem;
-            font-weight: 800;
-        }
-
-        .section-title {
-            color: var(--text);
-            font-size: 1.28rem;
+            font-size: 1rem;
             font-weight: 850;
-            letter-spacing: -.02em;
-            margin-bottom: .7rem;
+            letter-spacing: -.015em;
         }
 
         .panel-copy {
             color: var(--muted);
-            font-size: .82rem;
+            font-size: .79rem;
             line-height: 1.45;
-            margin-top: .2rem;
-        }
-
-        div[data-testid="stVerticalBlockBorderWrapper"] {
-            border: 1px solid #dfe5ee !important;
-            border-radius: 20px !important;
-            background: rgba(255,255,255,.96);
-            box-shadow: 0 10px 34px rgba(16,24,40,.045);
+            margin-top: .22rem;
         }
 
         div[data-testid="stFileUploader"] {
@@ -275,53 +372,34 @@ st.markdown(
         }
 
         div[data-testid="stFileUploaderDropzone"] {
-            min-height: 210px;
-            border: 1.5px dashed #9fb7e8;
-            border-radius: 18px;
+            min-height: 230px;
+            border: 1.5px dashed rgba(37,99,235,.36);
+            border-radius: 20px;
             background:
-                radial-gradient(circle at 50% 0%, rgba(37,99,235,.08), transparent 42%),
-                linear-gradient(180deg, #fbfdff 0%, #f7faff 100%);
-            transition: .2s ease;
+                radial-gradient(circle at 50% 0%, rgba(59,130,246,.11), transparent 44%),
+                linear-gradient(180deg, rgba(255,255,255,.92) 0%, rgba(248,250,252,.86) 100%);
+            transition: all .22s ease;
         }
 
         div[data-testid="stFileUploaderDropzone"]:hover {
             border-color: #2563eb;
-            box-shadow: inset 0 0 0 1px rgba(37,99,235,.08), 0 10px 28px rgba(37,99,235,.07);
-            transform: translateY(-1px);
+            transform: translateY(-2px);
+            box-shadow:
+                0 16px 36px rgba(37,99,235,.10),
+                inset 0 0 0 1px rgba(37,99,235,.08);
         }
 
         div[data-testid="stFileUploaderDropzone"] button {
-            border-radius: 10px;
-            border: 1px solid #cdd8ef;
-            background: #fff;
-            font-weight: 750;
-            box-shadow: 0 3px 10px rgba(16,24,40,.06);
-        }
-
-        div[data-testid="stMetric"] {
-            border: 1px solid var(--line);
-            border-radius: 14px;
-            background: var(--surface);
-            padding: .9rem .95rem;
-            min-height: 100px;
-        }
-
-        div[data-testid="stMetricLabel"] {
-            color: #667085;
-            font-size: .69rem;
+            border-radius: 12px;
+            border: 1px solid rgba(37,99,235,.16);
+            background: rgba(255,255,255,.95);
             font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: .06em;
-        }
-
-        div[data-testid="stMetricValue"] {
-            color: var(--text);
-            font-weight: 850;
+            box-shadow: 0 8px 22px rgba(15,23,42,.08);
         }
 
         .config-stack {
             display: grid;
-            gap: .65rem;
+            gap: .62rem;
         }
 
         .config-row {
@@ -329,46 +407,72 @@ st.markdown(
             justify-content: space-between;
             align-items: center;
             gap: .8rem;
-            padding: .78rem .86rem;
-            border: 1px solid #e2e8f0;
-            border-radius: 13px;
-            background: linear-gradient(180deg,#fbfcfe 0%,#f8fafc 100%);
+            padding: .82rem .9rem;
+            border: 1px solid rgba(148,163,184,.20);
+            border-radius: 14px;
+            background:
+                linear-gradient(180deg, rgba(255,255,255,.88) 0%, rgba(248,250,252,.76) 100%);
         }
 
         .config-label {
-            color: var(--muted);
-            font-size: .78rem;
+            color: #64748b;
+            font-size: .75rem;
         }
 
         .config-value {
-            color: var(--text);
-            font-size: .82rem;
-            font-weight: 800;
+            color: #111827;
+            font-size: .8rem;
+            font-weight: 850;
+        }
+
+        div[data-testid="stMetric"] {
+            border: 1px solid rgba(148,163,184,.20);
+            border-radius: 16px;
+            background: rgba(255,255,255,.82);
+            padding: .95rem 1rem;
+            box-shadow: 0 8px 22px rgba(15,23,42,.035);
+        }
+
+        div[data-testid="stMetricLabel"] {
+            color: #64748b;
+            font-size: .68rem;
+            font-weight: 850;
+            text-transform: uppercase;
+            letter-spacing: .08em;
+        }
+
+        div[data-testid="stMetricValue"] {
+            color: #0f172a;
+            font-weight: 900;
+            letter-spacing: -.025em;
         }
 
         .decision-card {
             border-radius: 14px;
             padding: .9rem 1rem;
             margin-top: .75rem;
-            font-size: .88rem;
-            font-weight: 750;
+            font-size: .86rem;
+            font-weight: 800;
         }
 
         .decision-known {
-            color: var(--success);
-            border: 1px solid #abefc6;
-            background: var(--success-soft);
+            color: #166534;
+            border: 1px solid rgba(34,197,94,.28);
+            background: rgba(240,253,244,.86);
         }
 
         .decision-unknown {
-            color: var(--warning);
-            border: 1px solid #fedf89;
-            background: var(--warning-soft);
+            color: #92400e;
+            border: 1px solid rgba(245,158,11,.28);
+            background: rgba(255,251,235,.88);
         }
 
-        .subtle {
-            color: var(--muted);
-            font-size: .8rem;
+        .section-title {
+            color: var(--text);
+            font-size: 1.32rem;
+            font-weight: 900;
+            letter-spacing: -.025em;
+            margin-bottom: .7rem;
         }
 
         .country-heading {
@@ -380,63 +484,47 @@ st.markdown(
 
         .country-name {
             color: var(--text);
-            font-size: 1.65rem;
-            font-weight: 850;
-            letter-spacing: -.025em;
+            font-size: 1.75rem;
+            font-weight: 900;
+            letter-spacing: -.03em;
         }
 
         .country-code {
-            padding: .2rem .45rem;
-            border-radius: 7px;
-            background: var(--brand-soft);
-            color: var(--brand);
-            font-size: .71rem;
-            font-weight: 800;
+            padding: .24rem .48rem;
+            border-radius: 8px;
+            background: rgba(37,99,235,.10);
+            color: var(--blue);
+            font-size: .69rem;
+            font-weight: 900;
         }
 
         .technical {
-            padding: .8rem .9rem;
-            border-radius: 12px;
-            background: #f8fafc;
-            border: 1px solid var(--line);
-            color: var(--muted);
-            font-size: .78rem;
+            padding: .85rem .95rem;
+            border-radius: 13px;
+            background: rgba(248,250,252,.9);
+            border: 1px solid rgba(148,163,184,.20);
+            color: #64748b;
+            font-size: .76rem;
             line-height: 1.55;
         }
 
-        div[data-baseweb="tab-list"] {
-            gap: 1.25rem;
-        }
-
-        button[data-baseweb="tab"] {
-            padding-left: 0;
-            padding-right: 0;
-        }
-
-        .hero-badges {
-            display: flex;
-            gap: .55rem;
-            flex-wrap: wrap;
-            margin-top: 1rem;
-        }
-
-        .hero-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: .35rem;
-            padding: .42rem .68rem;
-            border-radius: 999px;
-            border: 1px solid #d7e2f7;
-            background: rgba(255,255,255,.78);
-            color: #344054;
-            font-size: .74rem;
-            font-weight: 750;
+        button[kind="secondary"] {
+            border-radius: 12px !important;
         }
 
         @media (max-width: 900px) {
+            .hero-grid {
+                grid-template-columns: 1fr;
+            }
+            .hero-orbit {
+                display: none;
+            }
             .page-head {
-                align-items: flex-start;
-                flex-direction: column;
+                min-height: auto;
+                padding: 1.5rem;
+            }
+            .page-title {
+                font-size: 2.65rem;
             }
         }
     </style>
@@ -536,17 +624,27 @@ effective_threshold = get_effective_threshold()
 st.markdown(
     f"""
     <div class="page-head">
-        <div>
-            <div class="page-kicker">AI FLAG INTELLIGENCE</div>
-            <h1 class="page-title">Recognize flags with confidence.</h1>
-            <div class="page-subtitle">
-                Upload an image and get a ranked country prediction with confidence-aware
-                decision logic and live country intelligence.
+        <div class="hero-grid">
+            <div>
+                <div class="page-kicker">AI FLAG INTELLIGENCE</div>
+                <h1 class="page-title">Recognize flags with confidence.</h1>
+                <div class="page-subtitle">
+                    A modern visual intelligence workspace for flag recognition,
+                    uncertainty-aware decisions, ranked predictions, and live country context.
+                </div>
+                <div class="hero-badges">
+                    <span class="hero-badge">250 classes</span>
+                    <span class="hero-badge">{deployment_threshold:.1%} production threshold</span>
+                    <span class="hero-badge">Top {st.session_state.top_k} candidates</span>
+                </div>
             </div>
-            <div class="hero-badges">
-                <span class="hero-badge">250 classes</span>
-                <span class="hero-badge">{deployment_threshold:.1%} production threshold</span>
-                <span class="hero-badge">Top {st.session_state.top_k} candidates</span>
+            <div class="hero-orbit">
+                <div class="hero-ring r2"></div>
+                <div class="hero-ring"></div>
+                <div class="signal-dot a"></div>
+                <div class="signal-dot b"></div>
+                <div class="signal-dot c"></div>
+                <div class="hero-core">🌐</div>
             </div>
         </div>
     </div>
