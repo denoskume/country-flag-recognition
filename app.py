@@ -17,6 +17,7 @@ from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.utils import ImageReader
 from reportlab.lib.units import mm
 from reportlab.platypus import (
     HRFlowable,
@@ -107,6 +108,46 @@ def _pdf_text(value: object) -> str:
     return text if text else "Not available"
 
 
+def get_pdf_logo_reader():
+    """Return a ReportLab-safe RGB logo, or None if loading fails."""
+    logo_path = ROOT_DIR / "assets" / "flag_intelligence_logo.png"
+
+    if not logo_path.is_file():
+        return None
+
+    try:
+        with Image.open(logo_path) as source:
+            source.load()
+
+            if source.mode in ("RGBA", "LA"):
+                rgba = source.convert("RGBA")
+                background = Image.new(
+                    "RGB",
+                    rgba.size,
+                    "white",
+                )
+                background.paste(
+                    rgba,
+                    mask=rgba.getchannel("A"),
+                )
+                safe_logo = background
+            else:
+                safe_logo = source.convert("RGB")
+
+            logo_buffer = BytesIO()
+            safe_logo.save(
+                logo_buffer,
+                format="PNG",
+                optimize=False,
+            )
+            logo_buffer.seek(0)
+
+        return ImageReader(logo_buffer)
+
+    except (OSError, ValueError):
+        return None
+
+
 def draw_pdf_watermark(canvas, document) -> None:
     """Draw a fixed corporate header, footer and subtle signature watermark."""
     canvas.saveState()
@@ -126,22 +167,26 @@ def draw_pdf_watermark(canvas, document) -> None:
         stroke=0,
     )
 
-    logo_path = ROOT_DIR / "assets" / "flag_intelligence_logo.png"
+    logo_reader = get_pdf_logo_reader()
     logo_size = 11 * mm
     logo_y = page_height - 15.5 * mm
 
-    if logo_path.is_file():
-        canvas.drawImage(
-            str(logo_path),
-            left,
-            logo_y,
-            width=logo_size,
-            height=logo_size,
-            preserveAspectRatio=True,
-            mask="auto",
-        )
-
-    brand_x = left + 14 * mm
+    if logo_reader is not None:
+        try:
+            canvas.drawImage(
+                logo_reader,
+                left,
+                logo_y,
+                width=logo_size,
+                height=logo_size,
+                preserveAspectRatio=True,
+                mask=None,
+            )
+            brand_x = left + 14 * mm
+        except (OSError, ValueError):
+            brand_x = left
+    else:
+        brand_x = left
 
     canvas.setFillColor(colors.white)
     canvas.setFont("Helvetica-Bold", 11)
