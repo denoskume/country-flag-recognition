@@ -15,6 +15,7 @@ from torchvision.models.detection import (
     fasterrcnn_mobilenet_v3_large_320_fpn,
     FasterRCNN_MobileNet_V3_Large_320_FPN_Weights,
 )
+from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
 
 class DetectionDataset(Dataset):
@@ -103,6 +104,11 @@ def main():
     weights = FasterRCNN_MobileNet_V3_Large_320_FPN_Weights.DEFAULT
     model = fasterrcnn_mobilenet_v3_large_320_fpn(
         weights=weights,
+    )
+
+    in_features = model.roi_heads.box_predictor.cls_score.in_features
+    model.roi_heads.box_predictor = FastRCNNPredictor(
+        in_features,
         num_classes=2,
     )
     model.to(device)
