@@ -254,7 +254,16 @@ def build_pdf_report(
         profile_fields = [
             ("Name", profile.get("name")),
             ("Capital", profile.get("capital")),
-            ("Population", profile.get("population")),
+            (
+                "Population",
+                (
+                    f"{int(profile['population']):,}"
+                    if profile.get("population") is not None
+                    else "Not available"
+                ),
+            ),
+            ("Population year", profile.get("population_year")),
+            ("Population source", profile.get("population_source")),
             ("Currency", profile.get("currency")),
             ("Official language(s)", profile.get("official_languages")),
             ("Continent", profile.get("continent")),
@@ -314,6 +323,13 @@ def build_pdf_report(
 
     story.extend([
         Spacer(1, 5 * mm),
+        Paragraph(
+            "Profile values and the Wikipedia overview can use different "
+            "reference years or geographic/statistical definitions. "
+            "Population year and source are shown explicitly above.",
+            small_style,
+        ),
+        Spacer(1, 2 * mm),
         Paragraph(
             "Sources: Wikidata, World Bank and Wikipedia where available.",
             small_style,
@@ -829,6 +845,11 @@ def show_result(image: Image.Image):
                         else "Not available"
                     )
                     st.metric("Population", population)
+                    if profile.population.value is not None:
+                        population_note = profile.population.source
+                        if profile.population.year:
+                            population_note += f" · {profile.population.year}"
+                        st.caption(population_note)
                 with o3:
                     st.metric("Currency", profile.currency)
                 with o4:
@@ -980,6 +1001,8 @@ def show_result(image: Image.Image):
                 "name": profile.name,
                 "capital": profile.capital,
                 "population": profile.population.value,
+                "population_year": profile.population.year,
+                "population_source": profile.population.source,
                 "currency": profile.currency,
                 "official_languages": profile.official_languages,
                 "continent": profile.continent,
