@@ -518,21 +518,127 @@ def show_result(image: Image.Image):
     if accepted:
         try:
             profile = get_country_profile(prediction.top1_country)
-            with st.expander("Country information", expanded=False):
-                c1, c2 = st.columns(2)
-                with c1:
-                    st.write(f"**Capital:** {profile.capital}")
-                    st.write(f"**Currency:** {profile.currency}")
-                with c2:
-                    st.write(f"**Continent:** {profile.continent}")
+
+            st.divider()
+            st.markdown("### Country profile")
+
+            overview_tab, government_tab, geography_tab = st.tabs(
+                ["Overview", "Government", "Geography"]
+            )
+
+            with overview_tab:
+                o1, o2, o3, o4 = st.columns(4)
+                with o1:
+                    st.metric("Capital", profile.capital)
+                with o2:
                     population = (
                         f"{profile.population.value:,}"
                         if profile.population.value is not None
                         else "Not available"
                     )
-                    st.write(f"**Population:** {population}")
-        except (requests.RequestException, LookupError, ValueError):
-            pass
+                    st.metric("Population", population)
+                with o3:
+                    st.metric("Currency", profile.currency)
+                with o4:
+                    area = (
+                        f"{profile.area_km2:,.0f} km²"
+                        if profile.area_km2 is not None
+                        else "Not available"
+                    )
+                    st.metric("Area", area)
+
+                info_left, info_right = st.columns(2, gap="large")
+                with info_left:
+                    st.markdown("**Official language(s)**")
+                    st.write(profile.official_languages)
+                    st.markdown("**Continent**")
+                    st.write(profile.continent)
+
+                with info_right:
+                    st.markdown("**Country overview**")
+                    st.write(profile.overview)
+
+            with government_tab:
+                g1, g2 = st.columns(2, gap="large")
+
+                with g1:
+                    st.markdown("**Government form**")
+                    st.write(profile.government_form)
+
+                    st.markdown("**Head of State**")
+                    st.write(profile.head_of_state)
+                    if profile.head_of_state_office != "Not available":
+                        st.caption(profile.head_of_state_office)
+
+                    st.markdown("**Head of Government**")
+                    st.write(profile.head_of_government)
+                    if profile.head_of_government_office != "Not available":
+                        st.caption(profile.head_of_government_office)
+
+                with g2:
+                    st.markdown("**Calling code**")
+                    st.write(profile.calling_code)
+
+                    st.markdown("**Internet domain**")
+                    st.write(profile.internet_domain)
+
+                    st.markdown("**Driving side**")
+                    st.write(profile.driving_side)
+
+            with geography_tab:
+                geo_left, geo_right = st.columns([1.35, 0.65], gap="large")
+
+                with geo_left:
+                    if (
+                        profile.latitude is not None
+                        and profile.longitude is not None
+                    ):
+                        st.map(
+                            pd.DataFrame(
+                                [{
+                                    "lat": profile.latitude,
+                                    "lon": profile.longitude,
+                                }]
+                            ),
+                            latitude="lat",
+                            longitude="lon",
+                            zoom=3,
+                            use_container_width=True,
+                        )
+                    else:
+                        st.info("Geographic coordinates are not available.")
+
+                with geo_right:
+                    st.markdown("**Continent**")
+                    st.write(profile.continent)
+
+                    st.markdown("**Area**")
+                    st.write(
+                        f"{profile.area_km2:,.0f} km²"
+                        if profile.area_km2 is not None
+                        else "Not available"
+                    )
+
+                    st.markdown("**Coordinates**")
+                    if (
+                        profile.latitude is not None
+                        and profile.longitude is not None
+                    ):
+                        st.write(
+                            f"{profile.latitude:.3f}, "
+                            f"{profile.longitude:.3f}"
+                        )
+                    else:
+                        st.write("Not available")
+
+            st.caption(
+                "Country metadata: Wikidata · Population: World Bank · "
+                "Overview: Wikipedia"
+            )
+
+        except (requests.RequestException, LookupError, ValueError) as error:
+            st.warning("Country information could not be loaded.")
+            st.caption(str(error))
 
     report = {
         "generated_at": strftime("%Y-%m-%d %H:%M:%S"),
@@ -551,6 +657,32 @@ def show_result(image: Image.Image):
             for code, confidence in prediction.top5
         ],
     }
+
+    if accepted:
+        try:
+            profile = get_country_profile(prediction.top1_country)
+            report["country_profile"] = {
+                "name": profile.name,
+                "capital": profile.capital,
+                "population": profile.population.value,
+                "currency": profile.currency,
+                "official_languages": profile.official_languages,
+                "continent": profile.continent,
+                "area_km2": profile.area_km2,
+                "overview": profile.overview,
+                "government_form": profile.government_form,
+                "head_of_state": profile.head_of_state,
+                "head_of_state_office": profile.head_of_state_office,
+                "head_of_government": profile.head_of_government,
+                "head_of_government_office": profile.head_of_government_office,
+                "calling_code": profile.calling_code,
+                "internet_domain": profile.internet_domain,
+                "driving_side": profile.driving_side,
+                "latitude": profile.latitude,
+                "longitude": profile.longitude,
+            }
+        except (requests.RequestException, LookupError, ValueError):
+            pass
 
     st.download_button(
         "Download result",
