@@ -75,13 +75,30 @@ class CountryProfile:
     overview_source: str
 
 
+def _is_raw_wikidata_identifier(value: str) -> bool:
+    """Return True for unresolved Wikidata entity identifiers."""
+    stripped = value.strip()
+    return bool(
+        re.fullmatch(r"Q\d+", stripped)
+        or re.fullmatch(
+            r"https?://www\.wikidata\.org/entity/Q\d+",
+            stripped,
+        )
+    )
+
+
 def _unique_join(values: Iterable[str]) -> str:
+    """Join distinct human-readable values and discard unresolved IDs."""
     cleaned = []
 
     for value in values:
         value = str(value).strip()
 
-        if value and value not in cleaned:
+        if (
+            value
+            and not _is_raw_wikidata_identifier(value)
+            and value not in cleaned
+        ):
             cleaned.append(value)
 
     return (
@@ -212,6 +229,8 @@ def fetch_wikidata_profile(
       OPTIONAL {{ ?country wdt:P474 ?callingCode. }}
       OPTIONAL {{ ?country wdt:P78 ?internetDomain. }}
       OPTIONAL {{ ?country wdt:P1622 ?drivingSide. }}
+      OPTIONAL {{ ?country wdt:P1451 ?nationalMotto. }}
+      OPTIONAL {{ ?country wdt:P85 ?nationalAnthem. }}
       OPTIONAL {{ ?country wdt:P1906 ?headOfStateOffice. }}
       OPTIONAL {{ ?country wdt:P1313 ?headOfGovernmentOffice. }}
       OPTIONAL {{ ?country wdt:P625 ?coord. }}
@@ -446,14 +465,20 @@ def fetch_country_dates(
       {selector}
 
       OPTIONAL {{
-        ?nationalDay wdt:P17|wdt:P1001 ?country;
-                     wdt:P31/wdt:P279* wd:Q57598;
-                     wdt:P837 ?nationalDayDate.
+        ?country wdt:P832 ?nationalDay.
+        ?nationalDay wdt:P31/wdt:P279* wd:Q57598.
+        OPTIONAL {{ ?nationalDay wdt:P837 ?nationalDayDate. }}
       }}
 
       OPTIONAL {{
-        ?independenceDay wdt:P17|wdt:P1001 ?country;
-                         wdt:P31/wdt:P279* wd:Q14914657.
+        {{
+          ?country wdt:P832 ?independenceDay.
+        }}
+        UNION
+        {{
+          ?independenceDay wdt:P17|wdt:P1001 ?country.
+        }}
+        ?independenceDay wdt:P31/wdt:P279* wd:Q14914657.
         OPTIONAL {{ ?independenceDay wdt:P837 ?independenceDayDate. }}
         OPTIONAL {{ ?independenceDay wdt:P571 ?independenceInception. }}
       }}
@@ -557,6 +582,76 @@ def fetch_wikipedia_overview(
     )
 
 
+def fetch_wikidata_population(
+    code: str,
+    timeout: float = 12.0,
+) -> PopulationRecord:
+    """Fetch the latest dated Wikidata population as a secondary fallback."""
+    selector = _country_selector(code)
+
+    query = f"""
+    SELECT ?population ?date WHERE {{
+      {selector}
+      ?country p:P1082 ?populationStatement.
+      ?populationStatement ps:P1082 ?population.
+      OPTIONAL {{ ?populationStatement pq:P585 ?date. }}
+      FILTER NOT EXISTS {{
+        ?populationStatement wikibase:rank wikibase:DeprecatedRank.
+      }}
+    }}
+    ORDER BY DESC(?date)
+    LIMIT 1
+    """
+
+    response = requests.get(
+        WIKIDATA_ENDPOINT,
+        params={"query": query, "format": "json"},
+        headers={
+            "Accept": "application/sparql-results+json",
+            "User-Agent": (
+                "country-flag-recognition/0.1 "
+                "(educational portfolio project)"
+            ),
+        },
+        timeout=timeout,
+    )
+    response.raise_for_status()
+
+    bindings = (
+        response.json()
+        .get("results", {})
+        .get("bindings", [])
+    )
+
+    if not bindings:
+        return PopulationRecord(
+            value=None,
+            year=None,
+            source="Wikidata",
+        )
+
+    row = bindings[0]
+    raw_value = row.get("population", {}).get("value")
+    raw_date = row.get("date", {}).get("value")
+
+    try:
+        value = int(float(raw_value)) if raw_value is not None else None
+    except (TypeError, ValueError):
+        value = None
+
+    year = None
+    if raw_date:
+        match = re.match(r"^([+-]?\d{4,})-", str(raw_date))
+        if match:
+            year = match.group(1)
+
+    return PopulationRecord(
+        value=value,
+        year=year,
+        source="Wikidata",
+    )
+
+
 def fetch_latest_population(
     code: str,
     timeout: float = 12.0,
@@ -650,23 +745,32 @@ def fetch_country_profile(
     )
 
     try:
-        population = (
-            fetch_latest_population(
-                code,
-                timeout=timeout,
-            )
+        population = fetch_latest_population(
+            code,
+            timeout=timeout,
         )
     except (
         requests.RequestException,
         ValueError,
     ):
-        population = (
-            PopulationRecord(
-                value=None,
-                year=None,
-                source="World Bank",
-            )
+        population = PopulationRecord(
+            value=None,
+            year=None,
+            source="World Bank",
         )
+
+    if population.value is None:
+        try:
+            population = fetch_wikidata_population(
+                code,
+                timeout=timeout,
+            )
+        except (
+            requests.RequestException,
+            ValueError,
+            LookupError,
+        ):
+            pass
 
     try:
         country_dates = fetch_country_dates(
@@ -760,13 +864,25 @@ def fetch_country_profile(
             )
         )
 
+    country_record = pycountry.countries.get(
+        alpha_2=normalized_code.upper()
+    )
+
+    name = str(wikidata["name"])
+    if name == "Not available":
+        name = (
+            str(country_record.name)
+            if country_record is not None
+            else normalized_code.upper()
+        )
+
+    internet_domain = str(wikidata["internet_domain"])
+    if internet_domain == "Not available":
+        internet_domain = f".{normalized_code}"
+
     return CountryProfile(
         code=normalized_code,
-        name=str(
-            wikidata[
-                "name"
-            ]
-        ),
+        name=name,
         continent=str(
             wikidata[
                 "continent"
@@ -818,11 +934,7 @@ def fetch_country_profile(
                 "calling_code"
             ]
         ),
-        internet_domain=str(
-            wikidata[
-                "internet_domain"
-            ]
-        ),
+        internet_domain=internet_domain,
         driving_side=str(
             wikidata[
                 "driving_side"
