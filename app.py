@@ -4,19 +4,43 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
 from time import strftime
 
 import pandas as pd
 from PIL import Image
 import requests
 import streamlit as st
+import yaml
+
+ROOT_DIR = Path(__file__).resolve().parent
+SRC_DIR = ROOT_DIR / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 from flag_recognition.country_info import fetch_country_profile
 from flag_recognition.inference import load_inference_bundle, predict_image
 from flag_recognition.taxonomy import country_name_from_code
 
 
-MODEL_PATH = Path("artifacts/models/worldwide_mobilenet_v3_small.pt")
+MODEL_PATH = ROOT_DIR / "artifacts/models/worldwide_mobilenet_v3_small.pt"
+CONFIG_PATH = ROOT_DIR / "configs/deployment.yaml"
+
+
+@st.cache_data(show_spinner=False)
+def get_deployment_threshold() -> float:
+    if not CONFIG_PATH.is_file():
+        return float(get_model().unknown_threshold)
+
+    with CONFIG_PATH.open("r", encoding="utf-8") as handle:
+        config = yaml.safe_load(handle)
+
+    return float(
+        config.get("open_set", {}).get(
+            "deployment_threshold",
+            get_model().unknown_threshold,
+        )
+    )
 
 
 def format_population(value: int | None) -> str:
@@ -373,8 +397,10 @@ bundle = get_model()
 
 if "policy" not in st.session_state:
     st.session_state.policy = "Calibrated"
+deployment_threshold = get_deployment_threshold()
+
 if "custom_threshold" not in st.session_state:
-    st.session_state.custom_threshold = float(bundle.unknown_threshold)
+    st.session_state.custom_threshold = deployment_threshold
 if "top_k" not in st.session_state:
     st.session_state.top_k = 5
 if "live_enrichment" not in st.session_state:
@@ -387,10 +413,10 @@ if "show_technical" not in st.session_state:
 
 def get_effective_threshold() -> float:
     if st.session_state.policy == "Strict":
-        return max(float(bundle.unknown_threshold), 0.75)
+        return min(0.99, deployment_threshold + 0.05)
     if st.session_state.policy == "Custom":
         return float(st.session_state.custom_threshold)
-    return float(bundle.unknown_threshold)
+    return deployment_threshold
 
 
 effective_threshold = get_effective_threshold()
@@ -549,7 +575,7 @@ if uploaded_file is None:
         with c1:
             st.metric("Worldwide classes", "250")
         with c2:
-            st.metric("Checkpoint threshold", f"{bundle.unknown_threshold:.1%}")
+            st.metric("Deployment threshold", f"{deployment_threshold:.1%}")
         with c3:
             st.metric("Runtime", "CPU")
     st.stop()
@@ -621,7 +647,7 @@ with decision_col:
             )
 
         st.caption(
-            f"Active threshold {effective_threshold:.1%} · checkpoint threshold {bundle.unknown_threshold:.1%}"
+            f"Active threshold {effective_threshold:.1%} · deployment threshold {deployment_threshold:.1%}"
         )
 
         if st.session_state.show_candidates:
@@ -655,6 +681,7 @@ with decision_col:
             "latency_ms": prediction.inference_ms,
             "active_threshold": effective_threshold,
             "checkpoint_threshold": bundle.unknown_threshold,
+            "deployment_threshold": deployment_threshold,
             "policy": st.session_state.policy,
             "accepted": decision_is_known,
             "top_candidates": [
@@ -682,6 +709,7 @@ with decision_col:
                     Checkpoint: {MODEL_PATH}<br>
                     Policy: {st.session_state.policy}<br>
                     Active threshold: {effective_threshold:.4f}<br>
+                    Deployment threshold: {deployment_threshold:.4f}<br>
                     Device: {bundle.device}
                 </div>
                 """,
