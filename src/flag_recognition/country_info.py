@@ -53,6 +53,8 @@ class CountryProfile:
     longitude: float | None
     population: PopulationRecord
     overview: str
+    national_day: str
+    independence_day: str
     political_source: str
     population_source: str
     overview_source: str
@@ -376,6 +378,110 @@ def fetch_wikidata_profile(
     }
 
 
+def _format_wikidata_date(value: str | None) -> str:
+    if not value:
+        return "Not available"
+
+    match = re.match(
+        r"^([+-]?\d{4,})-(\d{2})-(\d{2})T",
+        value,
+    )
+    if not match:
+        return value
+
+    year, month, day = match.groups()
+    months = [
+        "January", "February", "March", "April",
+        "May", "June", "July", "August",
+        "September", "October", "November", "December",
+    ]
+
+    try:
+        month_name = months[int(month) - 1]
+        return f"{month_name} {int(day)}, {int(year)}"
+    except (ValueError, IndexError):
+        return value
+
+
+def fetch_country_dates(
+    code: str,
+    timeout: float = 12.0,
+) -> dict[str, str]:
+    """Fetch national-day and independence-day dates from Wikidata."""
+    selector = _country_selector(code)
+
+    query = f"""
+    SELECT
+      ?nationalDayDate
+      ?independenceDayDate
+      ?independenceInception
+    WHERE {{
+      {selector}
+
+      OPTIONAL {{
+        ?nationalDay wdt:P17|wdt:P1001 ?country;
+                     wdt:P31/wdt:P279* wd:Q57598;
+                     wdt:P837 ?nationalDayDate.
+      }}
+
+      OPTIONAL {{
+        ?independenceDay wdt:P17|wdt:P1001 ?country;
+                         wdt:P31/wdt:P279* wd:Q14914657.
+        OPTIONAL {{ ?independenceDay wdt:P837 ?independenceDayDate. }}
+        OPTIONAL {{ ?independenceDay wdt:P571 ?independenceInception. }}
+      }}
+    }}
+    LIMIT 50
+    """
+
+    response = requests.get(
+        WIKIDATA_ENDPOINT,
+        params={"query": query, "format": "json"},
+        headers={
+            "Accept": "application/sparql-results+json",
+            "User-Agent": (
+                "country-flag-recognition/0.1 "
+                "(educational portfolio project)"
+            ),
+        },
+        timeout=timeout,
+    )
+    response.raise_for_status()
+
+    bindings = (
+        response.json()
+        .get("results", {})
+        .get("bindings", [])
+    )
+
+    national_day = "Not available"
+    independence_day = "Not available"
+
+    for row in bindings:
+        if (
+            national_day == "Not available"
+            and "nationalDayDate" in row
+        ):
+            national_day = _format_wikidata_date(
+                row["nationalDayDate"].get("value")
+            )
+
+        if independence_day == "Not available":
+            if "independenceInception" in row:
+                independence_day = _format_wikidata_date(
+                    row["independenceInception"].get("value")
+                )
+            elif "independenceDayDate" in row:
+                independence_day = _format_wikidata_date(
+                    row["independenceDayDate"].get("value")
+                )
+
+    return {
+        "national_day": national_day,
+        "independence_day": independence_day,
+    }
+
+
 def fetch_wikipedia_overview(
     title: str | None,
     timeout: float = 12.0,
@@ -529,6 +635,21 @@ def fetch_country_profile(
         )
 
     try:
+        country_dates = fetch_country_dates(
+            code,
+            timeout=timeout,
+        )
+    except (
+        requests.RequestException,
+        ValueError,
+        LookupError,
+    ):
+        country_dates = {
+            "national_day": "Not available",
+            "independence_day": "Not available",
+        }
+
+    try:
         overview = (
             fetch_wikipedia_overview(
                 str(
@@ -635,6 +756,12 @@ def fetch_country_profile(
         ),
         population=population,
         overview=overview,
+        national_day=str(
+            country_dates["national_day"]
+        ),
+        independence_day=str(
+            country_dates["independence_day"]
+        ),
         political_source=(
             "Wikidata"
         ),
