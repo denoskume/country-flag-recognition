@@ -451,6 +451,9 @@ def build_pdf_report(
             ("Area", area_value),
             ("Official language(s)", profile.get("official_languages")),
             ("Currency", profile.get("currency")),
+            ("Region", profile.get("region")),
+            ("Subregion", profile.get("subregion")),
+            ("Demonym", profile.get("demonym")),
         ]
 
         at_glance_data = [
@@ -506,6 +509,13 @@ def build_pdf_report(
                 ("Population", population_value),
                 ("Population source", profile.get("population_source")),
                 ("Area", area_value),
+                ("Region", profile.get("region")),
+                ("Subregion", profile.get("subregion")),
+                ("Largest cities", profile.get("largest_cities")),
+                ("Bordering countries", profile.get("borders")),
+                ("Time zones", profile.get("timezones")),
+                ("Highest point", profile.get("highest_point")),
+                ("Lowest point", profile.get("lowest_point")),
                 ("Coordinates", coordinates),
             ],
             label_style,
@@ -520,6 +530,8 @@ def build_pdf_report(
                 ("National motto", profile.get("national_motto")),
                 ("National anthem", profile.get("national_anthem")),
                 ("Official language(s)", profile.get("official_languages")),
+                ("Demonym", profile.get("demonym")),
+                ("Official religion", profile.get("official_religion")),
             ],
             label_style,
             value_style,
@@ -533,6 +545,7 @@ def build_pdf_report(
                 ("Head of State office", profile.get("head_of_state_office")),
                 ("Head of Government", profile.get("head_of_government")),
                 ("Head of Government office", profile.get("head_of_government_office")),
+                ("International organizations", profile.get("international_organizations")),
             ],
             label_style,
             value_style,
@@ -545,15 +558,37 @@ def build_pdf_report(
                 ("Calling code", profile.get("calling_code")),
                 ("Internet domain", profile.get("internet_domain")),
                 ("Driving side", profile.get("driving_side")),
+                ("ISO alpha-3", profile.get("iso_alpha3")),
             ],
             label_style,
             value_style,
         )
 
+        gdp_value = (
+            f"$ {float(profile['gdp_usd']):,.0f}"
+            if profile.get("gdp_usd") is not None
+            else "Not available"
+        )
+        if profile.get("gdp_year") and gdp_value != "Not available":
+            gdp_value += f" ({profile.get('gdp_year')})"
+
+        economy_card = _profile_card(
+            "Economy",
+            [
+                ("GDP (current US$)", gdp_value),
+                ("GDP source", profile.get("gdp_source")),
+                ("Currency", profile.get("currency")),
+            ],
+            label_style,
+            value_style,
+        )
+
+
         story.extend([
             geography_card,
             identity_card,
             government_card,
+            economy_card,
             practical_card,
         ])
 
@@ -1242,6 +1277,16 @@ def show_result(image: Image.Image):
                     )
                     st.metric("Area", area)
 
+                if profile.gdp.value_usd is not None:
+                    st.metric(
+                        "GDP",
+                        f"$ {profile.gdp.value_usd / 1_000_000_000:,.1f}B",
+                    )
+                    gdp_note = profile.gdp.source
+                    if profile.gdp.year:
+                        gdp_note += f" · {profile.gdp.year}"
+                    st.caption(gdp_note)
+
                 d1, d2 = st.columns(2)
                 with d1:
                     st.metric("National Day", profile.national_day)
@@ -1255,6 +1300,14 @@ def show_result(image: Image.Image):
 
                     st.markdown("**Continent**")
                     st.write(profile.continent)
+
+                    st.markdown("**Region / Subregion**")
+                    st.write(
+                        f"{profile.region} · {profile.subregion}"
+                    )
+
+                    st.markdown("**Demonym**")
+                    st.write(profile.demonym)
 
                     st.markdown("**National motto**")
                     st.write(profile.national_motto)
@@ -1284,6 +1337,12 @@ def show_result(image: Image.Image):
                         st.caption(profile.head_of_government_office)
 
                 with g2:
+                    st.markdown("**Official religion**")
+                    st.write(profile.official_religion)
+
+                    st.markdown("**International organizations**")
+                    st.write(profile.international_organizations)
+
                     st.markdown("**Calling code**")
                     st.write(profile.calling_code)
 
@@ -1326,6 +1385,21 @@ def show_result(image: Image.Image):
                         if profile.area_km2 is not None
                         else "Not available"
                     )
+
+                    st.markdown("**Largest cities**")
+                    st.write(profile.largest_cities)
+
+                    st.markdown("**Borders**")
+                    st.write(profile.borders)
+
+                    st.markdown("**Time zones**")
+                    st.write(profile.timezones)
+
+                    st.markdown("**Highest point**")
+                    st.write(profile.highest_point)
+
+                    st.markdown("**Lowest point**")
+                    st.write(profile.lowest_point)
 
                     st.markdown("**Coordinates**")
                     if (
@@ -1394,6 +1468,20 @@ def show_result(image: Image.Image):
                 "independence_day": profile.independence_day,
                 "national_motto": profile.national_motto,
                 "national_anthem": profile.national_anthem,
+                "region": profile.region,
+                "subregion": profile.subregion,
+                "demonym": profile.demonym,
+                "iso_alpha3": profile.iso_alpha3,
+                "timezones": profile.timezones,
+                "borders": profile.borders,
+                "largest_cities": profile.largest_cities,
+                "international_organizations": profile.international_organizations,
+                "official_religion": profile.official_religion,
+                "highest_point": profile.highest_point,
+                "lowest_point": profile.lowest_point,
+                "gdp_usd": profile.gdp.value_usd,
+                "gdp_year": profile.gdp.year,
+                "gdp_source": profile.gdp.source,
                 "government_form": profile.government_form,
                 "head_of_state": profile.head_of_state,
                 "head_of_state_office": profile.head_of_state_office,
