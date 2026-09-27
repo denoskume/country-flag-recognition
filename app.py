@@ -110,7 +110,7 @@ def _pdf_text(value: object) -> str:
 
 
 def draw_pdf_watermark(canvas, document) -> None:
-    """Draw the Flag Intelligence report template on every PDF page."""
+    """Draw the final Flag Intelligence PDF template on every page."""
     canvas.saveState()
 
     page_width, page_height = A4
@@ -118,11 +118,11 @@ def draw_pdf_watermark(canvas, document) -> None:
     right = page_width - 18 * mm
 
     # ------------------------------------------------------------------
-    # Flag Intelligence logo - vector version matching the supplied template
+    # Final template logo - top left
     # ------------------------------------------------------------------
-    logo_size = 22 * mm
+    logo_size = 24 * mm
     logo_x = left
-    logo_y = page_height - 36 * mm
+    logo_y = page_height - 38 * mm
     cx = logo_x + logo_size / 2
     cy = logo_y + logo_size / 2
     radius = logo_size / 2
@@ -130,94 +130,97 @@ def draw_pdf_watermark(canvas, document) -> None:
     canvas.setFillColor(colors.HexColor("#F40016"))
     canvas.circle(cx, cy, radius, fill=1, stroke=0)
 
-    # Flag symbol.
     canvas.setStrokeColor(colors.white)
     canvas.setFillColor(colors.white)
     canvas.setLineCap(1)
-    canvas.setLineWidth(1.05 * mm)
+    canvas.setLineWidth(1.15 * mm)
 
-    pole_x = logo_x + 7.2 * mm
+    pole_x = logo_x + 7.7 * mm
     canvas.line(
         pole_x,
-        logo_y + 10.2 * mm,
+        logo_y + 11.2 * mm,
         pole_x,
-        logo_y + 18.0 * mm,
+        logo_y + 19.7 * mm,
     )
 
-    band_x0 = logo_x + 8.6 * mm
-    band_x1 = logo_x + 15.7 * mm
-    for offset in (17.0, 14.4, 11.8):
+    band_x0 = logo_x + 9.2 * mm
+    band_x1 = logo_x + 17.2 * mm
+    for offset in (18.7, 15.9, 13.1):
         y0 = logo_y + offset * mm
         path = canvas.beginPath()
         path.moveTo(band_x0, y0)
         path.curveTo(
-            logo_x + 10.7 * mm,
-            y0 + 0.9 * mm,
-            logo_x + 12.8 * mm,
-            y0 - 0.9 * mm,
+            logo_x + 11.5 * mm,
+            y0 + 1.0 * mm,
+            logo_x + 13.8 * mm,
+            y0 - 1.0 * mm,
             band_x1,
             y0 + 0.1 * mm,
         )
         canvas.drawPath(path, stroke=1, fill=0)
 
-    # Wordmark inside the red circle.
     canvas.setFillColor(colors.white)
-    canvas.setFont("Helvetica-Bold", 8.6)
+    canvas.setFont("Helvetica-Bold", 9.6)
     canvas.drawCentredString(
         cx,
-        logo_y + 5.9 * mm,
+        logo_y + 6.4 * mm,
         "FLAG",
     )
-    canvas.setFont("Helvetica-Bold", 4.1)
+    canvas.setFont("Helvetica-Bold", 4.5)
     canvas.drawCentredString(
         cx,
-        logo_y + 3.6 * mm,
+        logo_y + 3.8 * mm,
         "INTELLIGENCE",
     )
 
     # ------------------------------------------------------------------
-    # Contact block
+    # Final template contact block - top right
     # ------------------------------------------------------------------
-    contact_x = left + 3.5 * mm
-    contact_y = logo_y - 5.2 * mm
+    contact_x = page_width - 82 * mm
+    contact_y = page_height - 23 * mm
 
     canvas.setFillColor(colors.HexColor("#111111"))
-    canvas.setFont("Helvetica", 8.2)
+    canvas.setFont("Helvetica", 9.3)
     canvas.drawString(
         contact_x,
         contact_y,
         "Contact :",
     )
 
-    canvas.setFont("Helvetica", 7.8)
+    canvas.setFont("Helvetica", 8.6)
+    canvas.setFillColor(colors.HexColor("#D9D9D9"))
     canvas.drawString(
         contact_x,
         contact_y - 5.0 * mm,
-        "Phone  +33 (0)6 62 91 94 68",
+        "☎",
     )
+    canvas.setFillColor(colors.HexColor("#111111"))
+    canvas.drawString(
+        contact_x + 6.4 * mm,
+        contact_y - 5.0 * mm,
+        "+33 (0)6 62 91 94 68",
+    )
+
+    canvas.setFillColor(colors.HexColor("#111111"))
+    canvas.setFont("Helvetica", 9.0)
     canvas.drawString(
         contact_x,
-        contact_y - 9.6 * mm,
-        "Email  denoskume@yahoo.com",
+        contact_y - 10.2 * mm,
+        "✉",
+    )
+    canvas.setFont("Helvetica", 8.6)
+    canvas.drawString(
+        contact_x + 6.4 * mm,
+        contact_y - 10.2 * mm,
+        "denoskume@yahoo.com",
     )
 
     # ------------------------------------------------------------------
-    # Report title - centered like the supplied template
+    # Subtle signature watermark
     # ------------------------------------------------------------------
+    canvas.setFillAlpha(0.02)
     canvas.setFillColor(colors.HexColor("#111111"))
-    canvas.setFont("Helvetica", 17)
-    canvas.drawCentredString(
-        page_width / 2,
-        page_height - 66 * mm,
-        "Report",
-    )
-
-    # ------------------------------------------------------------------
-    # Subtle signature watermark requested earlier
-    # ------------------------------------------------------------------
-    canvas.setFillAlpha(0.022)
-    canvas.setFillColor(colors.HexColor("#111111"))
-    canvas.setFont("Helvetica-Oblique", 24)
+    canvas.setFont("Helvetica-Oblique", 23)
     canvas.translate(page_width / 2, page_height / 2)
     canvas.rotate(32)
     canvas.drawCentredString(
@@ -230,22 +233,14 @@ def draw_pdf_watermark(canvas, document) -> None:
     canvas.setFillAlpha(1)
 
     # ------------------------------------------------------------------
-    # Footer - centered copyright from the supplied template
+    # Final template footer
     # ------------------------------------------------------------------
     canvas.setFillColor(colors.HexColor("#111111"))
-    canvas.setFont("Helvetica", 8.2)
+    canvas.setFont("Helvetica", 9.0)
     canvas.drawCentredString(
         page_width / 2,
         15 * mm,
         "© 2026 Flag Intelligence, all right reserved.",
-    )
-
-    canvas.setFillColor(colors.HexColor("#777777"))
-    canvas.setFont("Helvetica", 6.5)
-    canvas.drawRightString(
-        right,
-        9 * mm,
-        f"Page {document.page}",
     )
 
     canvas.restoreState()
@@ -314,7 +309,7 @@ def build_pdf_report(
         pagesize=A4,
         rightMargin=16 * mm,
         leftMargin=16 * mm,
-        topMargin=76 * mm,
+        topMargin=50 * mm,
         bottomMargin=24 * mm,
         title="Flag Intelligence - Recognition Report",
         author="Denos Kume",
@@ -405,45 +400,7 @@ def build_pdf_report(
 
     story: list[object] = []
 
-    # Compact report metadata under the template title.
-    report_meta = Table(
-        [[
-            Paragraph(
-                f"<b>Country Flag Recognition Report</b>",
-                ParagraphStyle(
-                    "ReportIdentity",
-                    parent=title_style,
-                    fontSize=12.5,
-                    leading=15,
-                    alignment=0,
-                ),
-            ),
-            Paragraph(
-                f"<b>Date</b><br/>{generated_at}",
-                ParagraphStyle(
-                    "ReportMetaCompact",
-                    parent=small_style,
-                    alignment=2,
-                    leading=10,
-                ),
-            ),
-        ]],
-        colWidths=[105 * mm, 55 * mm],
-    )
-    report_meta.setStyle(
-        TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("LINEBELOW", (0, 0), (-1, -1), 0.5, colors.HexColor("#D1D5DB")),
-            ("LEFTPADDING", (0, 0), (-1, -1), 0),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-            ("TOPPADDING", (0, 0), (-1, -1), 0),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ])
-    )
-    story.extend([
-        report_meta,
-        Spacer(1, 4 * mm),
-    ])
+    # Report body starts directly beneath the final template header.
 
     # Image preview.
     image_buffer = BytesIO()
