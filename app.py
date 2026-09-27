@@ -557,10 +557,17 @@ def show_result(image: Image.Image):
                 with info_left:
                     st.markdown("**Official language(s)**")
                     st.write(profile.official_languages)
+
                     st.markdown("**Continent**")
                     st.write(profile.continent)
 
+                    st.markdown("**National motto**")
+                    st.write(profile.national_motto)
+
                 with info_right:
+                    st.markdown("**National anthem**")
+                    st.write(profile.national_anthem)
+
                     st.markdown("**Country overview**")
                     st.write(profile.overview)
 
@@ -678,6 +685,8 @@ def show_result(image: Image.Image):
                 "overview": profile.overview,
                 "national_day": profile.national_day,
                 "independence_day": profile.independence_day,
+                "national_motto": profile.national_motto,
+                "national_anthem": profile.national_anthem,
                 "government_form": profile.government_form,
                 "head_of_state": profile.head_of_state,
                 "head_of_state_office": profile.head_of_state_office,
