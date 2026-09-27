@@ -1,5 +1,5 @@
 <p>
-  <img align="left" src="assets/flag-intelligence-logo.png" alt="Flag Intelligence" height="64">
+  <img align="left" src="assets/flag-intelligence-logo.svg" alt="Flag Intelligence" height="64">
 </p>
 <br clear="both">
 
