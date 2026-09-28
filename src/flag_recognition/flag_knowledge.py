@@ -77,36 +77,34 @@ def _fetch_flag_wikitext(
     title: str,
     timeout: float = 12.0,
 ) -> tuple[str, str]:
-    """Fetch raw flag-page wikitext for structured infobox fallback."""
+    """Fetch raw flag-page wikitext through MediaWiki action=parse."""
     response = requests.get(
         WIKIPEDIA_API,
         params={
-            "action": "query",
-            "prop": "revisions",
-            "rvprop": "content",
-            "rvslots": "main",
+            "action": "parse",
+            "page": title,
+            "prop": "wikitext|displaytitle",
             "redirects": 1,
-            "titles": title,
             "format": "json",
-            "formatversion": 2,
         },
         headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
         timeout=timeout,
     )
     response.raise_for_status()
-    pages = response.json().get("query", {}).get("pages", [])
-    if not pages or pages[0].get("missing"):
-        raise LookupError(title)
 
-    page = pages[0]
-    revisions = page.get("revisions") or []
-    if not revisions:
-        raise LookupError(title)
+    parsed = response.json().get("parse") or {}
+    raw_wikitext = parsed.get("wikitext")
+    if isinstance(raw_wikitext, dict):
+        text = str(raw_wikitext.get("*") or "").strip()
+    else:
+        text = str(raw_wikitext or "").strip()
 
-    slots = revisions[0].get("slots") or {}
-    main = slots.get("main") or {}
-    text = str(main.get("content") or "").strip()
-    canonical = str(page.get("title") or title).strip()
+    canonical = str(
+        parsed.get("title")
+        or parsed.get("displaytitle")
+        or title
+    ).strip()
+
     if not text:
         raise LookupError(title)
     return text, canonical
@@ -132,6 +130,85 @@ def _infobox_value(wikitext: str, field: str) -> str:
     value = re.sub(r"''+", "", value)
     value = re.sub(r"<[^>]+>", "", value)
     return " ".join(value.split())
+
+
+def _fetch_flag_page_extract(
+    title: str,
+    timeout: float = 12.0,
+) -> tuple[str, str]:
+    """Fetch readable flag-page plaintext without relying on section names."""
+    response = requests.get(
+        WIKIPEDIA_API,
+        params={
+            "action": "query",
+            "prop": "extracts",
+            "explaintext": 1,
+            "redirects": 1,
+            "titles": title,
+            "format": "json",
+            "formatversion": 2,
+        },
+        headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    pages = response.json().get("query", {}).get("pages", [])
+    if not pages or pages[0].get("missing"):
+        raise LookupError(title)
+    page = pages[0]
+    text = str(page.get("extract") or "").strip()
+    canonical = str(page.get("title") or title).strip()
+    if not text:
+        raise LookupError(title)
+    return text, canonical
+
+
+def _flag_metadata_from_extract(
+    country_name: str,
+    timeout: float = 12.0,
+) -> tuple[Evidence | None, Evidence | None, Evidence | None]:
+    """Extract basic flag metadata from the exact flag page plaintext."""
+    exact_title = f"Flag of {country_name}"
+    article, canonical = _fetch_flag_page_extract(
+        exact_title,
+        timeout=timeout,
+    )
+    source_url = WIKIPEDIA_PAGE + quote(
+        canonical.replace(" ", "_"),
+        safe="()_-",
+    )
+
+    adoption = _extract_adoption(article, source_url)
+    proportion = _extract_proportion(article, source_url)
+
+    sentences = [
+        sentence.strip()
+        for sentence in re.split(
+            r"(?<=[.!?])\s+",
+            " ".join(article.split()),
+        )
+        if sentence.strip()
+    ]
+    design_sentence = next(
+        (
+            sentence
+            for sentence in sentences[:12]
+            if any(
+                token in sentence.lower()
+                for token in (
+                    "tricolour",
+                    "tricolor",
+                    "vertical bands",
+                    "horizontal bands",
+                    "flag consists",
+                    "flag is",
+                )
+            )
+        ),
+        "",
+    )
+    design = _fact(design_sentence, source_url)
+    return adoption, proportion, design
 
 
 def _flag_metadata_from_wikitext(
@@ -401,6 +478,23 @@ def enrich_flag_profile(
                 fallback_proportion,
                 fallback_design,
             ) = _flag_metadata_from_wikitext(
+                country_name,
+                timeout=timeout,
+            )
+            adoption = adoption or fallback_adoption
+            proportion = proportion or fallback_proportion
+            if not design_origin and fallback_design is not None:
+                design_origin = (fallback_design,)
+        except (requests.RequestException, LookupError, ValueError):
+            pass
+
+    if adoption is None or proportion is None or not design_origin:
+        try:
+            (
+                fallback_adoption,
+                fallback_proportion,
+                fallback_design,
+            ) = _flag_metadata_from_extract(
                 country_name,
                 timeout=timeout,
             )
