@@ -121,12 +121,19 @@ Special attention will be given to visually similar flags such as:
 ```text
 country-flag-recognition/
 ├── app.py
+├── serve.py
+├── web/
+├── assets/
 ├── configs/
-│   └── baseline.yaml
+│   ├── baseline.yaml
+│   ├── deployment.yaml
+│   ├── generalization_v3.yaml
+│   └── scene_aware.yaml
 ├── data/
 │   ├── raw/
 │   ├── processed/
 │   ├── splits/
+│   ├── external_benchmark/
 │   └── README.md
 ├── artifacts/
 │   ├── models/
@@ -135,15 +142,25 @@ country-flag-recognition/
 ├── scripts/
 │   ├── prepare_splits.py
 │   ├── train.py
-│   └── evaluate.py
+│   ├── train_deployment.py
+│   ├── evaluate.py
+│   ├── evaluate_deployment.py
+│   └── run_generalization_v3.sh
 ├── src/
 │   └── flag_recognition/
 │       ├── dataset.py
-│       ├── splits.py
-│       ├── model.py
+│       ├── detection.py
+│       ├── inference.py
 │       ├── metrics.py
-│       └── inference.py
+│       ├── model.py
+│       ├── splits.py
+│       ├── taxonomy.py
+│       └── transforms.py
 ├── tests/
+├── .github/workflows/
+├── .streamlit/
+├── RUN_UBUNTU.md
+├── packages.txt
 ├── pyproject.toml
 └── requirements.txt
 ```
