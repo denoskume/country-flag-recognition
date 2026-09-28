@@ -25,6 +25,7 @@ from reportlab.platypus import (
     Image as PDFImage,
     KeepTogether,
     Paragraph,
+    PageBreak,
     SimpleDocTemplate,
     Spacer,
     Table,
@@ -294,6 +295,79 @@ def _report_filename_country(country_name: str) -> str:
     normalized = re.sub(r"[^a-z0-9]+", "_", normalized)
     normalized = normalized.strip("_")
     return normalized or "country"
+
+
+def _build_pdf_location_map(
+    latitude: float | None,
+    longitude: float | None,
+    area_km2: float | None = None,
+) -> PDFImage | None:
+    """Fetch a static geographic locator map for the PDF."""
+    if latitude is None or longitude is None:
+        return None
+
+    if area_km2 is None:
+        zoom = 4
+    elif area_km2 < 2_000:
+        zoom = 6
+    elif area_km2 < 50_000:
+        zoom = 5
+    elif area_km2 < 500_000:
+        zoom = 4
+    else:
+        zoom = 3
+
+    map_url = "https://staticmap.openstreetmap.de/staticmap.php"
+    params = {
+        "center": f"{latitude},{longitude}",
+        "zoom": zoom,
+        "size": "900x420",
+        "maptype": "mapnik",
+        "markers": f"{latitude},{longitude},ol-marker",
+    }
+
+    try:
+        response = requests.get(
+            map_url,
+            params=params,
+            headers={
+                "User-Agent": (
+                    "Flag-Intelligence/1.0 "
+                    "(educational country knowledge report)"
+                ),
+                "Referer": "https://github.com/denoskume/country-flag-recognition",
+            },
+            timeout=15,
+        )
+        response.raise_for_status()
+
+        content_type = response.headers.get("content-type", "")
+        if "image" not in content_type.lower():
+            return None
+
+        with Image.open(BytesIO(response.content)) as source:
+            source.load()
+            safe_map = source.convert("RGB").copy()
+
+        map_buffer = BytesIO()
+        safe_map.save(
+            map_buffer,
+            format="JPEG",
+            quality=90,
+            optimize=False,
+        )
+        map_buffer.seek(0)
+
+        pdf_map = PDFImage(map_buffer)
+        pdf_map._restrictSize(160 * mm, 66 * mm)
+        return pdf_map
+
+    except (
+        requests.RequestException,
+        OSError,
+        ValueError,
+    ):
+        return None
 
 
 def build_pdf_report(
@@ -675,6 +749,51 @@ def build_pdf_report(
             Spacer(1, 3 * mm),
         ])
 
+        location_map = _build_pdf_location_map(
+            profile.get("latitude"),
+            profile.get("longitude"),
+            profile.get("area_km2"),
+        )
+
+        if location_map is not None:
+            location_content = Table(
+                [[location_map]],
+                colWidths=[170 * mm],
+                hAlign="CENTER",
+            )
+            location_content.setStyle(
+                TableStyle([
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ])
+            )
+        else:
+            location_content = Table(
+                [[Paragraph(
+                    "Geographic map temporarily unavailable.",
+                    value_style,
+                )]],
+                colWidths=[170 * mm],
+            )
+            location_content.setStyle(
+                TableStyle([
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                    ("TOPPADDING", (0, 0), (-1, -1), 10),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+                ])
+            )
+
+        story.extend([
+            section_box("Geographic Location", location_content),
+            Spacer(1, 3 * mm),
+        ])
+
         geography = info_grid(
             [
                 ("Subregion", profile.get("subregion")),
@@ -723,6 +842,8 @@ def build_pdf_report(
             section_box("National Identity & Practical Facts", symbols),
             Spacer(1, 3 * mm),
         ])
+
+        story.append(PageBreak())
 
         government = info_grid(
             [
