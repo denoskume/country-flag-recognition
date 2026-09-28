@@ -4,6 +4,7 @@ from flag_recognition.country_info import (
     _parse_point,
     _unique_join,
     _wikipedia_title_from_url,
+    format_emergency_numbers,
 )
 
 
@@ -67,3 +68,21 @@ def test_format_wikidata_date():
     assert _format_wikidata_date(
         "+1960-08-07T00:00:00Z"
     ) == "August 7, 1960"
+
+
+def test_unlabeled_emergency_numbers_remain_separate():
+    value = format_emergency_numbers(
+        "110, 112, 113",
+        "+47",
+    )
+
+    assert value == "110, 112, 113"
+
+
+def test_labeled_emergency_numbers_keep_services():
+    value = format_emergency_numbers(
+        "Fire: 110 | Police: 112 | Ambulance: 113",
+        "+47",
+    )
+
+    assert value == "Fire: 110 | Police: 112 | Ambulance: 113"
