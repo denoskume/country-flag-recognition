@@ -74,6 +74,14 @@ from flag_recognition.inference import (
     predict_robust,
 )
 from flag_recognition.taxonomy import country_name_from_code
+from flag_recognition.country_intelligence import (
+    build_from_legacy_profile,
+    section_completion,
+    validate_country_intelligence,
+)
+from flag_recognition.country_knowledge import enrich_from_encyclopedia
+from flag_recognition.flag_knowledge import enrich_flag_profile
+from flag_recognition.learning import answer_country_question
 
 
 DISPLAY_NAME_OVERRIDES = {
@@ -1045,6 +1053,228 @@ def build_pdf_report(
                 Spacer(1, 3 * mm),
             ])
 
+        intelligence = report.get("country_intelligence_v2")
+        if isinstance(intelligence, dict):
+            def _context_value(section_name: str) -> str:
+                section = intelligence.get(section_name)
+                if not isinstance(section, dict):
+                    return "Not available"
+                context = section.get("context")
+                if isinstance(context, dict):
+                    return clean(context.get("value"))
+                return "Not available"
+
+            def _text_section(title: str, text: object) -> None:
+                value = clean(text)
+                if value == "Not available":
+                    return
+                table = Table(
+                    [[Paragraph(value.replace("\n", "<br/>"), body_style)]],
+                    colWidths=[REPORT_WIDTH_MM * mm],
+                )
+                table.setStyle(
+                    TableStyle([
+                        ("LEFTPADDING", (0, 0), (-1, -1), 7),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+                        ("TOPPADDING", (0, 0), (-1, -1), 6),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ])
+                )
+                story.extend([
+                    section_box(title, table),
+                    Spacer(1, 3 * mm),
+                ])
+
+            flag_info = intelligence.get("flag")
+            if isinstance(flag_info, dict):
+                flag_rows = []
+                for label, field in (
+                    ("Design & construction", "design_origin"),
+                    ("Meaning & symbolism", "symbolism"),
+                ):
+                    items = flag_info.get(field)
+                    if isinstance(items, list):
+                        values = [
+                            clean(item.get("value"))
+                            for item in items
+                            if isinstance(item, dict)
+                            and clean(item.get("value")) != "Not available"
+                        ]
+                        if values:
+                            flag_rows.append((label, "\n\n".join(values)))
+
+                history_items = flag_info.get("historical_flags")
+                if isinstance(history_items, list) and history_items:
+                    history_text = "\n".join(
+                        f"{clean(item.get('period'))}: {clean(item.get('summary'))}"
+                        for item in history_items[:10]
+                        if isinstance(item, dict)
+                    )
+                    if history_text:
+                        flag_rows.append(("Flag history", history_text))
+
+                if flag_rows:
+                    story.append(PageBreak())
+                    story.extend([
+                        section_box(
+                            "Flag Intelligence",
+                            info_grid(flag_rows, two_pairs=False),
+                        ),
+                        Spacer(1, 3 * mm),
+                    ])
+
+            origins = intelligence.get("origins")
+            if isinstance(origins, list) and origins:
+                origin_rows = [
+                    (
+                        clean(event.get("label")),
+                        clean(event.get("summary")),
+                    )
+                    for event in origins[:6]
+                    if isinstance(event, dict)
+                ]
+                if origin_rows:
+                    story.append(PageBreak())
+                    story.extend([
+                        section_box(
+                            "Origins & Early History",
+                            info_grid(origin_rows, two_pairs=False),
+                        ),
+                        Spacer(1, 3 * mm),
+                    ])
+
+            timeline = intelligence.get("historical_timeline")
+            if isinstance(timeline, list) and timeline:
+                timeline_rows = [
+                    (
+                        clean(event.get("period")),
+                        clean(event.get("summary")),
+                    )
+                    for event in timeline[:18]
+                    if isinstance(event, dict)
+                ]
+                if timeline_rows:
+                    if not (isinstance(origins, list) and origins):
+                        story.append(PageBreak())
+                    story.extend([
+                        section_box(
+                            "Historical Journey",
+                            info_grid(timeline_rows, two_pairs=False),
+                        ),
+                        Spacer(1, 3 * mm),
+                    ])
+
+            narrative_sections = [
+                ("People & Society", "people_society"),
+                ("Culture", "culture"),
+                ("Economic Context", "economy"),
+                ("Infrastructure & Transport", "infrastructure"),
+                ("Education, Science & Innovation", "education_science"),
+                ("Environment & Climate", "environment"),
+                ("International Relations", "international_relations"),
+            ]
+
+            for title, key in narrative_sections:
+                _text_section(title, _context_value(key))
+
+            completion = report.get("country_intelligence_completion")
+            if isinstance(completion, dict):
+                supported = sum(bool(value) for value in completion.values())
+                coverage_rows = [
+                    ("Supported knowledge domains", f"{supported}/{len(completion)}"),
+                    (
+                        "Publication rule",
+                        "Missing or unsupported domains are omitted rather than fabricated.",
+                    ),
+                ]
+                story.extend([
+                    section_box(
+                        "Knowledge Coverage",
+                        info_grid(coverage_rows, two_pairs=False),
+                    ),
+                    Spacer(1, 3 * mm),
+                ])
+
+        intelligence = report.get("country_intelligence_v2")
+        if isinstance(intelligence, dict):
+            source_rows: list[tuple[str, str]] = []
+            seen_sources: set[tuple[str, str]] = set()
+
+            def _collect_sources(node: object, path: str = "") -> None:
+                if isinstance(node, dict):
+                    source = node.get("source")
+                    source_url = node.get("source_url")
+                    reference_year = node.get("reference_year")
+                    retrieved_at = node.get("retrieved_at")
+
+                    if source:
+                        detail_parts = [str(source)]
+                        if reference_year:
+                            detail_parts.append(f"reference {reference_year}")
+                        if retrieved_at:
+                            detail_parts.append(f"retrieved {retrieved_at}")
+                        if source_url:
+                            detail_parts.append(str(source_url))
+
+                        key = (path or "Fact", " · ".join(detail_parts))
+                        if key not in seen_sources:
+                            seen_sources.add(key)
+                            source_rows.append(key)
+
+                    sources = node.get("sources")
+                    urls = node.get("source_urls")
+                    if isinstance(sources, list):
+                        for index, source_name in enumerate(sources):
+                            url = (
+                                urls[index]
+                                if isinstance(urls, list) and index < len(urls)
+                                else ""
+                            )
+                            detail = str(source_name)
+                            if url:
+                                detail += f" · {url}"
+                            key = (path or "Historical event", detail)
+                            if key not in seen_sources:
+                                seen_sources.add(key)
+                                source_rows.append(key)
+
+                    for child_key, child_value in node.items():
+                        if child_key in {
+                            "source", "source_url", "reference_year",
+                            "retrieved_at", "sources", "source_urls",
+                        }:
+                            continue
+                        child_path = (
+                            f"{path}.{child_key}" if path else str(child_key)
+                        )
+                        _collect_sources(child_value, child_path)
+
+                elif isinstance(node, list):
+                    for index, child in enumerate(node):
+                        _collect_sources(child, f"{path}[{index}]")
+
+            _collect_sources(intelligence)
+
+            if source_rows:
+                compact_sources = source_rows[:45]
+                if len(source_rows) > len(compact_sources):
+                    compact_sources.append(
+                        (
+                            "Additional sourced fields",
+                            f"{len(source_rows) - len(compact_sources)} more "
+                            "provenance records available in the JSON export.",
+                        )
+                    )
+
+                story.extend([
+                    section_box(
+                        "Sources & Data Freshness",
+                        info_grid(compact_sources, two_pairs=False),
+                    ),
+                    Spacer(1, 3 * mm),
+                ])
+
         # Recognition is intentionally compact and secondary.
         candidates = report.get("top_candidates", [])
         candidate_summary = " | ".join(
@@ -1316,6 +1546,139 @@ def get_fresh_historical_profile(country_code: str):
     return country_info_module.fetch_country_profile(
         country_code
     )
+
+
+def _country_profile_payload(
+    country_code: str,
+    profile,
+    historical_profile,
+) -> dict[str, object]:
+    """Normalize the legacy profile once for UI, JSON and PDF."""
+    return {
+        "code": country_code.upper(),
+        "name": profile.name,
+        "capital": profile.capital,
+        "population": profile.population.value,
+        "population_year": profile.population.year,
+        "population_source": profile.population.source,
+        "currency": profile.currency,
+        "official_languages": profile.official_languages,
+        "continent": profile.continent,
+        "area_km2": profile.area_km2,
+        "overview": profile.overview,
+        "national_day": historical_profile.national_day,
+        "independence_day": historical_profile.independence_day,
+        "colonial_history": getattr(
+            historical_profile,
+            "colonial_history",
+            "Not applicable",
+        ),
+        "former_colonial_powers": getattr(
+            historical_profile,
+            "former_colonial_powers",
+            "Not applicable",
+        ),
+        "colonial_period": getattr(
+            historical_profile,
+            "colonial_period",
+            "Not applicable",
+        ),
+        "independence_leader": getattr(
+            historical_profile,
+            "independence_leader",
+            "Not applicable",
+        ),
+        "historical_context": getattr(
+            historical_profile,
+            "historical_context",
+            "No classical colonial-independence transition is documented "
+            "in the available country overview.",
+        ),
+        "national_motto": profile.national_motto,
+        "national_anthem": profile.national_anthem,
+        "region": getattr(profile, "region", "Not available"),
+        "subregion": getattr(profile, "subregion", "Not available"),
+        "demonym": getattr(profile, "demonym", "Not available"),
+        "iso_alpha3": getattr(profile, "iso_alpha3", "Not available"),
+        "timezones": getattr(profile, "timezones", "Not available"),
+        "borders": getattr(profile, "borders", "Not available"),
+        "largest_cities": getattr(profile, "largest_cities", "Not available"),
+        "international_organizations": getattr(
+            profile,
+            "international_organizations",
+            "Not available",
+        ),
+        "official_religion": getattr(
+            profile,
+            "official_religion",
+            "Not available",
+        ),
+        "highest_point": getattr(profile, "highest_point", "Not available"),
+        "lowest_point": getattr(profile, "lowest_point", "Not available"),
+        "gdp_usd": getattr(getattr(profile, "gdp", None), "value_usd", None),
+        "gdp_year": getattr(getattr(profile, "gdp", None), "year", None),
+        "gdp_source": getattr(
+            getattr(profile, "gdp", None),
+            "source",
+            "World Bank",
+        ),
+        "government_form": profile.government_form,
+        "head_of_state": profile.head_of_state,
+        "head_of_state_office": profile.head_of_state_office,
+        "head_of_government": profile.head_of_government,
+        "head_of_government_office": profile.head_of_government_office,
+        "calling_code": profile.calling_code,
+        "emergency_numbers": resolve_emergency_numbers(
+            country_code,
+            getattr(profile, "emergency_numbers", None),
+        ),
+        "internet_domain": profile.internet_domain,
+        "driving_side": profile.driving_side,
+        "latitude": profile.latitude,
+        "longitude": profile.longitude,
+    }
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def get_country_intelligence_v2(country_code: str):
+    """Build and enrich a reusable source-aware country knowledge payload."""
+    profile = get_country_profile_v2(country_code)
+    try:
+        historical_profile = get_fresh_historical_profile(country_code)
+    except Exception:
+        historical_profile = profile
+
+    payload = _country_profile_payload(
+        country_code,
+        profile,
+        historical_profile,
+    )
+    intelligence = build_from_legacy_profile(payload)
+
+    try:
+        intelligence = enrich_from_encyclopedia(
+            intelligence,
+            title=profile.name,
+        )
+    except (requests.RequestException, LookupError, ValueError):
+        # Structured facts remain available even if narrative enrichment fails.
+        pass
+
+    try:
+        intelligence.flag = enrich_flag_profile(
+            intelligence.flag,
+            profile.name,
+        )
+    except (requests.RequestException, LookupError, ValueError):
+        # A missing dedicated flag article must never hide country knowledge.
+        pass
+
+    return {
+        "profile": payload,
+        "intelligence": intelligence.to_dict(),
+        "completion": section_completion(intelligence),
+        "validation": validate_country_intelligence(intelligence),
+    }
 
 
 def build_flag_banner_html() -> str:
@@ -2010,9 +2373,162 @@ def show_result(image: Image.Image):
                     else:
                         st.write("Not available")
 
+            knowledge = get_country_intelligence_v2(decision_code)
+            intelligence = knowledge["intelligence"]
+            completion = knowledge["completion"]
+
+            st.markdown("### Country Intelligence")
+            complete_count = sum(bool(value) for value in completion.values())
+            total_count = max(len(completion), 1)
+            st.progress(complete_count / total_count)
             st.caption(
-                "Country metadata: Wikidata · Population: World Bank · "
-                "Overview: Wikipedia"
+                f"{complete_count}/{total_count} knowledge domains currently "
+                "supported by sourced data. Missing domains are never fabricated."
+            )
+
+            flag_info = intelligence.get("flag") or {}
+            with st.expander("Flag Intelligence", expanded=True):
+                symbolism = flag_info.get("symbolism") or []
+                design_origin = flag_info.get("design_origin") or []
+                flag_history = flag_info.get("historical_flags") or []
+
+                if design_origin:
+                    st.markdown("**Design & construction**")
+                    for item in design_origin:
+                        if isinstance(item, dict):
+                            st.write(item.get("value") or "Not available")
+
+                if symbolism:
+                    st.markdown("**Meaning & symbolism**")
+                    for item in symbolism:
+                        if isinstance(item, dict):
+                            st.write(item.get("value") or "Not available")
+
+                if flag_history:
+                    st.markdown("**Flag history**")
+                    for event in flag_history:
+                        if isinstance(event, dict):
+                            st.markdown(
+                                f"**{event.get('period', 'Historical period')}**"
+                            )
+                            st.write(event.get("summary") or "Not available")
+
+                if not (design_origin or symbolism or flag_history):
+                    st.info(
+                        "A dedicated sourced flag-history article was not "
+                        "available for this country."
+                    )
+
+            timeline = intelligence.get("historical_timeline") or []
+            with st.expander("Historical Journey", expanded=True):
+                if timeline:
+                    for event in timeline:
+                        period = event.get("period") or "Historical period"
+                        label = event.get("label") or "Event"
+                        st.markdown(f"**{period} — {label}**")
+                        st.write(event.get("summary") or "Not available")
+                else:
+                    st.info(
+                        "No sufficiently supported structured timeline is "
+                        "available yet for this country."
+                    )
+
+            origins = intelligence.get("origins") or []
+            with st.expander("Origins & Early History", expanded=False):
+                if origins:
+                    for event in origins:
+                        st.markdown(
+                            f"**{event.get('label', 'Early history')}**"
+                        )
+                        st.write(event.get("summary") or "Not available")
+                else:
+                    st.info(
+                        "No explicit early-history section was found in the "
+                        "current sources."
+                    )
+
+            domain_labels = [
+                ("people_society", "People & Society"),
+                ("culture", "Culture"),
+                ("economy", "Economy"),
+                ("infrastructure", "Infrastructure & Transport"),
+                ("education_science", "Education, Science & Innovation"),
+                ("environment", "Environment & Climate"),
+                ("international_relations", "International Relations"),
+            ]
+
+            for domain_key, domain_label in domain_labels:
+                section = intelligence.get(domain_key) or {}
+                context = section.get("context") if isinstance(section, dict) else None
+                value = (
+                    context.get("value")
+                    if isinstance(context, dict)
+                    else None
+                )
+                if value:
+                    with st.expander(domain_label, expanded=False):
+                        st.write(value)
+                        source = context.get("source")
+                        retrieved = context.get("retrieved_at")
+                        source_url = context.get("source_url")
+                        source_note = " · ".join(
+                            part
+                            for part in (
+                                source,
+                                f"retrieved {retrieved}" if retrieved else None,
+                            )
+                            if part
+                        )
+                        if source_url:
+                            st.markdown(
+                                f"[{source_note or 'Source'}]({source_url})"
+                            )
+                        elif source_note:
+                            st.caption(source_note)
+
+            validation = knowledge.get("validation") or []
+            if validation:
+                with st.expander("Coverage & validation notes", expanded=False):
+                    for issue in validation:
+                        st.write(f"• {issue}")
+
+            st.markdown("### Ask Flag Intelligence")
+            question = st.text_input(
+                "Ask a question about this country",
+                placeholder=(
+                    "Example: What is the capital? What happened in 1960? "
+                    "What does the flag mean?"
+                ),
+                key=f"country-question-{decision_code}",
+            )
+            if question:
+                answers = answer_country_question(
+                    question,
+                    intelligence,
+                    max_results=3,
+                )
+                if answers:
+                    for answer in answers:
+                        st.markdown(f"**{answer['label']}**")
+                        st.write(answer["value"])
+                        source_note = answer.get("source") or "Source unavailable"
+                        if answer.get("reference_year"):
+                            source_note += f" · {answer['reference_year']}"
+                        if answer.get("source_url"):
+                            st.markdown(
+                                f"[{source_note}]({answer['source_url']})"
+                            )
+                        else:
+                            st.caption(source_note)
+                else:
+                    st.info(
+                        "The current verified country record does not contain "
+                        "enough information to answer that question."
+                    )
+
+            st.caption(
+                "Structured facts: Wikidata / World Bank / REST Countries · "
+                "Educational context: Wikipedia where a matching section exists."
             )
 
         except (requests.RequestException, LookupError, ValueError) as error:
@@ -2059,90 +2575,11 @@ def show_result(image: Image.Image):
             except Exception:
                 historical_profile = profile
 
-            report["country_profile"] = {
-                "name": profile.name,
-                "capital": profile.capital,
-                "population": profile.population.value,
-                "population_year": profile.population.year,
-                "population_source": profile.population.source,
-                "currency": profile.currency,
-                "official_languages": profile.official_languages,
-                "continent": profile.continent,
-                "area_km2": profile.area_km2,
-                "overview": profile.overview,
-                "national_day": historical_profile.national_day,
-                "independence_day": historical_profile.independence_day,
-                "colonial_history": getattr(
-                    historical_profile,
-                    "colonial_history",
-                    "Not applicable",
-                ),
-                "former_colonial_powers": getattr(
-                    historical_profile,
-                    "former_colonial_powers",
-                    "Not applicable",
-                ),
-                "colonial_period": getattr(
-                    historical_profile,
-                    "colonial_period",
-                    "Not applicable",
-                ),
-                "independence_leader": getattr(
-                    historical_profile,
-                    "independence_leader",
-                    "Not applicable",
-                ),
-                "historical_context": getattr(
-                    historical_profile,
-                    "historical_context",
-                    "No classical colonial-independence transition is documented "
-                    "in the available country overview.",
-                ),
-                "national_motto": profile.national_motto,
-                "national_anthem": profile.national_anthem,
-                "region": getattr(profile, "region", "Not available"),
-                "subregion": getattr(profile, "subregion", "Not available"),
-                "demonym": getattr(profile, "demonym", "Not available"),
-                "iso_alpha3": getattr(profile, "iso_alpha3", "Not available"),
-                "timezones": getattr(profile, "timezones", "Not available"),
-                "borders": getattr(profile, "borders", "Not available"),
-                "largest_cities": getattr(profile, "largest_cities", "Not available"),
-                "international_organizations": getattr(profile, "international_organizations", "Not available"),
-                "official_religion": getattr(profile, "official_religion", "Not available"),
-                "highest_point": getattr(profile, "highest_point", "Not available"),
-                "lowest_point": getattr(profile, "lowest_point", "Not available"),
-                "gdp_usd": (
-                    getattr(getattr(profile, "gdp", None), "value_usd", None)
-                ),
-                "gdp_year": (
-                    getattr(getattr(profile, "gdp", None), "year", None)
-                ),
-                "gdp_source": (
-                    getattr(
-                        getattr(profile, "gdp", None),
-                        "source",
-                        "World Bank",
-                    )
-                ),
-                "government_form": profile.government_form,
-                "head_of_state": profile.head_of_state,
-                "head_of_state_office": profile.head_of_state_office,
-                "head_of_government": profile.head_of_government,
-                "head_of_government_office": profile.head_of_government_office,
-                "calling_code": profile.calling_code,
-                "emergency_numbers": resolve_emergency_numbers(
-                    decision_code,
-                    getattr(
-                        profile,
-                        "emergency_numbers",
-                        None,
-                    ),
-                ),
-                "internet_domain": profile.internet_domain,
-                "driving_side": profile.driving_side,
-                "latitude": profile.latitude,
-                "longitude": profile.longitude,
-            }
+            knowledge = get_country_intelligence_v2(decision_code)
+            report["country_profile"] = knowledge["profile"]
+            report["country_intelligence_v2"] = knowledge["intelligence"]
+            report["country_intelligence_completion"] = knowledge["completion"]
+            report["country_intelligence_validation"] = knowledge["validation"]
         except (requests.RequestException, LookupError, ValueError):
             pass
 
