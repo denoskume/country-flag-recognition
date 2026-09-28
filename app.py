@@ -216,56 +216,46 @@ def draw_pdf_watermark(canvas, document) -> None:
     )
 
     # ------------------------------------------------------------------
-    # Final template contact block - top right
+    # Contact is shown only on the first page; later pages use a compact
+    # document marker so educational content gets more visual space.
     # ------------------------------------------------------------------
     contact_x = right - 68 * mm
     contact_y = page_height - 23 * mm
 
-    canvas.setFillColor(colors.HexColor("#111111"))
-    canvas.setFont("Helvetica", 9.3)
-    canvas.drawString(
-        contact_x,
-        contact_y,
-        "Contact :",
-    )
+    if getattr(document, "page", 1) == 1:
+        canvas.setFillColor(colors.HexColor("#111111"))
+        canvas.setFont("Helvetica", 9.3)
+        canvas.drawString(contact_x, contact_y, "Contact")
 
-    canvas.setFont("Helvetica", 8.6)
-    canvas.setFillColor(colors.HexColor("#D9D9D9"))
-    canvas.drawString(
-        contact_x,
-        contact_y - 5.0 * mm,
-        "☎",
-    )
-    canvas.setFillColor(colors.HexColor("#111111"))
-    canvas.drawString(
-        contact_x + 6.4 * mm,
-        contact_y - 5.0 * mm,
-        "+33 (0)6 62 91 94 68",
-    )
-
-    canvas.setFillColor(colors.HexColor("#111111"))
-    canvas.setFont("Helvetica", 9.0)
-    canvas.drawString(
-        contact_x,
-        contact_y - 10.2 * mm,
-        "✉",
-    )
-    canvas.setFont("Helvetica", 8.6)
-    canvas.drawString(
-        contact_x + 6.4 * mm,
-        contact_y - 10.2 * mm,
-        "denoskume@yahoo.com",
-    )
+        canvas.setFont("Helvetica", 8.6)
+        canvas.drawString(
+            contact_x,
+            contact_y - 5.0 * mm,
+            "+33 (0)6 62 91 94 68",
+        )
+        canvas.drawString(
+            contact_x,
+            contact_y - 10.2 * mm,
+            "denoskume@yahoo.com",
+        )
+    else:
+        canvas.setFillColor(colors.HexColor("#555555"))
+        canvas.setFont("Helvetica-Bold", 8.2)
+        canvas.drawRightString(
+            right,
+            contact_y,
+            "FLAG INTELLIGENCE · COUNTRY INTELLIGENCE",
+        )
 
     # ------------------------------------------------------------------
-    # Final template footer
+    # Footer
     # ------------------------------------------------------------------
-    canvas.setFillColor(colors.HexColor("#111111"))
-    canvas.setFont("Helvetica", 9.0)
+    canvas.setFillColor(colors.HexColor("#555555"))
+    canvas.setFont("Helvetica", 7.6)
     canvas.drawCentredString(
         (left + right) / 2,
         15 * mm,
-        "© 2026 Flag Intelligence, all right reserved.",
+        f"© 2026 Flag Intelligence. All rights reserved. · Page {document.page}",
     )
 
     canvas.restoreState()
@@ -1560,6 +1550,56 @@ def get_fresh_historical_profile(country_code: str):
     )
 
 
+def _canonical_overview_text(value: object, max_chars: int = 900) -> str:
+    """Keep stable descriptive overview text and avoid duplicate live metrics."""
+    text = str(value or "").strip()
+    if not text:
+        return "Not available"
+
+    sentences = [
+        sentence.strip()
+        for sentence in re.split(r"(?<=[.!?])\\s+", " ".join(text.split()))
+        if sentence.strip()
+    ]
+    dynamic_terms = (
+        "inhabitants", "population", "gdp", "gross domestic product",
+        "head of state", "president", "prime minister",
+    )
+    stable = [
+        sentence
+        for sentence in sentences
+        if not any(term in sentence.lower() for term in dynamic_terms)
+    ]
+
+    selected = stable[:4] or sentences[:2]
+    result = " ".join(selected).strip()
+    if len(result) > max_chars:
+        result = result[:max_chars].rsplit(" ", 1)[0].rstrip() + "…"
+    return result or "Not available"
+
+
+def _learning_blocks(value: object) -> list[tuple[str, str]]:
+    """Parse concise 'Heading: summary' encyclopedia context into learning blocks."""
+    text = str(value or "").strip()
+    if not text or text == "Not available":
+        return []
+
+    blocks: list[tuple[str, str]] = []
+    for raw in re.split(r"\\n\\s*\\n", text):
+        raw = raw.strip()
+        if not raw:
+            continue
+        if ":" in raw:
+            heading, summary = raw.split(":", 1)
+        else:
+            heading, summary = "Overview", raw
+        heading = heading.strip()
+        summary = summary.strip()
+        if summary:
+            blocks.append((heading, summary))
+    return blocks
+
+
 def _country_profile_payload(
     country_code: str,
     profile,
@@ -1577,7 +1617,7 @@ def _country_profile_payload(
         "official_languages": profile.official_languages,
         "continent": profile.continent,
         "area_km2": profile.area_km2,
-        "overview": profile.overview,
+        "overview": _canonical_overview_text(profile.overview),
         "national_day": historical_profile.national_day,
         "independence_day": historical_profile.independence_day,
         "colonial_history": getattr(
@@ -1652,7 +1692,7 @@ def _country_profile_payload(
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def get_country_intelligence_v2(country_code: str):
+def get_country_intelligence_v2(\n    country_code: str,\n    similar_flags: tuple[str, ...] = (),\n):
     """Build and enrich a reusable source-aware country knowledge payload."""
     profile = get_country_profile_v2(country_code)
     try:
@@ -1680,6 +1720,7 @@ def get_country_intelligence_v2(country_code: str):
         intelligence.flag = enrich_flag_profile(
             intelligence.flag,
             profile.name,
+            similar_flags=similar_flags,
         )
     except (requests.RequestException, LookupError, ValueError):
         # A missing dedicated flag article must never hide country knowledge.
