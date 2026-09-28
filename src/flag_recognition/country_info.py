@@ -669,6 +669,8 @@ def fetch_rest_country_profile(
             "iso_alpha3": "XKX",
             "timezones": "UTC+01:00",
             "borders": "Albania, Montenegro, North Macedonia, Serbia",
+            "latitude": 42.667,
+            "longitude": 21.167,
         }
 
     response = requests.get(
@@ -676,7 +678,7 @@ def fetch_rest_country_profile(
         params={
             "fields": (
                 "region,subregion,demonyms,cca3,"
-                "timezones,borders"
+                "timezones,borders,latlng"
             )
         },
         timeout=timeout,
@@ -714,6 +716,18 @@ def fetch_rest_country_profile(
         "iso_alpha3": str(item.get("cca3") or "Not available"),
         "timezones": _unique_join(item.get("timezones") or []),
         "borders": _unique_join(border_names),
+        "latitude": (
+            float(item["latlng"][0])
+            if isinstance(item.get("latlng"), list)
+            and len(item["latlng"]) >= 2
+            else None
+        ),
+        "longitude": (
+            float(item["latlng"][1])
+            if isinstance(item.get("latlng"), list)
+            and len(item["latlng"]) >= 2
+            else None
+        ),
     }
 
 
@@ -1725,6 +1739,8 @@ def fetch_country_profile(
             "iso_alpha3": "Not available",
             "timezones": "Not available",
             "borders": "Not available",
+            "latitude": None,
+            "longitude": None,
         }
 
     try:
@@ -2030,14 +2046,14 @@ def fetch_country_profile(
             ]
         ),
         latitude=(
-            wikidata[
-                "latitude"
-            ]
+            supplemental.get("latitude")
+            if supplemental.get("latitude") is not None
+            else wikidata["latitude"]
         ),
         longitude=(
-            wikidata[
-                "longitude"
-            ]
+            supplemental.get("longitude")
+            if supplemental.get("longitude") is not None
+            else wikidata["longitude"]
         ),
         population=population,
         overview=overview,
