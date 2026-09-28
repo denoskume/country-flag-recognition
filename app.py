@@ -74,6 +74,11 @@ from flag_recognition.inference import (
     predict_robust,
 )
 from flag_recognition.taxonomy import country_name_from_code
+from flag_recognition.country_intelligence import (
+    build_from_legacy_profile,
+    section_completion,
+    validate_country_intelligence,
+)
 
 
 DISPLAY_NAME_OVERRIDES = {
@@ -2060,6 +2065,7 @@ def show_result(image: Image.Image):
                 historical_profile = profile
 
             report["country_profile"] = {
+                "code": decision_code.upper(),
                 "name": profile.name,
                 "capital": profile.capital,
                 "population": profile.population.value,
@@ -2143,6 +2149,27 @@ def show_result(image: Image.Image):
                 "latitude": profile.latitude,
                 "longitude": profile.longitude,
             }
+
+            # Build the source-aware Country Intelligence V2 payload without
+            # disrupting the current UI/PDF while the richer knowledge domains
+            # are progressively connected to verified sources.
+            intelligence = build_from_legacy_profile(
+                report["country_profile"],
+                {
+                    "recognition_status": report.get("status"),
+                    "confidence": report.get("confidence"),
+                    "top1_margin": report.get("decision_margin"),
+                    "decision_mode": report.get("decision_reason"),
+                    "top_candidates": report.get("top_candidates"),
+                },
+            )
+            report["country_intelligence_v2"] = intelligence.to_dict()
+            report["country_intelligence_completion"] = section_completion(
+                intelligence
+            )
+            report["country_intelligence_validation"] = (
+                validate_country_intelligence(intelligence)
+            )
         except (requests.RequestException, LookupError, ValueError):
             pass
 
