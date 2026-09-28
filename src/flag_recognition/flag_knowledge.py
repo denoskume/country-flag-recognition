@@ -163,6 +163,75 @@ def _fetch_flag_page_extract(
     return text, canonical
 
 
+def _fetch_flag_rest_summary(
+    country_name: str,
+    timeout: float = 12.0,
+) -> tuple[str, str]:
+    """Fetch the exact flag page through Wikimedia's REST summary endpoint."""
+    title = f"Flag_of_{country_name.replace(' ', '_')}"
+    url = (
+        "https://en.wikipedia.org/api/rest_v1/page/summary/"
+        + quote(title, safe="()_'")
+    )
+    response = requests.get(
+        url,
+        headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    text = str(payload.get("extract") or "").strip()
+    canonical = str(payload.get("title") or f"Flag of {country_name}").strip()
+    if not text:
+        raise LookupError(canonical)
+    return text, canonical
+
+
+def _flag_metadata_from_rest_summary(
+    country_name: str,
+    timeout: float = 12.0,
+) -> tuple[Evidence | None, Evidence | None, Evidence | None]:
+    article, canonical = _fetch_flag_rest_summary(
+        country_name,
+        timeout=timeout,
+    )
+    source_url = WIKIPEDIA_PAGE + quote(
+        canonical.replace(" ", "_"),
+        safe="()_-",
+    )
+    adoption = _extract_adoption(article, source_url)
+    proportion = _extract_proportion(article, source_url)
+
+    sentences = [
+        sentence.strip()
+        for sentence in re.split(
+            r"(?<=[.!?])\s+",
+            " ".join(article.split()),
+        )
+        if sentence.strip()
+    ]
+    design_sentence = next(
+        (
+            sentence
+            for sentence in sentences[:8]
+            if any(
+                token in sentence.lower()
+                for token in (
+                    "tricolour",
+                    "tricolor",
+                    "vertical",
+                    "horizontal",
+                    "flag is",
+                    "flag consists",
+                )
+            )
+        ),
+        "",
+    )
+    design = _fact(design_sentence, source_url)
+    return adoption, proportion, design
+
+
 def _flag_metadata_from_extract(
     country_name: str,
     timeout: float = 12.0,
@@ -495,6 +564,23 @@ def enrich_flag_profile(
                 fallback_proportion,
                 fallback_design,
             ) = _flag_metadata_from_extract(
+                country_name,
+                timeout=timeout,
+            )
+            adoption = adoption or fallback_adoption
+            proportion = proportion or fallback_proportion
+            if not design_origin and fallback_design is not None:
+                design_origin = (fallback_design,)
+        except (requests.RequestException, LookupError, ValueError):
+            pass
+
+    if adoption is None or proportion is None or not design_origin:
+        try:
+            (
+                fallback_adoption,
+                fallback_proportion,
+                fallback_design,
+            ) = _flag_metadata_from_rest_summary(
                 country_name,
                 timeout=timeout,
             )
