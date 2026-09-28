@@ -20,103 +20,6 @@ Both paths converge on one shared country-knowledge pipeline.
 
 ---
 
-## Demo
-
-### Demo A — Recognize a flag
-
-```text
-1. Select "Flag image"
-2. Upload a JPG / PNG / WEBP flag image
-3. Click "Process image"
-4. Review the accepted or ambiguous recognition result
-5. Explore the resolved country
-6. Ask questions with Ask Flag Intelligence
-7. Export the result as JSON or PDF
-```
-
-Example flow:
-
-```text
-Flag image
-   ↓
-Worldwide recognition model
-   ↓
-France (FR)
-   ↓
-Country profile
-   ├── Capital
-   ├── Population
-   ├── Languages
-   ├── Geography
-   ├── Government
-   └── Practical information
-   ↓
-Country Intelligence
-   ├── Flag Intelligence
-   ├── Historical Journey
-   ├── Climate & Geography
-   ├── People & Society
-   ├── Culture & Heritage
-   ├── Economy
-   ├── Transport & Energy
-   └── Education & International Relations
-   ↓
-Ask questions / Download JSON / Download PDF
-```
-
-### Demo B — Explore by country name
-
-No flag image is required.
-
-```text
-1. Select "Country name"
-2. Enter "Côte d’Ivoire"
-3. Click "Explore country"
-4. The country is resolved deterministically
-5. The same Country Intelligence experience opens
-```
-
-Other accepted examples include:
-
-```text
-France
-Japan
-South Korea
-Ivory Coast
-Côte d’Ivoire
-FR
-FRA
-CI
-XK
-```
-
-Text mode deliberately does not display a fake recognition confidence. It reports **Country selected by name** and goes directly to the shared country-intelligence pipeline.
-
-### What the demo exposes
-
-| Capability | Flag image | Country name |
-|---|:---:|:---:|
-| Country resolution | ✅ Vision model | ✅ Deterministic lookup |
-| Recognition confidence | ✅ | — |
-| Country profile | ✅ | ✅ |
-| Map & geography | ✅ | ✅ |
-| Historical journey | ✅ | ✅ |
-| Flag Intelligence | ✅ | ✅ |
-| Culture & economy | ✅ | ✅ |
-| Ask Flag Intelligence | ✅ | ✅ |
-| JSON export | ✅ | ✅ |
-| PDF report | ✅ | ✅ |
-
-Run the current demo locally:
-
-```bash
-pip install -r requirements.txt
-streamlit run app.py
-```
-
----
-
-
 ## Product goal
 
 The long-term goal is simple:
@@ -744,3 +647,10 @@ The goal is not to hide those gaps. The audit system is specifically designed to
 - image and text inputs converge on the same Country Intelligence pipeline;
 - validation should happen across the full worldwide taxonomy, not only a few example countries.
 
+---
+
+## Project ownership
+
+**Flag Intelligence is a personal project by Denos Kume.**
+
+It is not presented as an official project, product or publication of Centrale Nantes or any other academic institution.
