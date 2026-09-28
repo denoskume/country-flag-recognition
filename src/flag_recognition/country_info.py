@@ -50,7 +50,7 @@ COUNTRY_PROFILE_OVERRIDES = {
     },
     "ci": {
         "emergency_numbers": (
-            "Police: 100 | Fire: 180 | Ambulance (SAMU): 185"
+            "Police: 170 | Fire: 180 | Ambulance (SAMU): 185"
         ),
     },
 }
@@ -1128,6 +1128,32 @@ def _extract_national_day_from_overview(
     return "Not available"
 
 
+def _normalize_emergency_number_label(
+    value: str,
+    calling_code: str | None = None,
+) -> str:
+    """Normalize emergency numbers to local dialing form."""
+    normalized = str(value).strip()
+    if not normalized:
+        return normalized
+
+    digits = re.sub(r"[^0-9+]", "", normalized)
+
+    if calling_code:
+        prefix = re.sub(r"\D", "", str(calling_code))
+        if prefix:
+            for candidate in (
+                f"+{prefix}",
+                f"00{prefix}",
+                prefix,
+            ):
+                if digits.startswith(candidate):
+                    digits = digits[len(candidate):]
+                    break
+
+    return digits.lstrip("0") or digits
+
+
 def fetch_emergency_numbers(
     code: str,
     timeout: float = 12.0,
@@ -1328,6 +1354,51 @@ def fetch_emergency_numbers_fallback(
         return "No national emergency number documented"
 
     return "No national emergency number documented"
+
+
+def format_emergency_numbers(
+    emergency_numbers: str,
+    calling_code: str,
+) -> str:
+    """Remove country calling code repetition and keep service labels."""
+    value = str(emergency_numbers).strip()
+    if not value or value == "Not available":
+        return value
+
+    parts = [
+        part.strip()
+        for part in value.split("|")
+        if part.strip()
+    ]
+
+    formatted: list[str] = []
+
+    for part in parts:
+        if ":" in part:
+            label, raw_numbers = part.split(":", 1)
+            cleaned_numbers: list[str] = []
+
+            for raw in raw_numbers.split(","):
+                cleaned = _normalize_emergency_number_label(
+                    raw,
+                    calling_code,
+                )
+                if cleaned and cleaned not in cleaned_numbers:
+                    cleaned_numbers.append(cleaned)
+
+            if cleaned_numbers:
+                formatted.append(
+                    f"{label.strip()}: {', '.join(cleaned_numbers)}"
+                )
+        else:
+            cleaned = _normalize_emergency_number_label(
+                part,
+                calling_code,
+            )
+            if cleaned:
+                formatted.append(cleaned)
+
+    return " | ".join(formatted) if formatted else value
 
 
 def fetch_country_profile(
@@ -1582,6 +1653,11 @@ def fetch_country_profile(
     internet_domain = str(wikidata["internet_domain"])
     if internet_domain == "Not available":
         internet_domain = f".{normalized_code}"
+
+    emergency_numbers = format_emergency_numbers(
+        emergency_numbers,
+        str(wikidata["calling_code"]),
+    )
 
     return CountryProfile(
         code=normalized_code,
