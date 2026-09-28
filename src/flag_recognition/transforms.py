@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import random
+from io import BytesIO
+
+import numpy as np
 
 from PIL import Image, ImageDraw, ImageOps
 from torchvision import transforms
@@ -146,6 +149,164 @@ class RandomRightAngleRotation:
             expand=True,
             fillcolor=(245, 245, 245),
         )
+
+
+class RandomJPEGCompression:
+    """Simulate messaging/social-media recompression artifacts."""
+
+    def __init__(
+        self,
+        probability: float = 0.45,
+        quality_range: tuple[int, int] = (35, 92),
+    ) -> None:
+        self.probability = float(probability)
+        self.quality_range = quality_range
+
+    def __call__(self, image: Image.Image) -> Image.Image:
+        image = image.convert("RGB")
+        if random.random() > self.probability:
+            return image
+
+        buffer = BytesIO()
+        quality = random.randint(*self.quality_range)
+        image.save(buffer, format="JPEG", quality=quality)
+        buffer.seek(0)
+
+        with Image.open(buffer) as compressed:
+            compressed.load()
+            return compressed.convert("RGB").copy()
+
+
+class RandomSensorNoise:
+    """Add mild camera-like RGB noise."""
+
+    def __init__(
+        self,
+        probability: float = 0.30,
+        sigma_range: tuple[float, float] = (2.0, 10.0),
+    ) -> None:
+        self.probability = float(probability)
+        self.sigma_range = sigma_range
+
+    def __call__(self, image: Image.Image) -> Image.Image:
+        image = image.convert("RGB")
+        if random.random() > self.probability:
+            return image
+
+        array = np.asarray(image).astype(np.float32)
+        sigma = random.uniform(*self.sigma_range)
+        noise = np.random.normal(0.0, sigma, size=array.shape)
+        array = np.clip(array + noise, 0, 255).astype(np.uint8)
+        return Image.fromarray(array, mode="RGB")
+
+
+class RandomPartialOcclusion:
+    """Simulate folds, poles, objects, and partially hidden flags."""
+
+    def __init__(
+        self,
+        probability: float = 0.28,
+        max_fraction: float = 0.16,
+    ) -> None:
+        self.probability = float(probability)
+        self.max_fraction = float(max_fraction)
+
+    def __call__(self, image: Image.Image) -> Image.Image:
+        image = image.convert("RGB").copy()
+        if random.random() > self.probability:
+            return image
+
+        draw = ImageDraw.Draw(image)
+        width, height = image.size
+        occ_w = max(2, int(width * random.uniform(0.03, self.max_fraction)))
+        occ_h = max(2, int(height * random.uniform(0.03, self.max_fraction)))
+        x0 = random.randint(0, max(0, width - occ_w))
+        y0 = random.randint(0, max(0, height - occ_h))
+        fill = random.choice([
+            (245, 245, 245),
+            (40, 40, 40),
+            (120, 120, 120),
+        ])
+        draw.rectangle(
+            (x0, y0, x0 + occ_w, y0 + occ_h),
+            fill=fill,
+        )
+        return image
+
+
+def build_generalization_train_transform(image_size: int = 224):
+    """Aggressive identity-preserving augmentation for real-world robustness."""
+    return transforms.Compose(
+        [
+            RandomPresentationGeometry(
+                probability=0.90,
+                shape_probability=0.18,
+            ),
+            RandomRightAngleRotation(
+                probability=0.05,
+            ),
+            transforms.RandomRotation(
+                degrees=18,
+                fill=(245, 245, 245),
+            ),
+            transforms.RandomAffine(
+                degrees=0,
+                translate=(0.12, 0.12),
+                scale=(0.62, 1.28),
+                shear=(-12, 12, -8, 8),
+                fill=(245, 245, 245),
+            ),
+            transforms.RandomPerspective(
+                distortion_scale=0.42,
+                p=0.62,
+                fill=(245, 245, 245),
+            ),
+            RandomPartialOcclusion(
+                probability=0.28,
+                max_fraction=0.16,
+            ),
+            transforms.RandomApply(
+                [
+                    transforms.ColorJitter(
+                        brightness=0.42,
+                        contrast=0.42,
+                        saturation=0.35,
+                        hue=0.04,
+                    )
+                ],
+                p=0.82,
+            ),
+            transforms.RandomApply(
+                [
+                    transforms.GaussianBlur(
+                        kernel_size=3,
+                        sigma=(0.3, 2.2),
+                    )
+                ],
+                p=0.28,
+            ),
+            RandomJPEGCompression(
+                probability=0.45,
+                quality_range=(35, 92),
+            ),
+            RandomSensorNoise(
+                probability=0.30,
+                sigma_range=(2.0, 10.0),
+            ),
+            FitToSquare(image_size),
+            transforms.ToTensor(),
+            transforms.RandomErasing(
+                p=0.22,
+                scale=(0.015, 0.15),
+                ratio=(0.3, 3.0),
+                value="random",
+            ),
+            transforms.Normalize(
+                mean=(0.485, 0.456, 0.406),
+                std=(0.229, 0.224, 0.225),
+            ),
+        ]
+    )
 
 
 def build_train_transform(image_size: int = 224):
