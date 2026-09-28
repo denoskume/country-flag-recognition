@@ -1183,21 +1183,41 @@ def enrich_from_encyclopedia(
     else:
         history_sections = _domain_records(detailed, "history")
 
+    reference_headings = {
+        "references",
+        "bibliography",
+        "further reading",
+        "notes",
+        "sources",
+        "citations",
+        "works cited",
+        "external links",
+        "see also",
+    }
+    filtered_history_sections = [
+        section
+        for section in history_sections
+        if (
+            section.body
+            and _clean_heading(section.heading)
+            not in reference_headings
+        )
+    ]
+
     history_text = " ".join(
         f"{section.heading}. {section.body}"
-        for section in history_sections
-        if section.body
+        for section in filtered_history_sections
     )
 
     origins = record.origins or collect_origins(
-        history_sections,
+        filtered_history_sections,
         history_source_url,
     )
-    if not origins and history_sections:
+    if not origins and filtered_history_sections:
         lead = next(
             (
                 section
-                for section in history_sections
+                for section in filtered_history_sections
                 if section.heading == "overview" and section.body
             ),
             None,
@@ -1237,7 +1257,7 @@ def enrich_from_encyclopedia(
 
     if not extracted_timeline:
         fallback_events: list[TimelineEvent] = []
-        for section in history_sections:
+        for section in filtered_history_sections:
             if section.heading == "overview" or not section.body:
                 continue
             summary = _compact_body(
