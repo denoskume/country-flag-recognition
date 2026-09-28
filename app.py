@@ -830,6 +830,10 @@ def build_pdf_report(
                 ("Currency", profile.get("currency")),
                 ("Demonym", profile.get("demonym")),
                 ("Calling code", profile.get("calling_code")),
+                (
+                    "Emergency number(s)",
+                    profile.get("emergency_numbers"),
+                ),
             ],
             width_mm=REPORT_WIDTH_MM - 46.0,
         )
@@ -946,7 +950,6 @@ def build_pdf_report(
                 ("National anthem", profile.get("national_anthem")),
                 ("Official religion", profile.get("official_religion")),
                 ("Driving side", profile.get("driving_side")),
-                ("Emergency number(s)", profile.get("emergency_numbers")),
                 ("Internet domain", profile.get("internet_domain")),
             ]
         )
@@ -1224,7 +1227,7 @@ def get_deployment_threshold() -> float:
     return float(get_model().unknown_threshold)
 
 
-COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-28-v5"
+COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-28-v6"
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_country_profile_v2(
