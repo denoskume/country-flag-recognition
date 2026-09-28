@@ -6,16 +6,20 @@ import base64
 import json
 import math
 import re
+import shutil
 from io import BytesIO
 from pathlib import Path
 import sys
+import tempfile
 from time import strftime
 
 import pandas as pd
+import pydeck as pdk
 from PIL import Image, ImageDraw
 import requests
 import streamlit as st
 import yaml
+from playwright.sync_api import sync_playwright
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
@@ -308,215 +312,111 @@ def _report_filename_country(country_name: str) -> str:
     return normalized or "country"
 
 
-@st.cache_data(ttl=86400, show_spinner=False)
-def _load_natural_earth_countries() -> dict[str, object]:
-    """Load Natural Earth country boundaries for PDF locator maps."""
-    url = (
-        "https://raw.githubusercontent.com/"
-        "nvkelso/natural-earth-vector/master/geojson/"
-        "ne_110m_admin_0_countries.geojson"
+def _build_geography_deck(
+    latitude: float,
+    longitude: float,
+) -> pdk.Deck:
+    """Build the single CARTO map used by both the app and the PDF."""
+    data = pd.DataFrame(
+        [{
+            "lat": float(latitude),
+            "lon": float(longitude),
+        }]
     )
-    response = requests.get(
-        url,
-        headers={
-            "User-Agent": (
-                "Flag-Intelligence/1.0 "
-                "(educational country knowledge report)"
-            ),
-        },
-        timeout=20,
+
+    layer = pdk.Layer(
+        "ScatterplotLayer",
+        data=data,
+        get_position="[lon, lat]",
+        get_fill_color=[200, 30, 0, 160],
+        get_line_color=[200, 30, 0, 255],
+        get_radius=55000,
+        radius_min_pixels=5,
+        radius_max_pixels=8,
+        stroked=True,
+        filled=True,
+        pickable=False,
     )
-    response.raise_for_status()
-    return response.json()
+
+    view_state = pdk.ViewState(
+        latitude=float(latitude),
+        longitude=float(longitude),
+        zoom=3,
+        pitch=0,
+        bearing=0,
+    )
+
+    return pdk.Deck(
+        map_provider="carto",
+        map_style="light",
+        initial_view_state=view_state,
+        layers=[layer],
+    )
 
 
-def _build_location_map_image(
+def _render_geography_deck_png(
     latitude: float | None,
     longitude: float | None,
-    area_km2: float | None = None,
-    country_name: str = "Country",
-    capital: str = "Not available",
-    country_code: str = "",
-) -> Image.Image | None:
-    """Render the single locator map used by both the app and the PDF."""
+) -> bytes | None:
+    """Render the exact app CARTO/PyDeck map to PNG for the PDF."""
     if latitude is None or longitude is None:
         return None
 
-    try:
-        geojson = _load_natural_earth_countries()
-    except (
-        requests.RequestException,
-        ValueError,
-    ):
+    chromium = (
+        shutil.which("chromium")
+        or shutil.which("chromium-browser")
+        or shutil.which("google-chrome")
+    )
+    if chromium is None:
         return None
 
-    width = 1000
-    height = 520
-    canvas = Image.new("RGB", (width, height), "#F8FAFC")
-    draw = ImageDraw.Draw(canvas)
+    deck = _build_geography_deck(
+        float(latitude),
+        float(longitude),
+    )
 
-    lat = float(latitude)
-    lon = float(longitude)
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            html_path = tmp_path / "geography_map.html"
+            png_path = tmp_path / "geography_map.png"
 
-    if area_km2 is None:
-        lon_span, lat_span = 55.0, 32.0
-    elif area_km2 < 2_000:
-        lon_span, lat_span = 18.0, 12.0
-    elif area_km2 < 50_000:
-        lon_span, lat_span = 26.0, 18.0
-    elif area_km2 < 500_000:
-        lon_span, lat_span = 38.0, 24.0
-    elif area_km2 < 2_000_000:
-        lon_span, lat_span = 55.0, 34.0
-    else:
-        lon_span, lat_span = 75.0, 46.0
+            deck.to_html(
+                str(html_path),
+                open_browser=False,
+                notebook_display=False,
+            )
 
-    lon_min = max(-180.0, lon - lon_span / 2)
-    lon_max = min(180.0, lon + lon_span / 2)
-    lat_min = max(-60.0, lat - lat_span / 2)
-    lat_max = min(85.0, lat + lat_span / 2)
-
-    def project(point_lon: float, point_lat: float) -> tuple[int, int]:
-        x = int((point_lon - lon_min) / max(lon_max - lon_min, 1e-9) * width)
-        y = int((lat_max - point_lat) / max(lat_max - lat_min, 1e-9) * height)
-        return x, y
-
-    target_code = str(country_code).upper().strip()
-    target_found = False
-
-    def feature_iso2(properties: dict[str, object]) -> str:
-        for key in ("ISO_A2", "ISO_A2_EH", "POSTAL"):
-            value = str(properties.get(key) or "").upper()
-            if value and value != "-99":
-                return value
-        return ""
-
-    def ring_is_visible(ring: list[list[float]]) -> bool:
-        if not ring:
-            return False
-        ring_lons = [float(p[0]) for p in ring if len(p) >= 2]
-        ring_lats = [float(p[1]) for p in ring if len(p) >= 2]
-        if not ring_lons or not ring_lats:
-            return False
-        return not (
-            max(ring_lons) < lon_min
-            or min(ring_lons) > lon_max
-            or max(ring_lats) < lat_min
-            or min(ring_lats) > lat_max
-        )
-
-    def draw_ring(
-        ring: list[list[float]],
-        *,
-        fill: str,
-        outline: str,
-        line_width: int,
-    ) -> None:
-        if not ring_is_visible(ring):
-            return
-        points = [
-            project(float(point[0]), float(point[1]))
-            for point in ring
-            if len(point) >= 2
-        ]
-        if len(points) >= 3:
-            draw.polygon(points, fill=fill, outline=outline)
-            if line_width > 1:
-                draw.line(
-                    points + [points[0]],
-                    fill=outline,
-                    width=line_width,
-                    joint="curve",
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch(
+                    executable_path=chromium,
+                    headless=True,
+                    args=[
+                        "--no-sandbox",
+                        "--disable-dev-shm-usage",
+                    ],
                 )
-
-    features = geojson.get("features", [])
-    for feature in features:
-        geometry = feature.get("geometry") or {}
-        properties = feature.get("properties") or {}
-        geometry_type = geometry.get("type")
-        coordinates_data = geometry.get("coordinates") or []
-
-        iso2 = feature_iso2(properties)
-        is_target = bool(target_code and iso2 == target_code)
-        if is_target:
-            target_found = True
-
-        fill = "#E11D2E" if is_target else "#E5E7EB"
-        outline = "#991B1B" if is_target else "#9CA3AF"
-        line_width = 3 if is_target else 1
-
-        if geometry_type == "Polygon":
-            polygons = [coordinates_data]
-        elif geometry_type == "MultiPolygon":
-            polygons = coordinates_data
-        else:
-            continue
-
-        for polygon in polygons:
-            if polygon:
-                draw_ring(
-                    polygon[0],
-                    fill=fill,
-                    outline=outline,
-                    line_width=line_width,
+                page = browser.new_page(
+                    viewport={
+                        "width": 1100,
+                        "height": 650,
+                    }
                 )
+                page.goto(
+                    html_path.as_uri(),
+                    wait_until="domcontentloaded",
+                )
+                page.wait_for_timeout(4500)
+                page.screenshot(
+                    path=str(png_path),
+                    full_page=False,
+                )
+                browser.close()
 
-    marker_x, marker_y = project(lon, lat)
-    draw.ellipse(
-        (marker_x - 10, marker_y - 10, marker_x + 10, marker_y + 10),
-        fill="#FFFFFF",
-        outline="#FFFFFF",
-        width=3,
-    )
-    draw.ellipse(
-        (marker_x - 7, marker_y - 7, marker_x + 7, marker_y + 7),
-        fill="#E11D2E",
-        outline="#991B1B",
-        width=2,
-    )
+            return png_path.read_bytes()
 
-    draw.rounded_rectangle(
-        (18, 16, 375, 92),
-        radius=10,
-        fill="#FFFFFF",
-        outline="#CBD5E1",
-        width=1,
-    )
-    draw.text((32, 28), str(country_name), fill="#111827")
-    draw.text(
-        (32, 50),
-        (
-            f"Capital: {capital}"
-            if capital not in ("", "Not available", None)
-            else "Capital: Not available"
-        ),
-        fill="#374151",
-    )
-    draw.text(
-        (32, 70),
-        f"Coordinates: {lat:.3f}, {lon:.3f}",
-        fill="#374151",
-    )
-
-    legend_y = height - 37
-    draw.rectangle(
-        (18, legend_y, 290, height - 10),
-        fill="#FFFFFF",
-        outline="#E5E7EB",
-        width=1,
-    )
-    draw.rectangle(
-        (28, legend_y + 8, 44, legend_y + 21),
-        fill="#E11D2E",
-        outline="#991B1B",
-    )
-    draw.text(
-        (52, legend_y + 7),
-        "Recognized country" if target_found else "Recognized location",
-        fill="#374151",
-    )
-
-    return canvas
+    except Exception:
+        return None
 
 
 def _build_pdf_location_map(
@@ -527,26 +427,18 @@ def _build_pdf_location_map(
     capital: str = "Not available",
     country_code: str = "",
 ) -> PDFImage | None:
-    """Convert the shared app geography map into a ReportLab image."""
-    map_image = _build_location_map_image(
+    """Convert the exact app geography map into a ReportLab image."""
+    map_bytes = _render_geography_deck_png(
         latitude,
         longitude,
-        area_km2,
-        country_name=country_name,
-        capital=capital,
-        country_code=country_code,
     )
-    if map_image is None:
+    if map_bytes is None:
         return None
 
-    map_buffer = BytesIO()
-    map_image.save(map_buffer, format="JPEG", quality=92, optimize=False)
-    map_buffer.seek(0)
-
-    pdf_map = PDFImage(map_buffer)
+    pdf_map = PDFImage(BytesIO(map_bytes))
     pdf_map._restrictSize(
         (PDF_CONTENT_WIDTH_MM - 10.0) * mm,
-        66 * mm,
+        72 * mm,
     )
     return pdf_map
 
@@ -1865,25 +1757,19 @@ def show_result(image: Image.Image):
                         profile.latitude is not None
                         and profile.longitude is not None
                     ):
-                        geography_map = _build_location_map_image(
+                        geography_deck = _build_geography_deck(
                             profile.latitude,
                             profile.longitude,
-                            profile.area_km2,
-                            country_name=country,
-                            capital=profile.capital,
-                            country_code=decision_code,
                         )
-                        if geography_map is not None:
-                            st.image(
-                                geography_map,
-                                use_container_width=True,
-                            )
-                        else:
-                            st.info(
-                                "Geographic map is temporarily unavailable."
-                            )
+                        st.pydeck_chart(
+                            geography_deck,
+                            use_container_width=True,
+                            height=500,
+                        )
                     else:
-                        st.info("Geographic coordinates are not available.")
+                        st.info(
+                            "Geographic coordinates are not available."
+                        )
 
                 with geo_right:
                     st.markdown("**Continent**")
