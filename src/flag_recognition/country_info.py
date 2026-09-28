@@ -1081,13 +1081,13 @@ def _extract_national_day_from_overview(
     )
 
     patterns = [
-        rf"(?:independence|independent)[^.{{0,120}}]*?"
+        rf"(?:independence|independent)[^.]{0,120}?"
         rf"{month_pattern}\s+(\d{{1,2}})",
-        rf"{month_pattern}\s+(\d{{1,2}})[^.{{0,120}}]*?"
+        rf"{month_pattern}\s+(\d{{1,2}})[^.]{0,120}?"
         r"(?:independence|independent)",
-        rf"(?:national day|republic day|constitution day)[^.{{0,100}}]*?"
+        rf"(?:national day|republic day|constitution day)[^.]{0,100}?"
         rf"{month_pattern}\s+(\d{{1,2}})",
-        rf"{month_pattern}\s+(\d{{1,2}})[^.{{0,100}}]*?"
+        rf"{month_pattern}\s+(\d{{1,2}})[^.]{0,100}?"
         r"(?:national day|republic day|constitution day)",
     ]
 
