@@ -775,6 +775,31 @@ def _topic_sections(
     )
 
 
+def _dedicated_topic_sections(
+    country_name: str,
+    topic: str,
+    *,
+    timeout: float,
+) -> tuple[list[ArticleSection], str]:
+    """Return a dedicated topic article only; never substitute general country text."""
+    article = fetch_topic_article(
+        country_name,
+        topic,
+        timeout=timeout,
+    )
+    if article is None:
+        return [], ""
+
+    text, title = article
+    return (
+        split_article_sections_detailed(text),
+        WIKIPEDIA_PAGE + quote(
+            title.replace(" ", "_"),
+            safe="()_-",
+        ),
+    )
+
+
 def enrich_from_encyclopedia(
     record: CountryIntelligence,
     *,
@@ -1024,11 +1049,9 @@ def enrich_from_encyclopedia(
     )
 
     # Transport article improves ports, airports, road/rail information.
-    transport_sections, transport_url = _topic_sections(
+    transport_sections, transport_url = _dedicated_topic_sections(
         canonical_title,
         "Transport",
-        detailed,
-        source_url,
         timeout=timeout,
     )
     _set_strict_context(
@@ -1040,11 +1063,9 @@ def enrich_from_encyclopedia(
         max_chars=2200,
         max_blocks=6,
     )
-    energy_sections, energy_url = _topic_sections(
+    energy_sections, energy_url = _dedicated_topic_sections(
         canonical_title,
         "Energy",
-        detailed,
-        source_url,
         timeout=timeout,
     )
     energy_text = collect_strict_domain_text(
@@ -1074,20 +1095,11 @@ def enrich_from_encyclopedia(
 
     # Dedicated geography/economy articles usually contain the physical
     # details absent from the general country article.
-    geography_article = fetch_topic_article(
+    geography_sections, geography_source_url = _dedicated_topic_sections(
         canonical_title,
         "Geography",
         timeout=timeout,
     )
-    geography_sections = detailed
-    geography_source_url = source_url
-    if geography_article is not None:
-        geography_text, geography_title = geography_article
-        geography_sections = split_article_sections_detailed(geography_text)
-        geography_source_url = WIKIPEDIA_PAGE + quote(
-            geography_title.replace(" ", "_"),
-            safe="()_-",
-        )
 
     physical_domains = {
         "climate_seasons": ("climate_seasons", record.environment),
@@ -1108,31 +1120,26 @@ def enrich_from_encyclopedia(
 
 
     # Keep a concise general physical-geography context as a fallback.
-    environment_text = collect_domain_text_detailed(
-        geography_sections,
-        "geography",
-        max_chars=1600,
-        max_blocks=4,
-    )
-    environment_item = _domain_evidence(
-        environment_text,
-        geography_source_url,
-    )
-    if environment_item is not None:
-        record.environment.setdefault("context", environment_item)
+    if geography_sections and geography_source_url:
+        environment_text = collect_domain_text_detailed(
+            geography_sections,
+            "geography",
+            max_chars=1600,
+            max_blocks=4,
+        )
+        environment_item = _domain_evidence(
+            environment_text,
+            geography_source_url,
+        )
+        if environment_item is not None:
+            record.environment["context"] = environment_item
 
-    economy_article = fetch_topic_article(
+    economy_sections, economy_source_url = _dedicated_topic_sections(
         canonical_title,
         "Economy",
         timeout=timeout,
     )
-    if economy_article is not None:
-        economy_text, economy_title = economy_article
-        economy_sections = split_article_sections_detailed(economy_text)
-        economy_source_url = WIKIPEDIA_PAGE + quote(
-            economy_title.replace(" ", "_"),
-            safe="()_-",
-        )
+    if economy_sections and economy_source_url:
         _set_strict_context(
             record.economy,
             "economic_drivers",
