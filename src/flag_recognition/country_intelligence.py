@@ -198,7 +198,7 @@ def build_from_legacy_profile(
     the current classifier, Streamlit UI, or PDF generation.
     """
 
-    code = str(profile.get("code") or "").upper()
+    code = str(profile.get("code") or profile.get("country_code") or "").upper()
     name = str(profile.get("name") or "Unknown country")
     item = CountryIntelligence(code=code, name=name)
 
@@ -319,7 +319,7 @@ def build_from_legacy_profile(
     _add(
         item.economy,
         "gdp_current_usd",
-        profile.get("gdp_value_usd"),
+        profile.get("gdp_value_usd", profile.get("gdp_usd")),
         profile.get("gdp_source") or "World Bank",
         reference_year=str(gdp_year) if gdp_year else None,
     )
