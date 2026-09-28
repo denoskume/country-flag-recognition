@@ -5,6 +5,7 @@ from flag_recognition.country_knowledge import (
     collect_strict_domain_text,
     fetch_topic_article,
     _infobox_field,
+    _heritage_sites_from_wikitext,
     collect_domain_text_detailed,
     collect_origins,
     extract_timeline,
@@ -481,3 +482,50 @@ The climate is hot and humid with dry and rainy seasons.
     assert "rainy seasons" in collect_strict_domain_text(
         sections, "climate_seasons"
     )
+
+
+def test_heritage_extractor_returns_concrete_country_sites(monkeypatch):
+    import flag_recognition.country_knowledge as module
+
+    monkeypatch.setattr(
+        module,
+        "fetch_topic_article",
+        lambda *args, **kwargs: (
+            "article",
+            "List of World Heritage Sites in Côte d'Ivoire",
+        ),
+    )
+    monkeypatch.setattr(
+        module,
+        "_fetch_topic_wikitext",
+        lambda *args, **kwargs: """
+== List of sites ==
+{| class="wikitable"
+|-
+! scope="row" | [[Mount Nimba Strict Nature Reserve]]
+| Natural
+|-
+! scope="row" | [[Taï National Park]]
+| Natural
+|-
+! scope="row" | [[Comoé National Park]]
+| Natural
+|-
+! scope="row" | [[Historic Town of Grand-Bassam]]
+| Cultural
+|-
+! scope="row" | [[Sudanese style mosques in northern Côte d’Ivoire]]
+| Cultural
+|}
+""",
+    )
+
+    value, _ = _heritage_sites_from_wikitext(
+        ("Côte d'Ivoire", "Ivory Coast"),
+    )
+
+    assert "Mount Nimba Strict Nature Reserve" in value
+    assert "Taï National Park" in value
+    assert "Comoé National Park" in value
+    assert "Historic Town of Grand-Bassam" in value
+    assert "Sudanese style mosques" in value
