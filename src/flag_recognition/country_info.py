@@ -1727,24 +1727,19 @@ def fetch_country_profile(
         str(country_dates["independence_day"]),
     )
 
-    independence_day = str(country_dates["independence_day"])
-    if independence_day == "Not available":
-        independence_day = str(
-            overrides.get(
-                "independence_day",
-                independence_day,
-            )
+    independence_day = str(
+        overrides.get(
+            "independence_day",
+            country_dates["independence_day"],
         )
+    )
 
-    national_day = str(country_dates["national_day"])
-
-    if national_day == "Not available":
-        national_day = str(
-            overrides.get(
-                "national_day",
-                national_day,
-            )
+    national_day = str(
+        overrides.get(
+            "national_day",
+            country_dates["national_day"],
         )
+    )
 
     if national_day == "Not available":
         national_day = _national_day_from_independence(
@@ -1789,6 +1784,37 @@ def fetch_country_profile(
             structured_history["historical_context"],
         )
     )
+
+    # Historical coherence guard: a verified sovereignty date/power must
+    # never coexist with generic "not applicable" placeholders.
+    if (
+        independence_day not in ("Not available", "Not applicable")
+        and national_day in (
+            "Not available",
+            "No single official national day documented",
+        )
+    ):
+        inferred_day = _national_day_from_independence(
+            independence_day
+        )
+        if inferred_day != "Not available":
+            national_day = inferred_day
+
+    if (
+        former_colonial_powers not in ("Not available", "Not applicable")
+        and colonial_period == "Not applicable"
+    ):
+        colonial_period = "Colonial rule documented"
+
+    if (
+        independence_day not in ("Not available", "Not applicable")
+        and historical_context.startswith(
+            "No classical colonial-independence transition"
+        )
+    ):
+        historical_context = (
+            f"Sovereignty/independence documented on {independence_day}."
+        )
 
     national_motto = str(wikidata["national_motto"])
     if national_motto == "Not available":
