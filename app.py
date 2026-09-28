@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 from io import BytesIO
@@ -1110,8 +1111,9 @@ st.markdown(
             background: #fafbfc;
         }
 
-        .preview-placeholder {
-            min-height: 118px;
+        .preview-fixed {
+            width: 189px;
+            height: 151px;
             border: 1.5px dashed #c2cad6;
             border-radius: 14px;
             background: #fafbfc;
@@ -1122,7 +1124,17 @@ st.markdown(
             font-size: .78rem;
             font-weight: 700;
             text-align: center;
-            padding: .8rem;
+            padding: 8px;
+            box-sizing: border-box;
+            overflow: hidden;
+            margin: 0 auto;
+        }
+
+        .preview-fixed img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
         }
 
         div[data-testid="stFileUploaderDropzone"]:hover {
@@ -1209,6 +1221,28 @@ st.markdown(
 )
 
 
+def render_fixed_upload_preview(
+    image: Image.Image | None,
+) -> None:
+    """Render a fixed 5 cm × 4 cm preview area without layout shift."""
+    if image is None:
+        inner = "Image preview"
+    else:
+        buffer = BytesIO()
+        preview = image.copy().convert("RGB")
+        preview.save(buffer, format="JPEG", quality=90)
+        encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+        inner = (
+            f'<img src="data:image/jpeg;base64,{encoded}" '
+            'alt="Image preview">'
+        )
+
+    st.markdown(
+        f'<div class="preview-fixed">{inner}</div>',
+        unsafe_allow_html=True,
+    )
+
+
 if not MODEL_PATH.is_file():
     st.error(f"Model checkpoint not found: {MODEL_PATH}")
     st.stop()
@@ -1237,12 +1271,8 @@ with st.container(border=True):
     with preview_col:
         if uploaded_file is not None:
             image = Image.open(uploaded_file).convert("RGB")
-            st.image(image, use_container_width=True)
-        else:
-            st.markdown(
-                '<div class="preview-placeholder">Image preview</div>',
-                unsafe_allow_html=True,
-            )
+
+        render_fixed_upload_preview(image)
 
     process = st.button(
         "Process image",
