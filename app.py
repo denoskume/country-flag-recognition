@@ -81,6 +81,7 @@ from flag_recognition.country_intelligence import (
 )
 from flag_recognition.country_knowledge import enrich_from_encyclopedia
 from flag_recognition.flag_knowledge import enrich_flag_profile
+from flag_recognition.learning import answer_country_question
 
 
 DISPLAY_NAME_OVERRIDES = {
@@ -2411,6 +2412,40 @@ def show_result(image: Image.Image):
                 with st.expander("Coverage & validation notes", expanded=False):
                     for issue in validation:
                         st.write(f"• {issue}")
+
+            st.markdown("### Ask Flag Intelligence")
+            question = st.text_input(
+                "Ask a question about this country",
+                placeholder=(
+                    "Example: What is the capital? What happened in 1960? "
+                    "What does the flag mean?"
+                ),
+                key=f"country-question-{decision_code}",
+            )
+            if question:
+                answers = answer_country_question(
+                    question,
+                    intelligence,
+                    max_results=3,
+                )
+                if answers:
+                    for answer in answers:
+                        st.markdown(f"**{answer['label']}**")
+                        st.write(answer["value"])
+                        source_note = answer.get("source") or "Source unavailable"
+                        if answer.get("reference_year"):
+                            source_note += f" · {answer['reference_year']}"
+                        if answer.get("source_url"):
+                            st.markdown(
+                                f"[{source_note}]({answer['source_url']})"
+                            )
+                        else:
+                            st.caption(source_note)
+                else:
+                    st.info(
+                        "The current verified country record does not contain "
+                        "enough information to answer that question."
+                    )
 
             st.caption(
                 "Structured facts: Wikidata / World Bank / REST Countries · "
