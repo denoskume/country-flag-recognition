@@ -877,12 +877,51 @@ def enrich_from_encyclopedia(
         history_source_url,
     )
 
+    if not extracted_timeline:
+        fallback_events: list[TimelineEvent] = []
+        for section in history_sections:
+            if section.heading == "overview" or not section.body:
+                continue
+            summary = _compact_body(
+                section.heading,
+                section.body,
+                max_sentences=2,
+                max_chars=700,
+            )
+            if not summary:
+                continue
+            year_match = _DATE_TOKEN.search(summary)
+            period = (
+                year_match.group("year")
+                if year_match is not None
+                else section.heading
+            )
+            fallback_events.append(
+                TimelineEvent(
+                    label=section.heading,
+                    period=period,
+                    summary=summary,
+                    sources=("Wikipedia",),
+                    source_urls=(history_source_url,),
+                    confidence=0.70,
+                )
+            )
+            if len(fallback_events) >= 12:
+                break
+        if fallback_events:
+            extracted_timeline = tuple(fallback_events)
+
     legacy_only = (
         len(timeline) == 1
         and timeline[0].label == "Legacy historical context"
     )
     if extracted_timeline and (not timeline or legacy_only):
         timeline = extracted_timeline
+
+    # Commit core history immediately. All later enrichments are optional and
+    # must never make a valid History article disappear from the final record.
+    record.origins = origins
+    record.historical_timeline = timeline
 
     mappings = {
         "geography": record.geography,
