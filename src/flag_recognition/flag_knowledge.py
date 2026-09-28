@@ -21,15 +21,13 @@ def _get_with_retry(
     for attempt in range(attempts):
         try:
             response = requests.get(url, **kwargs)
-            status_code = getattr(response, "status_code", 200)
-            if status_code not in (429, 500, 502, 503, 504):
+            if response.status_code not in (429, 500, 502, 503, 504):
                 return response
 
             if attempt >= attempts - 1:
                 return response
 
-            headers = getattr(response, "headers", {}) or {}
-            retry_after = headers.get("Retry-After")
+            retry_after = response.headers.get("Retry-After")
             try:
                 delay = float(retry_after) if retry_after else backoff * (2 ** attempt)
             except (TypeError, ValueError):
@@ -174,6 +172,14 @@ def _infobox_value(wikitext: str, field: str) -> str:
             break
 
     value = "\n".join(line for line in lines if line).strip()
+    value = re.sub(
+        r"\{\{\s*(?:plainlist|ubl|unbulleted list)\s*\|",
+        "",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = value.replace("\n*", "; ").replace("\n", " ")
+    value = re.sub(r"\}\}\s*$", "", value).strip()
 
     start_date = re.fullmatch(
         r"\{\{Start date(?: and age)?\|(\d{4})\|(\d{1,2})\|(\d{1,2})(?:\|[^{}]*)?\}\}",
@@ -188,15 +194,6 @@ def _infobox_value(wikitext: str, field: str) -> str:
         )
         if 1 <= month <= 12:
             return f"{day} {month_names[month - 1]} {year}"
-
-    value = re.sub(
-        r"\{\{\s*(?:plainlist|ubl|unbulleted list)\s*\|",
-        "",
-        value,
-        flags=re.IGNORECASE,
-    )
-    value = value.replace("\n*", "; ").replace("\n", " ")
-    value = re.sub(r"\}\}\s*$", "", value).strip()
 
     # Remove common wiki markup while preserving the factual text.
     value = re.sub(r"<ref[^>]*>.*?</ref>", "", value, flags=re.DOTALL)
