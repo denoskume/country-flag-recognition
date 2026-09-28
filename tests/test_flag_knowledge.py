@@ -154,3 +154,16 @@ def test_flag_rest_summary_fallback_extracts_core_metadata(monkeypatch):
     assert proportion.value == "2:3"
     assert design is not None
     assert "vertical tricolour" in design.value
+
+
+def test_flag_start_date_template_is_normalized():
+    wikitext = """
+{{Infobox flag
+| adoption = {{Start date and age|1959|12|3|df=yes}}
+}}
+"""
+
+    assert (
+        _infobox_value(wikitext, "adoption")
+        == "3 December 1959"
+    )
