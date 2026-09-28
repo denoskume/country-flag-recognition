@@ -167,3 +167,18 @@ def test_flag_start_date_template_is_normalized():
         _infobox_value(wikitext, "adoption")
         == "3 December 1959"
     )
+
+
+def test_multiline_flag_infobox_design_is_supported():
+    wikitext = """
+{{Infobox flag
+| proportion = 2:3
+| design = {{plainlist|
+* Vertical tricolour
+* Orange, white and green
+}}
+}}
+"""
+    design = _infobox_value(wikitext, "design")
+    assert "Vertical tricolour" in design
+    assert "Orange, white and green" in design
