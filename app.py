@@ -2145,7 +2145,190 @@ st.markdown(
                 padding: 8px;
             }
         }
-    </style>
+    
+        .site-shell {
+            margin: 0 0 0.75rem 0;
+            border-left: 1px solid #d9e0e8;
+            border-right: 1px solid #d9e0e8;
+            background: #fff;
+        }
+
+        .utility-bar {
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+            background: #0b2e55;
+            border-bottom: 1px solid #0b2e55;
+        }
+
+        .utility-spacer { flex: 1; }
+
+        .utility-nav {
+            display: flex;
+            align-items: stretch;
+            min-height: 40px;
+        }
+
+        .utility-link {
+            display: flex;
+            align-items: center;
+            padding: 0 14px;
+            color: #fff !important;
+            font-size: .74rem;
+            font-weight: 600;
+            text-decoration: none !important;
+            border-left: 1px solid rgba(255,255,255,.18);
+        }
+
+        .utility-link:hover,
+        .utility-link.is-active {
+            background: rgba(255,255,255,.1);
+        }
+
+        .main-nav {
+            min-height: 72px;
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            align-items: stretch;
+            border-bottom: 1px solid #d7dee8;
+        }
+
+        .site-brand {
+            display: flex;
+            align-items: center;
+            gap: .8rem;
+            padding: 0 22px;
+            text-decoration: none !important;
+            border-right: 1px solid #e3e8ef;
+        }
+
+        .primary-nav {
+            display: flex;
+            align-items: stretch;
+        }
+
+        .primary-link {
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            color: #0b2e55 !important;
+            font-size: .95rem;
+            font-weight: 760;
+            text-decoration: none !important;
+            border-bottom: 3px solid transparent;
+        }
+
+        .primary-link:hover {
+            background: #f7f9fc;
+            border-bottom-color: #f1a400;
+        }
+
+        .primary-link.is-active {
+            border-bottom-color: #f1a400;
+            background: #fbfcfe;
+        }
+
+        .breadcrumb a {
+            color: #0b2e55 !important;
+            text-decoration: underline;
+            text-underline-offset: 2px;
+        }
+
+        .local-nav {
+            border-top: 1px solid #cfd7e3;
+            margin-top: .15rem;
+        }
+
+        .local-nav a {
+            position: relative;
+            display: block;
+            padding: .72rem .65rem .72rem 1rem;
+            border-bottom: 1px solid #e7ebf0;
+            color: #143659 !important;
+            text-decoration: none !important;
+            font-size: .86rem;
+            font-weight: 650;
+        }
+
+        .local-nav a::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            top: 16px;
+            bottom: 16px;
+            width: 2px;
+            background: #f1a400;
+        }
+
+        .local-nav a:hover,
+        .local-nav a.is-active {
+            background: #f7f9fc;
+            color: #001f3f !important;
+        }
+
+        .local-nav a.is-active {
+            font-weight: 800;
+        }
+
+        .page-frame {
+            border: 1px solid #d9e0e8;
+            background: #fff;
+            padding: 1.8rem 2rem 2rem;
+        }
+
+        .content-title {
+            font-size: 2rem;
+            line-height: 1.15;
+            font-weight: 430;
+        }
+
+        .content-subtitle {
+            max-width: 900px;
+        }
+
+        .section-heading {
+            color: #0b2e55;
+            font-size: 1.35rem;
+            font-weight: 700;
+            padding-bottom: .45rem;
+            border-bottom: 2px solid #0b2e55;
+            margin: .2rem 0 1rem;
+        }
+
+        .section-heading span {
+            color: #f1a400;
+        }
+
+        @media (max-width: 850px) {
+            .utility-nav {
+                overflow-x: auto;
+            }
+
+            .main-nav {
+                grid-template-columns: 1fr;
+            }
+
+            .site-brand {
+                min-height: 68px;
+                border-right: 0;
+                border-bottom: 1px solid #e3e8ef;
+            }
+
+            .primary-nav {
+                overflow-x: auto;
+            }
+
+            .primary-link {
+                padding: 0 16px;
+                min-height: 52px;
+                white-space: nowrap;
+            }
+
+            .header-meta {
+                display: none;
+            }
+        }
+</style>
     """,
     unsafe_allow_html=True,
 )
@@ -2225,6 +2408,91 @@ def evaluate_production_decision(
     return False, margin, "ambiguous"
 
 
+def _query_value(name: str, default: str = "") -> str:
+    value = st.query_params.get(name, default)
+    if isinstance(value, list):
+        return str(value[0]) if value else default
+    return str(value or default)
+
+
+def _nav_href(page: str, **params: str) -> str:
+    from urllib.parse import urlencode
+
+    payload = {"page": page}
+    payload.update({
+        key: value
+        for key, value in params.items()
+        if value not in (None, "")
+    })
+    return "?" + urlencode(payload)
+
+
+def _active_class(current: str, target: str) -> str:
+    return "is-active" if current == target else ""
+
+
+def render_site_navigation(current_page: str) -> None:
+    """Render a two-level public-site navigation bar."""
+    top_links = (
+        ("Country Explorer", "explore"),
+        ("Methodology", "about"),
+        ("Worldwide Audit", "audit"),
+        ("About", "about"),
+    )
+    primary_links = (
+        ("Recognize", "recognize"),
+        ("Countries", "explore"),
+        ("Learn", "learn"),
+        ("Reports", "reports"),
+    )
+
+    utility = "".join(
+        f'<a class="utility-link {_active_class(current_page, page)}" '
+        f'href="{_nav_href(page)}">{label}</a>'
+        for label, page in top_links
+    )
+    primary = "".join(
+        f'<a class="primary-link {_active_class(current_page, page)}" '
+        f'href="{_nav_href(page)}">{label}</a>'
+        for label, page in primary_links
+    )
+
+    st.markdown(
+        f"""
+        <div class="site-shell">
+          <div class="utility-bar">
+            <div class="utility-spacer"></div>
+            <nav class="utility-nav">{utility}</nav>
+          </div>
+          <div class="main-nav">
+            <a class="site-brand" href="{_nav_href('home')}">
+              <div class="brand-mark">FI</div>
+              <div class="brand-copy">
+                <div class="brand-name">Flag Intelligence</div>
+                <div class="brand-tagline">Worldwide country intelligence</div>
+              </div>
+            </a>
+            <nav class="primary-nav">{primary}</nav>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_breadcrumb(items: list[tuple[str, str | None]]) -> None:
+    chunks = []
+    for label, href in items:
+        if href:
+            chunks.append(f'<a href="{href}">{label}</a>')
+        else:
+            chunks.append(f"<strong>{label}</strong>")
+    st.markdown(
+        '<div class="breadcrumb">' + " / ".join(chunks) + "</div>",
+        unsafe_allow_html=True,
+    )
+
+
 bundle = None
 deployment_threshold = None
 image = None
@@ -2233,66 +2501,39 @@ text_process = False
 typed_country = ""
 direct_selected_code = None
 
-if "primary_page" not in st.session_state:
-    st.session_state.primary_page = "Home"
-
-st.markdown(
-    build_product_header_html(),
-    unsafe_allow_html=True,
+page_aliases = {
+    "home": "home",
+    "recognize": "recognize",
+    "explore": "explore",
+    "countries": "explore",
+    "about": "about",
+    "audit": "audit",
+    "learn": "learn",
+    "reports": "reports",
+    "country": "country",
+}
+active_page = page_aliases.get(
+    _query_value("page", "home").lower(),
+    "home",
 )
 
-nav_cols = st.columns([1.0, 1.15, 1.2, 1.0, 3.4], gap="small")
-nav_items = (
-    ("Home", nav_cols[0]),
-    ("Recognize", nav_cols[1]),
-    ("Explore Countries", nav_cols[2]),
-    ("About", nav_cols[3]),
-)
-for label, column in nav_items:
-    with column:
-        if st.button(
-            label,
-            key=f"nav-{label}",
-            use_container_width=True,
-            type=(
-                "primary"
-                if st.session_state.primary_page == label
-                else "secondary"
-            ),
-        ):
-            st.session_state.primary_page = label
-            st.rerun()
+render_site_navigation(active_page)
 
-with nav_cols[4]:
-    quick_country = st.selectbox(
-        "Quick country access",
-        ["Quick country access…"]
-        + sorted(
-            {
-                display_country_name(str(country.alpha_2).lower())
-                for country in __import__("pycountry").countries
-            }
-            | {"Kosovo"}
-        ),
-        label_visibility="collapsed",
-        key="global-country-jump",
-    )
-    if quick_country != "Quick country access…":
-        quick_code = country_code_from_text(quick_country)
-        if quick_code:
-            st.session_state["quick_country_code"] = quick_code
-            st.session_state.primary_page = "Explore Countries"
-            st.rerun()
+if active_page == "home":
+    render_breadcrumb([("Flag Intelligence", None)])
+elif active_page == "country":
+    render_breadcrumb([
+        ("Flag Intelligence", _nav_href("home")),
+        ("Countries", _nav_href("explore")),
+        (_query_value("country", "Country"), None),
+    ])
+else:
+    render_breadcrumb([
+        ("Flag Intelligence", _nav_href("home")),
+        (active_page.replace("_", " ").title(), None),
+    ])
 
-active_page = st.session_state.primary_page
-
-st.markdown(
-    f'<div class="breadcrumb">FLAG INTELLIGENCE &nbsp;/&nbsp; '
-    f'<strong>{active_page}</strong></div>',
-    unsafe_allow_html=True,
-)
-
-left_rail, main_area = st.columns([0.23, 0.77], gap="large")
+left_rail, main_area = st.columns([0.22, 0.78], gap="large")
 
 with left_rail:
     st.markdown(
@@ -2301,85 +2542,86 @@ with left_rail:
     )
     st.markdown(
         '<div class="section-rail-copy">'
-        'Recognize flags and explore structured country knowledge.'
+        'Recognize flags, explore countries and study structured public knowledge.'
         '</div>',
         unsafe_allow_html=True,
     )
-
-    if st.button("Home", key="rail-home", use_container_width=True):
-        st.session_state.primary_page = "Home"
-        st.rerun()
-    if st.button("Recognize a flag", key="rail-recognize", use_container_width=True):
-        st.session_state.primary_page = "Recognize"
-        st.rerun()
-    if st.button("Explore countries", key="rail-explore", use_container_width=True):
-        st.session_state.primary_page = "Explore Countries"
-        st.rerun()
-
-    with st.expander("Resources", expanded=False):
-        st.caption("Country Intelligence")
-        st.caption("Source methodology")
-        st.caption("Worldwide audit")
-        st.caption("Export reports")
-
-    with st.expander("Help", expanded=False):
-        st.caption("Accepted image formats")
-        st.caption("Country-name lookup")
-        st.caption("Known limitations")
+    st.markdown(
+        f"""
+        <nav class="local-nav">
+          <a class="{_active_class(active_page, 'home')}" href="{_nav_href('home')}">Home</a>
+          <a class="{_active_class(active_page, 'recognize')}" href="{_nav_href('recognize')}">Recognize a flag</a>
+          <a class="{_active_class(active_page, 'explore')}" href="{_nav_href('explore')}">Explore countries</a>
+          <a class="{_active_class(active_page, 'learn')}" href="{_nav_href('learn')}">Learning guide</a>
+          <a class="{_active_class(active_page, 'reports')}" href="{_nav_href('reports')}">Reports & exports</a>
+          <a class="{_active_class(active_page, 'audit')}" href="{_nav_href('audit')}">Worldwide audit</a>
+          <a class="{_active_class(active_page, 'about')}" href="{_nav_href('about')}">About</a>
+        </nav>
+        """,
+        unsafe_allow_html=True,
+    )
 
 with main_area:
-    if active_page == "Home":
+    st.markdown('<div class="page-frame">', unsafe_allow_html=True)
+
+    if active_page == "home":
         st.markdown(
-            '<div class="content-title">Explore countries with context</div>'
+            '<div class="content-title">Understand a country from its flag or name</div>'
             '<div class="content-subtitle">'
-            'Flag Intelligence combines computer vision and structured public '
-            'knowledge. Start with a flag image when you need identification, '
-            'or go directly to a country when you already know its name.'
+            'Flag Intelligence brings recognition and country knowledge into one '
+            'workflow. Start with an image when you need identification, or search '
+            'the country directly when you already know its name.'
             '</div>',
             unsafe_allow_html=True,
         )
-
-        home_choice = st.selectbox(
-            "What would you like to do?",
+        st.markdown(
+            '<div class="section-heading"><span>01</span> Choose your entry point</div>',
+            unsafe_allow_html=True,
+        )
+        action = st.selectbox(
+            "Start with",
             (
-                "Choose an action…",
+                "Select an action…",
                 "Recognize a flag image",
                 "Explore a country by name",
-                "Learn how the system works",
             ),
+            label_visibility="collapsed",
         )
+        if action == "Recognize a flag image":
+            st.markdown(
+                f'<a href="{_nav_href("recognize")}">Continue to flag recognition →</a>',
+                unsafe_allow_html=True,
+            )
+        elif action == "Explore a country by name":
+            st.markdown(
+                f'<a href="{_nav_href("explore")}">Continue to country explorer →</a>',
+                unsafe_allow_html=True,
+            )
 
-        if home_choice == "Recognize a flag image":
-            if st.button("Continue to recognition", type="primary"):
-                st.session_state.primary_page = "Recognize"
-                st.rerun()
-        elif home_choice == "Explore a country by name":
-            if st.button("Continue to country explorer", type="primary"):
-                st.session_state.primary_page = "Explore Countries"
-                st.rerun()
-        elif home_choice == "Learn how the system works":
-            if st.button("Open About", type="primary"):
-                st.session_state.primary_page = "About"
-                st.rerun()
-
-        st.markdown("### What you can learn")
+        st.markdown(
+            '<div class="section-heading"><span>02</span> What the system covers</div>',
+            unsafe_allow_html=True,
+        )
         st.write(
-            "Country identity, flag history, geography, historical journey, "
+            "Flag intelligence, identity, geography, historical journey, "
             "government, society, culture, economy, infrastructure, education, "
-            "international relations and practical information — where supported "
-            "by the current source record."
+            "international relations and practical information where current "
+            "source coverage supports them."
         )
 
-    elif active_page == "Recognize":
+    elif active_page == "recognize":
         st.markdown(
             '<div class="content-title">Recognize a flag</div>'
             '<div class="content-subtitle">'
-            'Upload a clear flag image. The recognition result opens the same '
-            'country knowledge experience used by direct country search.'
+            'Upload a clear flag image. The result opens the same country profile '
+            'used by direct search.'
             '</div>',
             unsafe_allow_html=True,
         )
-
+        st.markdown(
+            '<div class="section-heading"><span>01</span> Upload image</div>',
+            unsafe_allow_html=True,
+        )
         if not MODEL_PATH.is_file():
             st.error("The visual recognition model is temporarily unavailable.")
         else:
@@ -2388,14 +2630,13 @@ with main_area:
 
         upload_col, preview_col = st.columns([1.35, 0.65], gap="large")
         with upload_col:
-            st.markdown("#### Flag image")
             uploaded_file = st.file_uploader(
                 "Choose flag image",
                 type=["jpg", "jpeg", "png", "webp"],
                 label_visibility="collapsed",
             )
             st.caption(
-                "Supported: JPG, PNG, WEBP. Use an image where the flag is clearly visible."
+                "Supported: JPG, PNG and WEBP. Use an image where the flag is clearly visible."
             )
             process = st.button(
                 "Recognize flag",
@@ -2403,19 +2644,22 @@ with main_area:
                 use_container_width=True,
                 disabled=(uploaded_file is None or bundle is None),
             )
-
         with preview_col:
             if uploaded_file is not None:
                 image = Image.open(uploaded_file).convert("RGB")
             render_fixed_upload_preview(image)
 
-    elif active_page == "Explore Countries":
+    elif active_page == "explore":
         st.markdown(
             '<div class="content-title">Country explorer</div>'
             '<div class="content-subtitle">'
-            'Search the worldwide catalogue by country name. Use the alternate '
-            'field for aliases or ISO codes.'
+            'Search the worldwide catalogue by country name. No flag image or '
+            'recognition score is required.'
             '</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="section-heading"><span>01</span> Select country</div>',
             unsafe_allow_html=True,
         )
 
@@ -2433,21 +2677,11 @@ with main_area:
 
         label_to_code = {label: code for label, code in country_options}
         labels = ["Select a country…"] + [label for label, _ in country_options]
-
-        preset_code = st.session_state.pop("quick_country_code", None)
-        preset_label = next(
-            (label for label, code in country_options if code == preset_code),
-            None,
-        )
-        selected_index = labels.index(preset_label) if preset_label in labels else 0
-
         selected_label = st.selectbox(
             "Country",
             labels,
-            index=selected_index,
             help="Start typing to filter the list.",
         )
-
         with st.expander("Use an alias or ISO code"):
             typed_country = st.text_input(
                 "Country name or ISO code",
@@ -2466,18 +2700,90 @@ with main_area:
             disabled=not bool(direct_selected_code or typed_country),
         )
 
+    elif active_page == "learn":
+        st.markdown(
+            '<div class="content-title">Learning guide</div>'
+            '<div class="content-subtitle">'
+            'Use Flag Intelligence as a structured way to move from recognition '
+            'to deeper country understanding.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        for number, title, body in (
+            ("01", "Identify", "Recognize a flag or select the country by name."),
+            ("02", "Orient", "Read identity, capital, population, map and geographic context."),
+            ("03", "Understand", "Follow the historical journey, institutions and society."),
+            ("04", "Connect", "Study culture, economy, infrastructure and international context."),
+            ("05", "Verify", "Use the attached source references and coverage notes."),
+        ):
+            st.markdown(
+                f'<div class="section-heading"><span>{number}</span> {title}</div>',
+                unsafe_allow_html=True,
+            )
+            st.write(body)
+
+    elif active_page == "reports":
+        st.markdown(
+            '<div class="content-title">Reports & exports</div>'
+            '<div class="content-subtitle">'
+            'Country profiles can be exported as structured JSON or reader-friendly PDF '
+            'when required knowledge sections are available.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="section-heading"><span>01</span> JSON</div>',
+            unsafe_allow_html=True,
+        )
+        st.write(
+            "Preserves the structured Country Intelligence record, provenance and "
+            "machine-readable values."
+        )
+        st.markdown(
+            '<div class="section-heading"><span>02</span> PDF</div>',
+            unsafe_allow_html=True,
+        )
+        st.write(
+            "Builds a reader-oriented A4 country report from the same validated record."
+        )
+
+    elif active_page == "audit":
+        st.markdown(
+            '<div class="content-title">Worldwide quality audit</div>'
+            '<div class="content-subtitle">'
+            'The project audits the complete 250-class taxonomy to expose structural '
+            'and coverage gaps rather than hide them.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="section-heading"><span>01</span> Coverage</div>',
+            unsafe_allow_html=True,
+        )
+        st.write(
+            "249 ISO 3166-1 country/territory codes plus Kosovo (XK), validated in "
+            "sharded GitHub Actions runs."
+        )
+        st.markdown(
+            '<div class="section-heading"><span>02</span> Checks</div>',
+            unsafe_allow_html=True,
+        )
+        st.write(
+            "Required report sections, source failures, timeline contamination, "
+            "raw MediaWiki markup, sovereignty coherence and section coverage."
+        )
+
     else:
         st.markdown(
             '<div class="content-title">About Flag Intelligence</div>'
             '<div class="content-subtitle">'
-            'A source-aware country learning system with flag recognition as '
-            'one entry point, not the entire product.'
+            'A country-learning system that combines computer vision with structured '
+            'public knowledge and explicit source-aware validation.'
             '</div>',
             unsafe_allow_html=True,
         )
-
         about_topic = st.selectbox(
-            "About this product",
+            "Topic",
             (
                 "Product overview",
                 "Data & sources",
@@ -2486,33 +2792,31 @@ with main_area:
                 "Limitations",
             ),
         )
-
         about_copy = {
             "Product overview": (
-                "Flag Intelligence supports flag-image recognition and direct "
-                "country exploration. Both routes converge on the same Country "
-                "Intelligence pipeline and export tools."
+                "Flag-image recognition and direct country lookup converge on one "
+                "Country Intelligence experience."
             ),
             "Data & sources": (
-                "The knowledge layer combines structured and encyclopedic public "
-                "sources such as Wikidata, World Bank, REST Countries and "
-                "Wikipedia/MediaWiki. Coverage varies by country and domain."
+                "Current sources include Wikidata, World Bank, REST Countries and "
+                "Wikipedia/MediaWiki, with coverage varying by country and domain."
             ),
             "Recognition model": (
                 "The visual baseline uses MobileNetV3-Small with Top-K alternatives, "
                 "visually equivalent flag handling and open-set decision logic."
             ),
             "Privacy & safety": (
-                "The product focuses on public country-level information and is "
-                "not designed to collect or expose sensitive personal information."
+                "The product focuses on public country-level information and is not "
+                "designed to collect or expose sensitive personal information."
             ),
             "Limitations": (
-                "Real-world recognition remains sensitive to folds, perspective, "
-                "clutter and low resolution. Deep knowledge coverage also varies "
-                "with public-source quality. The worldwide audit exposes these gaps."
+                "Recognition remains sensitive to uncontrolled imagery, while deep "
+                "country coverage depends on public-source quality and structure."
             ),
         }
         st.write(about_copy[about_topic])
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 
