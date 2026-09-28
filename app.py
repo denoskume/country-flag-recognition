@@ -85,6 +85,10 @@ from flag_recognition.country_knowledge import (
 )
 from flag_recognition.flag_knowledge import enrich_flag_profile
 from flag_recognition.learning import answer_country_question
+from flag_recognition.report_manifest import (
+    build_report_manifest,
+    missing_required_sections,
+)
 
 
 DISPLAY_NAME_OVERRIDES = {
@@ -845,6 +849,12 @@ def build_pdf_report(
 
         intelligence = report.get("country_intelligence_v2")
         completion = report.get("country_intelligence_completion")
+        report_manifest = report.get("official_report_manifest")
+        if not isinstance(report_manifest, dict):
+            report_manifest = build_report_manifest(
+                intelligence if isinstance(intelligence, dict) else {},
+                profile,
+            )
 
         def context_value(
             section_name: str,
@@ -1020,7 +1030,11 @@ def build_pdf_report(
                 context_value("environment"),
             )
 
-        story.append(PageBreak())
+        if any(
+            report_manifest.get(key, False)
+            for key in ("flag", "origins", "history")
+        ):
+            story.append(PageBreak())
 
         # 3. Flag Intelligence
         if isinstance(intelligence, dict):
@@ -1121,7 +1135,11 @@ def build_pdf_report(
                         )
                     )
 
-        story.append(PageBreak())
+        if any(
+            report_manifest.get(key, False)
+            for key in ("flag", "origins", "history")
+        ):
+            story.append(PageBreak())
 
         # 5. State Formation, identity and institutions
         sovereignty = info_grid(
@@ -1170,7 +1188,14 @@ def build_pdf_report(
             context_value("government", "administrative_divisions"),
         )
 
-        story.append(PageBreak())
+        if any(
+            report_manifest.get(key, False)
+            for key in (
+                "society", "languages_religion", "health",
+                "culture", "festivals", "heritage",
+            )
+        ):
+            story.append(PageBreak())
 
         # 6. People, society and culture
         add_learning_section(
@@ -1198,7 +1223,14 @@ def build_pdf_report(
             context_value("culture", "heritage_landmarks"),
         )
 
-        story.append(PageBreak())
+        if any(
+            report_manifest.get(key, False)
+            for key in (
+                "economy", "economic_drivers", "infrastructure",
+                "transport", "energy", "education", "environment",
+            )
+        ):
+            story.append(PageBreak())
 
         economy_summary = info_grid(
             [
@@ -1239,7 +1271,11 @@ def build_pdf_report(
             context_value("environment"),
         )
 
-        story.append(PageBreak())
+        if any(
+            report_manifest.get(key, False)
+            for key in ("practical", "international", "notable_people")
+        ):
+            story.append(PageBreak())
 
         practical_rows: list[tuple[str, object]] = [
             ("Calling code", profile.get("calling_code")),
@@ -1543,7 +1579,7 @@ def resolve_emergency_numbers(
 
 
 COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-28-v16"
-COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-28-v5"
+COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-28-v6"
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_country_profile_v2(
@@ -1726,11 +1762,21 @@ def get_country_intelligence_v2(
         # A missing dedicated flag article must never hide country knowledge.
         pass
 
+    intelligence_payload = intelligence.to_dict()
+    report_manifest = build_report_manifest(
+        intelligence_payload,
+        payload,
+    )
+
     return {
         "profile": payload,
-        "intelligence": intelligence.to_dict(),
+        "intelligence": intelligence_payload,
         "completion": section_completion(intelligence),
         "validation": validate_country_intelligence(intelligence),
+        "report_manifest": report_manifest,
+        "missing_required_report_sections": missing_required_sections(
+            report_manifest
+        ),
     }
 
 
@@ -2705,6 +2751,10 @@ def show_result(image: Image.Image):
             report["country_intelligence_v2"] = knowledge["intelligence"]
             report["country_intelligence_completion"] = knowledge["completion"]
             report["country_intelligence_validation"] = knowledge["validation"]
+            report["official_report_manifest"] = knowledge["report_manifest"]
+            report["official_report_missing_required"] = (
+                knowledge["missing_required_report_sections"]
+            )
         except (requests.RequestException, LookupError, ValueError):
             pass
 
