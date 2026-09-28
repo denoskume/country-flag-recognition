@@ -1344,38 +1344,41 @@ def enrich_from_encyclopedia(
         "heritage_landmarks",
         culture_url,
     )
-    heritage_sites, heritage_sites_url = _heritage_sites_from_wikitext(
-        (record.name, canonical_title),
-        timeout=timeout,
-    )
-    if heritage_sites:
-        heritage_item = _domain_evidence(
-            heritage_sites,
-            heritage_sites_url,
-        )
-        if heritage_item is not None:
-            record.culture["heritage_landmarks"] = heritage_item
-    elif "heritage_landmarks" not in record.culture:
-        heritage_sections, heritage_url = _dedicated_topic_sections(
-            canonical_title,
-            "World Heritage Sites",
+    try:
+        heritage_sites, heritage_sites_url = _heritage_sites_from_wikitext(
+            (record.name, canonical_title),
             timeout=timeout,
         )
-        if not heritage_sections and record.name != canonical_title:
+        if heritage_sites:
+            heritage_item = _domain_evidence(
+                heritage_sites,
+                heritage_sites_url,
+            )
+            if heritage_item is not None:
+                record.culture["heritage_landmarks"] = heritage_item
+        elif "heritage_landmarks" not in record.culture:
             heritage_sections, heritage_url = _dedicated_topic_sections(
-                record.name,
+                canonical_title,
                 "World Heritage Sites",
                 timeout=timeout,
             )
-        _set_context(
-            record.culture,
-            "heritage_landmarks",
-            heritage_sections,
-            "heritage_landmarks",
-            heritage_url,
-            max_chars=2200,
-            max_blocks=8,
-        )
+            if not heritage_sections and record.name != canonical_title:
+                heritage_sections, heritage_url = _dedicated_topic_sections(
+                    record.name,
+                    "World Heritage Sites",
+                    timeout=timeout,
+                )
+            _set_context(
+                record.culture,
+                "heritage_landmarks",
+                heritage_sections,
+                "heritage_landmarks",
+                heritage_url,
+                max_chars=2200,
+                max_blocks=8,
+            )
+    except (requests.RequestException, LookupError, ValueError):
+        pass
     _set_context(
         record.culture,
         "notable_people",
