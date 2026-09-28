@@ -8,6 +8,10 @@ on:
       - "scripts/audit_country_intelligence_worldwide.py"
       - ".github/workflows/country-intelligence-audit.yml"
 
+concurrency:
+  group: country-intelligence-worldwide-audit
+  cancel-in-progress: true
+
 jobs:
   audit:
     name: Audit shard ${{ matrix.shard }}
