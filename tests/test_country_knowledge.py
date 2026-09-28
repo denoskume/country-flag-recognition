@@ -10,6 +10,7 @@ from flag_recognition.country_knowledge import (
     extract_timeline,
     split_article_sections,
     split_article_sections_detailed,
+    split_wikitext_sections_detailed,
 )
 
 
@@ -451,3 +452,32 @@ def test_topic_article_resolver_supports_in_title(monkeypatch):
         "Energy of Ivory Coast",
         "Energy in Ivory Coast",
     ]
+
+
+def test_wikitext_sections_preserve_real_geography_headings():
+    wikitext = """
+== Terrain and topography ==
+Ivory Coast is a plateau rising gradually from the coast.
+
+== Rivers ==
+The Bandama is the longest river in Ivory Coast.
+
+== Climate ==
+The climate is hot and humid with dry and rainy seasons.
+"""
+    sections = split_wikitext_sections_detailed(wikitext)
+
+    headings = [section.heading for section in sections]
+    assert "Terrain and topography" in headings
+    assert "Rivers" in headings
+    assert "Climate" in headings
+
+    assert "plateau" in collect_strict_domain_text(
+        sections, "mountains_relief"
+    )
+    assert "Bandama" in collect_strict_domain_text(
+        sections, "rivers_lakes"
+    )
+    assert "rainy seasons" in collect_strict_domain_text(
+        sections, "climate_seasons"
+    )
