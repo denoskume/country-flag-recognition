@@ -1413,7 +1413,11 @@ def build_pdf_report(
             ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
         ])
     )
-    story.append(source_note)
+    if not accepted or not isinstance(
+        report.get("country_intelligence_v2"),
+        dict,
+    ):
+        story.append(source_note)
 
     document.build(
         story,
