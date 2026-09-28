@@ -73,6 +73,92 @@ def _search_flag_article(country_name: str, timeout: float = 12.0) -> str:
     raise LookupError(f"No flag article found for {country_name!r}")
 
 
+def _fetch_flag_wikitext(
+    title: str,
+    timeout: float = 12.0,
+) -> tuple[str, str]:
+    """Fetch raw flag-page wikitext for structured infobox fallback."""
+    response = requests.get(
+        WIKIPEDIA_API,
+        params={
+            "action": "query",
+            "prop": "revisions",
+            "rvprop": "content",
+            "rvslots": "main",
+            "redirects": 1,
+            "titles": title,
+            "format": "json",
+            "formatversion": 2,
+        },
+        headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    pages = response.json().get("query", {}).get("pages", [])
+    if not pages or pages[0].get("missing"):
+        raise LookupError(title)
+
+    page = pages[0]
+    revisions = page.get("revisions") or []
+    if not revisions:
+        raise LookupError(title)
+
+    slots = revisions[0].get("slots") or {}
+    main = slots.get("main") or {}
+    text = str(main.get("content") or "").strip()
+    canonical = str(page.get("title") or title).strip()
+    if not text:
+        raise LookupError(title)
+    return text, canonical
+
+
+def _infobox_value(wikitext: str, field: str) -> str:
+    """Extract one single-line infobox field conservatively."""
+    pattern = re.compile(
+        rf"^\|\s*{re.escape(field)}\s*=\s*(.+?)\s*$",
+        flags=re.IGNORECASE | re.MULTILINE,
+    )
+    match = pattern.search(wikitext)
+    if not match:
+        return ""
+
+    value = match.group(1).strip()
+    # Remove common wiki markup while preserving the factual text.
+    value = re.sub(r"<ref[^>]*>.*?</ref>", "", value, flags=re.DOTALL)
+    value = re.sub(r"<ref[^>]*/>", "", value)
+    value = re.sub(r"\{\{(?:nowrap|small)\|([^{}]+)\}\}", r"\1", value)
+    value = re.sub(r"\[\[([^\]|]+)\|([^\]]+)\]\]", r"\2", value)
+    value = re.sub(r"\[\[([^\]]+)\]\]", r"\1", value)
+    value = re.sub(r"''+", "", value)
+    value = re.sub(r"<[^>]+>", "", value)
+    return " ".join(value.split())
+
+
+def _flag_metadata_from_wikitext(
+    country_name: str,
+    timeout: float = 12.0,
+) -> tuple[Evidence | None, Evidence | None, Evidence | None]:
+    """Return adoption, proportion and design from the flag-page infobox."""
+    exact_title = f"Flag of {country_name}"
+    text, canonical = _fetch_flag_wikitext(
+        exact_title,
+        timeout=timeout,
+    )
+    source_url = WIKIPEDIA_PAGE + quote(
+        canonical.replace(" ", "_"),
+        safe="()_-",
+    )
+
+    adoption_raw = _infobox_value(text, "adoption")
+    proportion_raw = _infobox_value(text, "proportion")
+    design_raw = _infobox_value(text, "design")
+
+    adoption = _fact(adoption_raw, source_url) if adoption_raw else None
+    proportion = _fact(proportion_raw, source_url) if proportion_raw else None
+    design = _fact(design_raw, source_url) if design_raw else None
+    return adoption, proportion, design
+
+
 def _fetch_article(title: str, timeout: float = 12.0) -> tuple[str, str]:
     response = requests.get(
         WIKIPEDIA_API,
@@ -220,85 +306,117 @@ def enrich_flag_profile(
     similar_flags: tuple[str, ...] = (),
     timeout: float = 12.0,
 ) -> FlagProfile:
-    """Add sourced design, symbolism, adoption and history where available."""
-    title = _search_flag_article(country_name, timeout=timeout)
-    article, canonical = _fetch_article(title, timeout=timeout)
-    source_url = WIKIPEDIA_PAGE + quote(
-        canonical.replace(" ", "_"),
-        safe="()_-",
-    )
-    sections = split_article_sections_detailed(article)
+    """Add sourced flag metadata with independent structured fallbacks."""
 
-    design = _collect(sections, FLAG_SECTION_ALIASES["design"])
-    symbolism = _collect(sections, FLAG_SECTION_ALIASES["symbolism"])
-    history = _collect(
-        sections,
-        FLAG_SECTION_ALIASES["history"],
-        max_chars=7000,
-    )
+    adoption = current.adoption_date
+    proportion = current.proportion
+    symbolism = current.symbolism
+    design_origin = current.design_origin
+    historical_flags = current.historical_flags
 
-    design_fact = _fact(design, source_url)
-    symbolism_fact = _fact(symbolism, source_url)
-
-    if design_fact is None:
-        lead = next(
-            (
-                section.body
-                for section in sections
-                if section.heading == "overview" and section.body
-            ),
-            "",
+    # First try the readable flag article.
+    try:
+        title = _search_flag_article(country_name, timeout=timeout)
+        article, canonical = _fetch_article(title, timeout=timeout)
+        source_url = WIKIPEDIA_PAGE + quote(
+            canonical.replace(" ", "_"),
+            safe="()_-",
         )
-        lead_sentences = [
-            sentence.strip()
-            for sentence in re.split(
-                r"(?<=[.!?])\s+",
-                " ".join(lead.split()),
+        sections = split_article_sections_detailed(article)
+
+        design = _collect(sections, FLAG_SECTION_ALIASES["design"])
+        symbolism_text = _collect(
+            sections,
+            FLAG_SECTION_ALIASES["symbolism"],
+        )
+        history = _collect(
+            sections,
+            FLAG_SECTION_ALIASES["history"],
+            max_chars=7000,
+        )
+
+        design_fact = _fact(design, source_url)
+        symbolism_fact = _fact(symbolism_text, source_url)
+
+        if design_fact is None:
+            lead = next(
+                (
+                    section.body
+                    for section in sections
+                    if section.heading == "overview" and section.body
+                ),
+                "",
             )
-            if sentence.strip()
-        ]
-        design_sentence = next(
-            (
-                sentence
-                for sentence in lead_sentences
-                if any(
-                    token in sentence.lower()
-                    for token in ("tricolour", "tricolor", "flag", "bands")
+            lead_sentences = [
+                sentence.strip()
+                for sentence in re.split(
+                    r"(?<=[.!?])\s+",
+                    " ".join(lead.split()),
                 )
-            ),
-            "",
+                if sentence.strip()
+            ]
+            design_sentence = next(
+                (
+                    sentence
+                    for sentence in lead_sentences
+                    if any(
+                        token in sentence.lower()
+                        for token in (
+                            "tricolour",
+                            "tricolor",
+                            "flag",
+                            "bands",
+                        )
+                    )
+                ),
+                "",
+            )
+            design_fact = _fact(design_sentence, source_url)
+
+        adoption = adoption or _extract_adoption(article, source_url)
+        proportion = proportion or _extract_proportion(
+            article,
+            source_url,
         )
-        design_fact = _fact(design_sentence, source_url)
-    history_events = extract_timeline(
-        history,
-        source_url,
-        max_events=8,
-    )
+        if not symbolism and symbolism_fact is not None:
+            symbolism = (symbolism_fact,)
+        if not design_origin and design_fact is not None:
+            design_origin = (design_fact,)
+        if not historical_flags:
+            historical_flags = extract_timeline(
+                history,
+                source_url,
+                max_events=8,
+            )
+    except (requests.RequestException, LookupError, ValueError):
+        pass
+
+    # Independent structured fallback: flag-page infobox. This path does not
+    # depend on narrative section parsing and prevents false "Flag Intelligence
+    # missing" results when the article extract changes format.
+    if adoption is None or proportion is None or not design_origin:
+        try:
+            (
+                fallback_adoption,
+                fallback_proportion,
+                fallback_design,
+            ) = _flag_metadata_from_wikitext(
+                country_name,
+                timeout=timeout,
+            )
+            adoption = adoption or fallback_adoption
+            proportion = proportion or fallback_proportion
+            if not design_origin and fallback_design is not None:
+                design_origin = (fallback_design,)
+        except (requests.RequestException, LookupError, ValueError):
+            pass
 
     return FlagProfile(
-        adoption_date=current.adoption_date or _extract_adoption(
-            article,
-            source_url,
-        ),
-        proportion=current.proportion or _extract_proportion(
-            article,
-            source_url,
-        ),
+        adoption_date=adoption,
+        proportion=proportion,
         colors=current.colors,
-        symbolism=(
-            current.symbolism
-            if current.symbolism
-            else ((symbolism_fact,) if symbolism_fact else ())
-        ),
-        design_origin=(
-            current.design_origin
-            if current.design_origin
-            else ((design_fact,) if design_fact else ())
-        ),
-        historical_flags=(
-            current.historical_flags
-            if current.historical_flags
-            else history_events
-        ),
+        symbolism=symbolism,
+        design_origin=design_origin,
+        historical_flags=historical_flags,
         similar_flags=similar_flags or current.similar_flags,
     )
