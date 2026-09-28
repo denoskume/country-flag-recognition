@@ -4,9 +4,49 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import re
+import time
 from urllib.parse import quote
 
 import requests
+
+def _get_with_retry(
+    url: str,
+    *,
+    attempts: int = 4,
+    backoff: float = 0.75,
+    **kwargs,
+):
+    """HTTP GET with bounded retries for transient network/rate-limit failures."""
+    last_error = None
+    for attempt in range(attempts):
+        try:
+            response = requests.get(url, **kwargs)
+            if response.status_code not in (429, 500, 502, 503, 504):
+                return response
+
+            if attempt >= attempts - 1:
+                return response
+
+            retry_after = response.headers.get("Retry-After")
+            try:
+                delay = float(retry_after) if retry_after else backoff * (2 ** attempt)
+            except (TypeError, ValueError):
+                delay = backoff * (2 ** attempt)
+            time.sleep(min(max(delay, 0.0), 12.0))
+        except (
+            requests.Timeout,
+            requests.ConnectionError,
+        ) as exc:
+            last_error = exc
+            if attempt >= attempts - 1:
+                raise
+            time.sleep(min(backoff * (2 ** attempt), 12.0))
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("HTTP retry loop exited unexpectedly")
+
+
 
 from .country_intelligence import Evidence, FlagProfile, PARTIAL, evidence
 from .country_knowledge import (
@@ -49,7 +89,7 @@ def _search_flag_article(country_name: str, timeout: float = 12.0) -> str:
     ]
 
     for query in queries:
-        response = requests.get(
+        response = _get_with_retry(
             WIKIPEDIA_API,
             params={
                 "action": "query",
@@ -78,7 +118,7 @@ def _fetch_flag_wikitext(
     timeout: float = 12.0,
 ) -> tuple[str, str]:
     """Fetch raw flag-page wikitext through MediaWiki action=parse."""
-    response = requests.get(
+    response = _get_with_retry(
         WIKIPEDIA_API,
         params={
             "action": "parse",
@@ -152,7 +192,7 @@ def _fetch_flag_page_extract(
     timeout: float = 12.0,
 ) -> tuple[str, str]:
     """Fetch readable flag-page plaintext without relying on section names."""
-    response = requests.get(
+    response = _get_with_retry(
         WIKIPEDIA_API,
         params={
             "action": "query",
@@ -188,7 +228,7 @@ def _fetch_flag_rest_summary(
         "https://en.wikipedia.org/api/rest_v1/page/summary/"
         + quote(title, safe="()_'")
     )
-    response = requests.get(
+    response = _get_with_retry(
         url,
         headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
         timeout=timeout,
@@ -321,7 +361,7 @@ def _flag_metadata_from_wikitext(
 
 
 def _fetch_article(title: str, timeout: float = 12.0) -> tuple[str, str]:
-    response = requests.get(
+    response = _get_with_retry(
         WIKIPEDIA_API,
         params={
             "action": "query",
