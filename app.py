@@ -2487,18 +2487,26 @@ def show_result(image: Image.Image):
                     )
 
             domain_labels = [
-                ("people_society", "People & Society"),
-                ("culture", "Culture"),
-                ("economy", "Economy"),
-                ("infrastructure", "Infrastructure & Transport"),
-                ("education_science", "Education, Science & Innovation"),
-                ("environment", "Environment & Climate"),
-                ("international_relations", "International Relations"),
+                ("geography", "rivers_lakes", "Rivers, Lakes & Waterways"),
+                ("geography", "mountains_relief", "Mountains & Relief"),
+                ("environment", "climate_seasons", "Climate & Seasons"),
+                ("environment", "natural_resources", "Natural Resources & Raw Materials"),
+                ("people_society", "context", "People & Society"),
+                ("culture", "context", "Culture"),
+                ("economy", "context", "Economic Structure & Trade"),
+                ("economy", "economic_drivers", "Economic Drivers, Industries & Exports"),
+                ("infrastructure", "context", "Infrastructure & Transport"),
+                ("education_science", "context", "Education, Science & Innovation"),
+                ("international_relations", "context", "International Relations"),
             ]
 
-            for domain_key, domain_label in domain_labels:
+            for domain_key, context_key, domain_label in domain_labels:
                 section = intelligence.get(domain_key) or {}
-                context = section.get("context") if isinstance(section, dict) else None
+                context = (
+                    section.get(context_key)
+                    if isinstance(section, dict)
+                    else None
+                )
                 value = (
                     context.get("value")
                     if isinstance(context, dict)
