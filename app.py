@@ -55,12 +55,19 @@ SRC_DIR = ROOT_DIR / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from flag_recognition.country_info import (
-    fetch_country_profile,
-    fetch_emergency_numbers,
-    fetch_emergency_numbers_fallback,
-    format_emergency_numbers,
+import importlib
+import flag_recognition.country_info as country_info_module
+
+# Streamlit can rerun app.py without restarting the Python interpreter.
+# Reload country data logic so deployments never keep stale historical rules.
+country_info_module = importlib.reload(country_info_module)
+
+fetch_country_profile = country_info_module.fetch_country_profile
+fetch_emergency_numbers = country_info_module.fetch_emergency_numbers
+fetch_emergency_numbers_fallback = (
+    country_info_module.fetch_emergency_numbers_fallback
 )
+format_emergency_numbers = country_info_module.format_emergency_numbers
 from flag_recognition.inference import (
     load_inference_bundle,
     predict_image,
@@ -1292,7 +1299,7 @@ def resolve_emergency_numbers(
     )
 
 
-COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-28-v11"
+COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-28-v12"
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_country_profile_v2(
@@ -1302,6 +1309,13 @@ def get_country_profile_v2(
     # schema_version is intentionally part of the cache key.
     _ = schema_version
     return fetch_country_profile(country_code)
+
+
+def get_fresh_historical_profile(country_code: str):
+    """Bypass Streamlit profile cache for historical facts."""
+    return country_info_module.fetch_country_profile(
+        country_code
+    )
 
 
 def build_flag_banner_html() -> str:
@@ -1759,6 +1773,13 @@ def show_result(image: Image.Image):
         try:
             profile = get_country_profile_v2(decision_code)
 
+            try:
+                historical_profile = get_fresh_historical_profile(
+                    decision_code
+                )
+            except Exception:
+                historical_profile = profile
+
             st.divider()
             st.markdown("### Country profile")
 
@@ -1812,7 +1833,7 @@ def show_result(image: Image.Image):
 
                 national_day_text = profile.national_day
                 colonial_history = getattr(
-                    profile,
+                    historical_profile,
                     "colonial_history",
                     "Not applicable",
                 )
@@ -1846,7 +1867,7 @@ def show_result(image: Image.Image):
                     st.markdown("**Former colonial power(s)**")
                     st.write(
                         getattr(
-                            profile,
+                            historical_profile,
                             "former_colonial_powers",
                             "Not applicable",
                         )
@@ -1855,19 +1876,19 @@ def show_result(image: Image.Image):
                     st.markdown("**Colonial period / status**")
                     st.write(
                         getattr(
-                            profile,
+                            historical_profile,
                             "colonial_period",
                             "Not applicable",
                         )
                     )
 
                     st.markdown("**Independence / sovereignty date**")
-                    st.write(profile.independence_day)
+                    st.write(historical_profile.independence_day)
 
                     st.markdown("**Key independence figure**")
                     st.write(
                         getattr(
-                            profile,
+                            historical_profile,
                             "independence_leader",
                             "Not applicable",
                         )
@@ -2031,6 +2052,13 @@ def show_result(image: Image.Image):
     if accepted:
         try:
             profile = get_country_profile_v2(decision_code)
+            try:
+                historical_profile = get_fresh_historical_profile(
+                    decision_code
+                )
+            except Exception:
+                historical_profile = profile
+
             report["country_profile"] = {
                 "name": profile.name,
                 "capital": profile.capital,
@@ -2042,30 +2070,30 @@ def show_result(image: Image.Image):
                 "continent": profile.continent,
                 "area_km2": profile.area_km2,
                 "overview": profile.overview,
-                "national_day": profile.national_day,
-                "independence_day": profile.independence_day,
+                "national_day": historical_profile.national_day,
+                "independence_day": historical_profile.independence_day,
                 "colonial_history": getattr(
-                    profile,
+                    historical_profile,
                     "colonial_history",
                     "Not applicable",
                 ),
                 "former_colonial_powers": getattr(
-                    profile,
+                    historical_profile,
                     "former_colonial_powers",
                     "Not applicable",
                 ),
                 "colonial_period": getattr(
-                    profile,
+                    historical_profile,
                     "colonial_period",
                     "Not applicable",
                 ),
                 "independence_leader": getattr(
-                    profile,
+                    historical_profile,
                     "independence_leader",
                     "Not applicable",
                 ),
                 "historical_context": getattr(
-                    profile,
+                    historical_profile,
                     "historical_context",
                     "No classical colonial-independence transition is documented "
                     "in the available country overview.",
