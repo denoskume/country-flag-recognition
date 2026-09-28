@@ -647,10 +647,3 @@ The goal is not to hide those gaps. The audit system is specifically designed to
 - image and text inputs converge on the same Country Intelligence pipeline;
 - validation should happen across the full worldwide taxonomy, not only a few example countries.
 
----
-
-## Project ownership
-
-**Flag Intelligence is a personal project by Denos Kume.**
-
-It is not presented as an official project, product or publication of Centrale Nantes or any other academic institution.
