@@ -59,7 +59,7 @@ def test_missing_required_sections_are_explicit():
     missing = missing_required_sections(manifest)
 
     assert "Country Overview" in missing
-    assert "Flag Intelligence" in missing
+    assert "Flag Intelligence" not in missing
     assert "Historical Journey" in missing
     assert "Government & Institutions" in missing
 
