@@ -499,8 +499,8 @@ def build_pdf_report(
         "ReportMeta",
         parent=styles["Normal"],
         fontName="Helvetica",
-        fontSize=7.4,
-        leading=9,
+        fontSize=7.0,
+        leading=8.5,
         textColor=colors.HexColor("#444444"),
     )
 
@@ -738,9 +738,9 @@ def build_pdf_report(
             ),
         ]],
         colWidths=[
-            (REPORT_WIDTH_MM - 90.0) / 2 * mm,
-            90 * mm,
-            (REPORT_WIDTH_MM - 90.0) / 2 * mm,
+            52 * mm,
+            (REPORT_WIDTH_MM - 104.0) * mm,
+            52 * mm,
         ],
         hAlign="LEFT",
     )
