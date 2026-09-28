@@ -455,6 +455,106 @@ def _structured_economy_context(
     return "\n\n".join(blocks), source_url
 
 
+def _heritage_sites_from_wikitext(
+    country_names: tuple[str, ...],
+    *,
+    timeout: float = 10.0,
+) -> tuple[str, str]:
+    """Extract site names from a country-specific World Heritage list page."""
+    article: tuple[str, str] | None = None
+    for country_name in country_names:
+        if not country_name:
+            continue
+        article = fetch_topic_article(
+            country_name,
+            "World Heritage Sites",
+            timeout=timeout,
+        )
+        if article is not None:
+            break
+
+    if article is None:
+        return "", ""
+
+    _, title = article
+    try:
+        wikitext = _fetch_topic_wikitext(title, timeout=timeout)
+    except (requests.RequestException, LookupError, ValueError):
+        return "", ""
+
+    sections = split_wikitext_sections_detailed(wikitext)
+    list_heading = next(
+        (
+            section.heading
+            for section in sections
+            if _clean_heading(section.heading) in {
+                "list of sites",
+                "world heritage sites",
+                "sites",
+            }
+        ),
+        "",
+    )
+
+    # Use the raw table body under the matching heading so that the first
+    # linked item of each table row can be retained as the site name.
+    heading_pattern = re.compile(
+        rf"^==+\s*{re.escape(list_heading)}\s*==+\s*$",
+        flags=re.IGNORECASE | re.MULTILINE,
+    ) if list_heading else None
+
+    body = wikitext
+    if heading_pattern is not None:
+        match = heading_pattern.search(wikitext)
+        if match:
+            start = match.end()
+            next_heading = re.search(
+                r"^==+\s*.+?\s*==+\s*$",
+                wikitext[start:],
+                flags=re.MULTILINE,
+            )
+            end = (
+                start + next_heading.start()
+                if next_heading
+                else len(wikitext)
+            )
+            body = wikitext[start:end]
+
+    sites: list[str] = []
+    for row in body.split("|-"):
+        link = re.search(
+            r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|([^\]]+))?\]\]",
+            row,
+        )
+        if not link:
+            continue
+        target = link.group(1).strip()
+        display = (link.group(2) or target).strip()
+        lowered = target.lower()
+        if any(
+            lowered.startswith(prefix)
+            for prefix in (
+                "file:", "image:", "unesco", "world heritage",
+                "ivory coast", "côte d'ivoire",
+            )
+        ):
+            continue
+        display = re.sub(r"\{\{.*?\}\}", "", display).strip()
+        if display and display not in sites:
+            sites.append(display)
+        if len(sites) >= 12:
+            break
+
+    if not sites:
+        return "", ""
+
+    source_url = WIKIPEDIA_PAGE + quote(
+        title.replace(" ", "_"),
+        safe="()_-'",
+    )
+    return "World Heritage Sites: " + "; ".join(sites), source_url
+
+
 def _structured_geography_resources(
     country_name: str,
     *,
@@ -1244,7 +1344,18 @@ def enrich_from_encyclopedia(
         "heritage_landmarks",
         culture_url,
     )
-    if "heritage_landmarks" not in record.culture:
+    heritage_sites, heritage_sites_url = _heritage_sites_from_wikitext(
+        (record.name, canonical_title),
+        timeout=timeout,
+    )
+    if heritage_sites:
+        heritage_item = _domain_evidence(
+            heritage_sites,
+            heritage_sites_url,
+        )
+        if heritage_item is not None:
+            record.culture["heritage_landmarks"] = heritage_item
+    elif "heritage_landmarks" not in record.culture:
         heritage_sections, heritage_url = _dedicated_topic_sections(
             canonical_title,
             "World Heritage Sites",
