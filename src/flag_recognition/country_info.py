@@ -52,6 +52,21 @@ COUNTRY_PROFILE_OVERRIDES = {
         "emergency_numbers": (
             "Police: 170 | Fire: 180 | Ambulance (SAMU): 185"
         ),
+        "national_day": "August 7",
+        "independence_day": "August 7, 1960",
+        "former_colonial_powers": "France",
+        "colonial_period": (
+            "Official French colony from 1893; "
+            "part of French West Africa from 1904"
+        ),
+        "independence_leader": "Félix Houphouët-Boigny",
+        "historical_context": (
+            "France formally established Côte d'Ivoire as a colony in 1893. "
+            "The territory became part of French West Africa in 1904. "
+            "Côte d'Ivoire became independent from France on August 7, 1960, "
+            "with Félix Houphouët-Boigny as the central independence-era "
+            "political leader and first president."
+        ),
     },
 }
 
@@ -95,6 +110,10 @@ class CountryProfile:
     national_day: str
     independence_day: str
     colonial_history: str
+    former_colonial_powers: str
+    colonial_period: str
+    independence_leader: str
+    historical_context: str
     national_motto: str
     national_anthem: str
     region: str
@@ -1037,6 +1056,127 @@ def _extract_colonial_history(
     return f"Former colonial power: {power_text}"
 
 
+def _extract_structured_history(
+    overview: str,
+    independence_day: str,
+) -> dict[str, str]:
+    """Extract concise colonial and sovereignty facts without inventing data."""
+    text = " ".join(str(overview or "").split())
+    lower = text.lower()
+
+    colonial_powers: list[str] = []
+
+    for adjective, country in COLONIAL_POWER_PATTERNS.items():
+        if re.search(
+            rf"\b{re.escape(adjective.lower())}\b[^.]{{0,120}}\b"
+            r"(?:colony|colonial|protectorate|territory|rule|administration|sovereignty)\b",
+            lower,
+        ):
+            if country not in colonial_powers:
+                colonial_powers.append(country)
+
+    explicit_power_patterns = [
+        r"(?:independence|independent) from ([A-Z][A-Za-z .'-]+?)(?: on| in|,|\.|;)",
+        r"(?:colony|protectorate) of ([A-Z][A-Za-z .'-]+?)(?: from| in|,|\.|;)",
+        r"under ([A-Z][A-Za-z .'-]+?) sovereignty",
+    ]
+
+    for pattern in explicit_power_patterns:
+        for match in re.finditer(pattern, text):
+            value = match.group(1).strip()
+            if value and value not in colonial_powers:
+                colonial_powers.append(value)
+
+    colonial_period = "Not applicable"
+
+    period_patterns = [
+        r"officially became (?:a|an) ([^.]{1,70}?(?:colony|protectorate)) in (\d{4})",
+        r"became (?:a|an) ([^.]{1,70}?(?:colony|protectorate)) in (\d{4})",
+        r"was (?:a|an) ([^.]{1,70}?(?:colony|protectorate)) from (\d{4}) to (\d{4})",
+        r"from (\d{4}) to (\d{4}),? [^.]{0,60}(?:colony|protectorate)",
+    ]
+
+    for pattern in period_patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            values = [str(value).strip() for value in match.groups()]
+            colonial_period = " ".join(values)
+            break
+
+    if colonial_period == "Not applicable" and colonial_powers:
+        year_match = re.search(
+            r"(?:colony|protectorate|colonial)[^.]{0,100}\b(1[6-9]\d{2}|20\d{2})\b",
+            lower,
+        )
+        if year_match:
+            colonial_period = (
+                f"Colonial rule documented by {year_match.group(1)}"
+            )
+        else:
+            colonial_period = "Colonial rule documented"
+
+    leader = "Not applicable"
+
+    leader_patterns = [
+        r"([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){1,4}) "
+        r"(?:became|was elected|served as) [^.]{0,50}first president",
+        r"first president(?:,| was)? "
+        r"([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){1,4})",
+    ]
+
+    for pattern in leader_patterns:
+        match = re.search(pattern, text)
+        if match:
+            leader = match.group(1).strip()
+            break
+
+    context_sentences: list[str] = []
+    for sentence in re.split(r"(?<=[.!?])\s+", text):
+        sentence_lower = sentence.lower()
+        if any(
+            keyword in sentence_lower
+            for keyword in (
+                "colony",
+                "colonial",
+                "protectorate",
+                "independence",
+                "independent",
+                "sovereignty",
+                "self-government",
+            )
+        ):
+            cleaned = sentence.strip()
+            if cleaned and cleaned not in context_sentences:
+                context_sentences.append(cleaned)
+        if len(context_sentences) >= 3:
+            break
+
+    historical_context = (
+        " ".join(context_sentences)
+        if context_sentences
+        else (
+            "No classical colonial-independence transition is documented "
+            "in the available country overview."
+        )
+    )
+
+    return {
+        "former_colonial_powers": (
+            ", ".join(colonial_powers)
+            if colonial_powers
+            else "Not applicable"
+        ),
+        "colonial_period": colonial_period,
+        "independence_leader": leader,
+        "historical_context": historical_context,
+        "independence_day": (
+            independence_day
+            if independence_day != "Not available"
+            else "Not applicable"
+        ),
+    }
+
+
 MONTH_NAMES = {
     "january": "January",
     "february": "February",
@@ -1620,6 +1760,36 @@ def fetch_country_profile(
         # Some states genuinely do not designate one unique national day.
         national_day = "No single official national day documented"
 
+    structured_history = _extract_structured_history(
+        overview,
+        independence_day,
+    )
+
+    former_colonial_powers = str(
+        overrides.get(
+            "former_colonial_powers",
+            structured_history["former_colonial_powers"],
+        )
+    )
+    colonial_period = str(
+        overrides.get(
+            "colonial_period",
+            structured_history["colonial_period"],
+        )
+    )
+    independence_leader = str(
+        overrides.get(
+            "independence_leader",
+            structured_history["independence_leader"],
+        )
+    )
+    historical_context = str(
+        overrides.get(
+            "historical_context",
+            structured_history["historical_context"],
+        )
+    )
+
     national_motto = str(wikidata["national_motto"])
     if national_motto == "Not available":
         national_motto = str(
@@ -1735,6 +1905,10 @@ def fetch_country_profile(
         national_day=national_day,
         independence_day=independence_day,
         colonial_history=colonial_history,
+        former_colonial_powers=former_colonial_powers,
+        colonial_period=colonial_period,
+        independence_leader=independence_leader,
+        historical_context=historical_context,
         national_motto=national_motto,
         national_anthem=national_anthem,
         region=str(supplemental["region"]),
