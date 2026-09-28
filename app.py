@@ -312,6 +312,8 @@ def _build_pdf_location_map(
     latitude: float | None,
     longitude: float | None,
     area_km2: float | None = None,
+    country_name: str = "Country",
+    capital: str = "Not available",
 ) -> PDFImage | None:
     """Build a locator map directly from OpenStreetMap tiles."""
     if latitude is None or longitude is None:
@@ -377,8 +379,8 @@ def _build_pdf_location_map(
             for tile_x in range(min_tile_x, max_tile_x + 1):
                 wrapped_x = tile_x % tile_count
                 tile_url = (
-                    "https://tile.openstreetmap.org/"
-                    f"{zoom}/{wrapped_x}/{tile_y}.png"
+                    "https://basemaps.cartocdn.com/"
+                    f"light_nolabels/{zoom}/{wrapped_x}/{tile_y}.png"
                 )
 
                 response = requests.get(
@@ -441,14 +443,54 @@ def _build_pdf_location_map(
             width=2,
         )
 
-        # Small source label.
+        # English-only map annotation.
+        annotation_lines = [
+            str(country_name),
+            (
+                f"Capital: {capital}"
+                if capital not in ("", "Not available", None)
+                else "Capital: Not available"
+            ),
+            f"Coordinates: {latitude:.3f}, {longitude:.3f}",
+        ]
+
+        box_left = 10
+        box_top = 10
+        box_right = 330
+        box_bottom = 72
+
+        draw.rounded_rectangle(
+            (box_left, box_top, box_right, box_bottom),
+            radius=8,
+            fill="#FFFFFF",
+            outline="#D1D5DB",
+            width=1,
+        )
+
+        draw.text(
+            (20, 18),
+            annotation_lines[0],
+            fill="#111111",
+        )
+        draw.text(
+            (20, 36),
+            annotation_lines[1],
+            fill="#333333",
+        )
+        draw.text(
+            (20, 52),
+            annotation_lines[2],
+            fill="#333333",
+        )
+
+        # English attribution only.
         draw.rectangle(
-            (6, output_height - 24, 190, output_height - 6),
+            (6, output_height - 24, 250, output_height - 6),
             fill="#FFFFFF",
         )
         draw.text(
             (10, output_height - 21),
-            "© OpenStreetMap contributors",
+            "Map data © OpenStreetMap contributors · CARTO",
             fill="#333333",
         )
 
@@ -868,6 +910,8 @@ def build_pdf_report(
             profile.get("latitude"),
             profile.get("longitude"),
             profile.get("area_km2"),
+            country_name=decision,
+            capital=clean(profile.get("capital")),
         )
 
         if location_map is not None:
