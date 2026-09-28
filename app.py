@@ -658,8 +658,25 @@ def build_pdf_report(
 
         symbols = info_grid(
             [
-                ("National Day", profile.get("national_day")),
-                ("Independence", profile.get("independence_day")),
+                (
+                    "National Day",
+                    (
+                        f"{profile.get('national_day')} · "
+                        f"{profile.get('colonial_history')}"
+                        if (
+                            profile.get("colonial_history")
+                            not in (None, "", "Not applicable", "Not available")
+                            and profile.get("national_day")
+                            not in (None, "", "Not available")
+                        )
+                        else (
+                            profile.get("colonial_history")
+                            if profile.get("colonial_history")
+                            not in (None, "", "Not applicable", "Not available")
+                            else profile.get("national_day")
+                        )
+                    ),
+                ),
                 ("National motto", profile.get("national_motto")),
                 ("National anthem", profile.get("national_anthem")),
                 ("Official religion", profile.get("official_religion")),
@@ -1348,11 +1365,21 @@ def show_result(image: Image.Image):
                         gdp_note += f" · {profile_gdp.year}"
                     st.caption(gdp_note)
 
-                d1, d2 = st.columns(2)
-                with d1:
-                    st.metric("National Day", profile.national_day)
-                with d2:
-                    st.metric("Independence", profile.independence_day)
+                national_day_text = profile.national_day
+                colonial_history = getattr(
+                    profile,
+                    "colonial_history",
+                    "Not applicable",
+                )
+                if colonial_history != "Not applicable":
+                    national_day_text = (
+                        f"{national_day_text} · "
+                        f"{colonial_history}"
+                        if national_day_text != "Not available"
+                        else colonial_history
+                    )
+
+                st.metric("National Day", national_day_text)
 
                 info_left, info_right = st.columns(2, gap="large")
                 with info_left:
@@ -1528,6 +1555,16 @@ def show_result(image: Image.Image):
                 "overview": profile.overview,
                 "national_day": profile.national_day,
                 "independence_day": profile.independence_day,
+                "colonial_history": getattr(
+                    profile,
+                    "colonial_history",
+                    "Not applicable",
+                ),
+                "colonial_history": getattr(
+                    profile,
+                    "colonial_history",
+                    "Not applicable",
+                ),
                 "national_motto": profile.national_motto,
                 "national_anthem": profile.national_anthem,
                 "region": getattr(profile, "region", "Not available"),
