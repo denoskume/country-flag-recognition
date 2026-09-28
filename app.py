@@ -690,13 +690,12 @@ def build_pdf_report(
         table.setStyle(TableStyle(style))
         return table
 
-    def section_box(
-        title: str,
-        content: object,
-    ) -> Table:
+    def section_title_bar(title: str) -> Table:
+        """Standalone title bar that can precede page-splittable content."""
         title_bar = Table(
             [[Paragraph(title, section_title_style)]],
             colWidths=[REPORT_WIDTH_MM * mm],
+            hAlign="LEFT",
         )
         title_bar.setStyle(
             TableStyle([
@@ -708,6 +707,25 @@ def build_pdf_report(
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 4.5),
             ])
         )
+        return title_bar
+
+    def split_section(
+        title: str,
+        content: object,
+    ) -> list[object]:
+        """Return independent flowables so long content may split across pages."""
+        return [
+            section_title_bar(title),
+            content,
+            Spacer(1, 3 * mm),
+        ]
+
+    def section_box(
+        title: str,
+        content: object,
+    ) -> Table:
+        """Compact non-splittable box for short sections only."""
+        title_bar = section_title_bar(title)
 
         wrapper = Table(
             [[title_bar], [content]],
@@ -1068,23 +1086,21 @@ def build_pdf_report(
                 value = clean(text)
                 if value == "Not available":
                     return
-                table = Table(
-                    [[Paragraph(value.replace("\n", "<br/>"), body_style)]],
-                    colWidths=[REPORT_WIDTH_MM * mm],
+                paragraph = Paragraph(
+                    value.replace("\n", "<br/>"),
+                    ParagraphStyle(
+                        f"LongSection_{title}",
+                        parent=body_style,
+                        leftIndent=7,
+                        rightIndent=7,
+                        spaceBefore=5,
+                        spaceAfter=5,
+                        borderWidth=0.5,
+                        borderColor=colors.HexColor("#D6D6D6"),
+                        borderPadding=6,
+                    ),
                 )
-                table.setStyle(
-                    TableStyle([
-                        ("LEFTPADDING", (0, 0), (-1, -1), 7),
-                        ("RIGHTPADDING", (0, 0), (-1, -1), 7),
-                        ("TOPPADDING", (0, 0), (-1, -1), 6),
-                        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                    ])
-                )
-                story.extend([
-                    section_box(title, table),
-                    Spacer(1, 3 * mm),
-                ])
+                story.extend(split_section(title, paragraph))
 
             flag_info = intelligence.get("flag")
             if isinstance(flag_info, dict):
@@ -1116,13 +1132,12 @@ def build_pdf_report(
 
                 if flag_rows:
                     story.append(PageBreak())
-                    story.extend([
-                        section_box(
+                    story.extend(
+                        split_section(
                             "Flag Intelligence",
                             info_grid(flag_rows, two_pairs=False),
-                        ),
-                        Spacer(1, 3 * mm),
-                    ])
+                        )
+                    )
 
             origins = intelligence.get("origins")
             if isinstance(origins, list) and origins:
@@ -1136,13 +1151,12 @@ def build_pdf_report(
                 ]
                 if origin_rows:
                     story.append(PageBreak())
-                    story.extend([
-                        section_box(
+                    story.extend(
+                        split_section(
                             "Origins & Early History",
                             info_grid(origin_rows, two_pairs=False),
-                        ),
-                        Spacer(1, 3 * mm),
-                    ])
+                        )
+                    )
 
             timeline = intelligence.get("historical_timeline")
             if isinstance(timeline, list) and timeline:
@@ -1157,13 +1171,12 @@ def build_pdf_report(
                 if timeline_rows:
                     if not (isinstance(origins, list) and origins):
                         story.append(PageBreak())
-                    story.extend([
-                        section_box(
+                    story.extend(
+                        split_section(
                             "Historical Journey",
                             info_grid(timeline_rows, two_pairs=False),
-                        ),
-                        Spacer(1, 3 * mm),
-                    ])
+                        )
+                    )
 
             narrative_sections = [
                 ("People & Society", "people_society"),
@@ -1267,13 +1280,12 @@ def build_pdf_report(
                         )
                     )
 
-                story.extend([
-                    section_box(
+                story.extend(
+                    split_section(
                         "Sources & Data Freshness",
                         info_grid(compact_sources, two_pairs=False),
-                    ),
-                    Spacer(1, 3 * mm),
-                ])
+                    )
+                )
 
         # Recognition is intentionally compact and secondary.
         candidates = report.get("top_candidates", [])
