@@ -2,6 +2,7 @@ from flag_recognition.country_knowledge import (
     canonical_overview_text,
     collect_domain_text,
     collect_keyword_context,
+    collect_strict_domain_text,
     collect_domain_text_detailed,
     collect_origins,
     extract_timeline,
@@ -326,3 +327,42 @@ Electricity generation relies on gas-fired plants and hydropower.
     assert "petroleum" in economy.lower()
     assert "electricity" in energy.lower()
     assert "hydropower" in energy.lower()
+
+
+STRICT_SOURCE_ARTICLE = """
+== Climate ==
+The climate is tropical with a dry season and two rainy seasons.
+
+== Rivers ==
+The Bandama is the longest river and Lake Kossou is the largest lake.
+
+== Terrain and topography ==
+The country is a plateau with mountains in the northwest.
+
+== Cropland ==
+Mineral resources include petroleum, natural gas, gold and manganese.
+
+== History ==
+A colonial administration was established in the nineteenth century.
+"""
+
+
+def test_strict_domain_extraction_does_not_cross_contaminate_sections():
+    sections = split_article_sections_detailed(STRICT_SOURCE_ARTICLE)
+
+    climate = collect_strict_domain_text(sections, "climate_seasons")
+    rivers = collect_strict_domain_text(sections, "rivers_lakes")
+    relief = collect_strict_domain_text(sections, "mountains_relief")
+    resources = collect_strict_domain_text(sections, "natural_resources")
+
+    assert "dry season" in climate
+    assert "colonial administration" not in climate
+
+    assert "Bandama" in rivers
+    assert "colonial administration" not in rivers
+
+    assert "plateau" in relief
+    assert "Mineral resources" not in relief
+
+    assert "petroleum" in resources
+    assert "colonial administration" not in resources
