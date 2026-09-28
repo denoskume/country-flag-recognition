@@ -29,14 +29,22 @@ FLAG_SECTION_ALIASES = {
     ),
     "history": (
         "history", "historical flags", "previous flags", "origins",
+        "adoption",
     ),
 }
 
 
 def _search_flag_article(country_name: str, timeout: float = 12.0) -> str:
-    """Resolve a likely dedicated national-flag article."""
+    """Resolve a dedicated national-flag article deterministically first."""
+    exact_title = f"Flag of {country_name}"
+    try:
+        _fetch_article(exact_title, timeout=timeout)
+        return exact_title
+    except (requests.RequestException, LookupError, ValueError):
+        pass
+
     queries = [
-        f"Flag of {country_name}",
+        exact_title,
         f"{country_name} flag",
     ]
 
