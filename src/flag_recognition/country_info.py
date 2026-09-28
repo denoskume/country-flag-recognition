@@ -821,6 +821,57 @@ def fetch_wikipedia_overview(
     )
 
 
+def fetch_wikipedia_history_text(
+    title: str | None,
+    timeout: float = 12.0,
+) -> str:
+    """Fetch broad Wikipedia article text for historical extraction."""
+    if not title:
+        return "Not available"
+
+    response = requests.get(
+        "https://en.wikipedia.org/w/api.php",
+        params={
+            "action": "query",
+            "prop": "extracts",
+            "explaintext": 1,
+            "redirects": 1,
+            "titles": title,
+            "format": "json",
+            "formatversion": 2,
+        },
+        headers={
+            "Accept": "application/json",
+            "User-Agent": (
+                "country-flag-recognition/0.1 "
+                "(educational portfolio project)"
+            ),
+        },
+        timeout=timeout,
+    )
+    response.raise_for_status()
+
+    pages = (
+        response.json()
+        .get("query", {})
+        .get("pages", [])
+    )
+
+    if not pages:
+        return "Not available"
+
+    extract = str(
+        pages[0].get("extract", "")
+    ).strip()
+
+    if not extract:
+        return "Not available"
+
+    # Keep enough context for colonial/independence extraction while
+    # avoiding unnecessarily huge payloads.
+    return extract[:50000]
+
+
 def fetch_wikidata_population(
     code: str,
     timeout: float = 12.0,
@@ -980,6 +1031,17 @@ COLONIAL_POWER_PATTERNS = {
     "Dutch": "Netherlands",
     "German": "Germany",
     "Italian": "Italy",
+    "Danish": "Denmark",
+    "Swedish": "Sweden",
+    "Norwegian": "Norway",
+    "Russian": "Russia",
+    "Soviet": "Soviet Union",
+    "Ottoman": "Ottoman Empire",
+    "Japanese": "Japan",
+    "American": "United States",
+    "Australian": "Australia",
+    "New Zealand": "New Zealand",
+    "South African": "South Africa",
 }
 
 
@@ -1090,10 +1152,13 @@ def _extract_structured_history(
     colonial_period = "Not applicable"
 
     period_patterns = [
-        r"officially became (?:a|an) ([^.]{1,70}?(?:colony|protectorate)) in (\d{4})",
-        r"became (?:a|an) ([^.]{1,70}?(?:colony|protectorate)) in (\d{4})",
-        r"was (?:a|an) ([^.]{1,70}?(?:colony|protectorate)) from (\d{4}) to (\d{4})",
-        r"from (\d{4}) to (\d{4}),? [^.]{0,60}(?:colony|protectorate)",
+        r"officially became (?:a|an) ([^.]{1,90}?(?:colony|protectorate)) in (\d{4})",
+        r"became (?:a|an) ([^.]{1,90}?(?:colony|protectorate)) in (\d{4})",
+        r"was (?:a|an) ([^.]{1,90}?(?:colony|protectorate)) from (\d{4}) to (\d{4})",
+        r"from (\d{4}) to (\d{4}),? [^.]{0,90}(?:colony|protectorate|mandate|territory)",
+        r"(?:colonized|colonised|annexed|occupied) by ([A-Z][A-Za-z .'-]+?) in (\d{4})",
+        r"became part of ([A-Z][A-Za-z .'-]+?) in (\d{4})",
+        r"(?:protectorate|colony|mandate|territory) of ([A-Z][A-Za-z .'-]+?) from (\d{4})",
     ]
 
     for pattern in period_patterns:
@@ -1681,28 +1746,33 @@ def fetch_country_profile(
     if emergency_override:
         emergency_numbers = emergency_override
 
+    wikipedia_title = (
+        str(wikidata.get("wikipedia_title"))
+        if wikidata.get("wikipedia_title")
+        else None
+    )
+
     try:
-        overview = (
-            fetch_wikipedia_overview(
-                str(
-                    wikidata.get(
-                        "wikipedia_title"
-                    )
-                )
-                if wikidata.get(
-                    "wikipedia_title"
-                )
-                else None,
-                timeout=timeout,
-            )
+        overview = fetch_wikipedia_overview(
+            wikipedia_title,
+            timeout=timeout,
         )
     except (
         requests.RequestException,
         ValueError,
     ):
-        overview = (
-            "Not available"
+        overview = "Not available"
+
+    try:
+        history_text = fetch_wikipedia_history_text(
+            wikipedia_title,
+            timeout=timeout,
         )
+    except (
+        requests.RequestException,
+        ValueError,
+    ):
+        history_text = overview
 
     normalized_code = code.lower().strip()
     overrides = COUNTRY_PROFILE_OVERRIDES.get(
@@ -1723,7 +1793,7 @@ def fetch_country_profile(
         )
 
     colonial_history = _extract_colonial_history(
-        overview,
+        history_text,
         str(country_dates["independence_day"]),
     )
 
@@ -1748,7 +1818,7 @@ def fetch_country_profile(
 
     if national_day == "Not available":
         national_day = _extract_national_day_from_overview(
-            overview
+            history_text
         )
 
     if national_day == "Not available":
@@ -1756,7 +1826,7 @@ def fetch_country_profile(
         national_day = "No single official national day documented"
 
     structured_history = _extract_structured_history(
-        overview,
+        history_text,
         independence_day,
     )
 
