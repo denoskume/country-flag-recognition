@@ -44,3 +44,19 @@ def test_flag_metadata_extracts_adoption_and_proportion():
     assert adoption.value == "1959"
     assert proportion is not None
     assert proportion.value == "2:3"
+
+
+def test_flag_lead_supports_day_month_year_and_width_length_ratio():
+    article = """
+The national flag is a vertical tricolour of orange, white and green.
+It was adopted on 3 December 1959 with a 2:3 width-to-length ratio.
+"""
+    url = "https://en.wikipedia.org/wiki/Flag_of_Ivory_Coast"
+
+    adoption = _extract_adoption(article, url)
+    proportion = _extract_proportion(article, url)
+
+    assert adoption is not None
+    assert adoption.value == "3 December 1959"
+    assert proportion is not None
+    assert proportion.value == "2:3"
