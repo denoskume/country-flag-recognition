@@ -86,3 +86,17 @@ def test_labeled_emergency_numbers_keep_services():
     )
 
     assert value == "Fire: 110 | Police: 112 | Ambulance: 113"
+
+
+def test_non_independence_state_does_not_infer_colonial_powers():
+    from flag_recognition.country_info import _extract_structured_history
+
+    result = _extract_structured_history(
+        (
+            "Spain fought the United States in 1898. "
+            "French occupation triggered resistance in 1808."
+        ),
+        "Not available",
+    )
+
+    assert result["independence_day"] == "Not applicable"
