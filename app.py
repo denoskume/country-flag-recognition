@@ -754,9 +754,19 @@ def build_pdf_report(
     generated_at = clean(report.get("generated_at"))
     decision = clean(report.get("decision"))
     country_code = clean(report.get("country_code")).upper()
-    confidence = float(report.get("confidence", 0.0))
-    threshold = float(report.get("deployment_threshold", 0.0))
-    decision_margin = float(report.get("decision_margin", 0.0))
+
+    def optional_float(value: object) -> float | None:
+        """Preserve missing recognition metrics for text-selected countries."""
+        if value in (None, "", "Not available"):
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    confidence = optional_float(report.get("confidence"))
+    threshold = optional_float(report.get("deployment_threshold"))
+    decision_margin = optional_float(report.get("decision_margin"))
     decision_reason = clean(report.get("decision_reason"))
     accepted = bool(report.get("accepted"))
     status = "Accepted" if accepted else "Rejected"
