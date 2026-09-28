@@ -1941,6 +1941,20 @@ def fetch_country_profile(
         )
     )
 
+    if independence_day == "Not applicable":
+        former_colonial_powers = str(
+            overrides.get("former_colonial_powers", "Not applicable")
+        )
+        colonial_period = str(
+            overrides.get(
+                "colonial_period",
+                "No classical colonial-independence transition",
+            )
+        )
+        independence_leader = str(
+            overrides.get("independence_leader", "Not applicable")
+        )
+
     # Historical coherence guard: a verified sovereignty date/power must
     # never coexist with generic "not applicable" placeholders.
     if (
