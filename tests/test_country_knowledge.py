@@ -2,6 +2,8 @@ import requests
 
 from flag_recognition.country_intelligence import CountryIntelligence
 from flag_recognition.country_knowledge import (
+    ArticleSection,
+    _clean_heading,
     canonical_overview_text,
     collect_domain_text,
     collect_keyword_context,
