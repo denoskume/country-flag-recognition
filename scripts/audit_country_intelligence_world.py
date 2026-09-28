@@ -277,9 +277,15 @@ def audit_country(code: str, timeout: float) -> dict[str, Any]:
             )
 
         try:
+            canonical_fact = intelligence.identity.get("encyclopedia_title")
+            flag_country_name = (
+                str(canonical_fact.value)
+                if canonical_fact is not None
+                else profile.name
+            )
             intelligence.flag = enrich_flag_profile(
                 intelligence.flag,
-                profile.name,
+                flag_country_name,
                 timeout=timeout,
             )
         except Exception as exc:
