@@ -433,17 +433,45 @@ def _infobox_field(
     wikitext: str,
     names: tuple[str, ...],
 ) -> str:
-    """Extract the first matching single-line infobox parameter."""
+    """Extract a compact infobox parameter, including common multiline values."""
     for name in names:
-        pattern = re.compile(
-            rf"^\|\s*{re.escape(name)}\s*=\s*(.+?)\s*$",
+        start_pattern = re.compile(
+            rf"^\|\s*{re.escape(name)}\s*=\s*(.*)$",
             flags=re.IGNORECASE | re.MULTILINE,
         )
-        match = pattern.search(wikitext)
-        if match:
-            value = _clean_wikivalue(match.group(1))
-            if value:
-                return value
+        match = start_pattern.search(wikitext)
+        if not match:
+            continue
+
+        lines = [match.group(1).strip()]
+        cursor = match.end()
+        for raw_line in wikitext[cursor:].splitlines():
+            if re.match(r"^\|\s*[A-Za-z0-9 _-]+\s*=", raw_line):
+                break
+            if re.match(r"^\}\}\s*$", raw_line):
+                break
+            lines.append(raw_line.strip())
+            if len(lines) >= 16:
+                break
+
+        value = "\n".join(line for line in lines if line).strip()
+        if not value:
+            continue
+
+        # Normalize common list templates before generic cleanup.
+        value = re.sub(
+            r"\{\{\s*(?:plainlist|ubl|unbulleted list)\s*\|",
+            "",
+            value,
+            flags=re.IGNORECASE,
+        )
+        value = value.replace("\n*", "; ")
+        value = value.replace("\n", " ")
+        value = re.sub(r"\}\}\s*$", "", value).strip()
+
+        cleaned = _clean_wikivalue(value)
+        if cleaned:
+            return cleaned
     return ""
 
 
