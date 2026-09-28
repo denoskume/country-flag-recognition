@@ -139,6 +139,41 @@ def _clean_heading(value: str) -> str:
     return re.sub(r"[^a-z0-9 -]", "", value)
 
 
+def canonical_overview_text(
+    value: object,
+    *,
+    max_chars: int = 900,
+) -> str:
+    """Keep stable country description while removing competing live metrics."""
+    text = str(value or "").strip()
+    if not text:
+        return "Not available"
+
+    sentences = _sentences(text)
+    dynamic_terms = (
+        "inhabitants",
+        "population",
+        "gdp",
+        "gross domestic product",
+        "head of state",
+        "president",
+        "prime minister",
+        "unemployment",
+        "inflation",
+    )
+    stable = [
+        sentence
+        for sentence in sentences
+        if not any(term in sentence.lower() for term in dynamic_terms)
+    ]
+
+    selected = stable[:4] or sentences[:2]
+    result = " ".join(selected).strip()
+    if len(result) > max_chars:
+        result = result[:max_chars].rsplit(" ", 1)[0].rstrip() + "…"
+    return result or "Not available"
+
+
 def fetch_country_article(
     title: str,
     timeout: float = 15.0,
