@@ -1070,7 +1070,7 @@ def build_pdf_report(
                     ("Flag Meaning & Symbolism", "symbolism"),
                 ):
                     items = flag_info.get(field)
-                    if isinstance(items, list):
+                    if isinstance(items, (list, tuple)):
                         values = [
                             clean(item.get("value"))
                             for item in items
@@ -1081,7 +1081,7 @@ def build_pdf_report(
                             add_learning_section(title, "\n\n".join(values))
 
                 flag_history = flag_info.get("historical_flags")
-                if isinstance(flag_history, list) and flag_history:
+                if isinstance(flag_history, (list, tuple)) and flag_history:
                     rows = [
                         (
                             clean(item.get("period")),
@@ -1100,7 +1100,7 @@ def build_pdf_report(
 
             # 4. Origins and Historical Journey
             origins = intelligence.get("origins")
-            if isinstance(origins, list) and origins:
+            if isinstance(origins, (list, tuple)) and origins:
                 origin_rows = [
                     (
                         clean(event.get("label")),
@@ -1118,7 +1118,7 @@ def build_pdf_report(
                     )
 
             timeline = intelligence.get("historical_timeline")
-            if isinstance(timeline, list) and timeline:
+            if isinstance(timeline, (list, tuple)) and timeline:
                 timeline_rows = [
                     (
                         clean(event.get("period")),
@@ -1579,7 +1579,7 @@ def resolve_emergency_numbers(
 
 
 COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-28-v16"
-COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-28-v12"
+COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-28-v13"
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_country_profile_v2(
