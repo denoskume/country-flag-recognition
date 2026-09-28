@@ -145,7 +145,53 @@ def content_quality_issues(
     return sorted(set(issues))
 
 
-def audit_country(code: str, timeout: float) -> dict[str, Any]:
+def _retry_source_call(
+    operation,
+    *,
+    attempts: int,
+    backoff_seconds: float,
+):
+    """Retry transient public-source failures with exponential backoff."""
+    last_error: Exception | None = None
+
+    for attempt in range(attempts):
+        try:
+            return operation()
+        except (
+            requests.Timeout,
+            requests.ConnectionError,
+            requests.HTTPError,
+        ) as exc:
+            last_error = exc
+
+            status = (
+                exc.response.status_code
+                if isinstance(exc, requests.HTTPError)
+                and exc.response is not None
+                else None
+            )
+            retryable = (
+                status is None
+                or status in {408, 425, 429, 500, 502, 503, 504}
+            )
+            if not retryable or attempt + 1 >= attempts:
+                raise
+
+            delay = backoff_seconds * (2 ** attempt)
+            time.sleep(delay)
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("Retry helper exited unexpectedly")
+
+
+def audit_country(
+    code: str,
+    timeout: float,
+    *,
+    retries: int,
+    backoff_seconds: float,
+) -> dict[str, Any]:
     started = time.monotonic()
     result: dict[str, Any] = {
         "code": code.upper(),
@@ -156,25 +202,42 @@ def audit_country(code: str, timeout: float) -> dict[str, Any]:
         "missing_optional": [],
         "validation_issues": [],
         "quality_issues": [],
+        "source_issues": [],
         "coverage_percent": 0.0,
         "exception": "",
     }
 
     try:
-        profile = fetch_country_profile(code, timeout=timeout)
+        profile = _retry_source_call(
+            lambda: fetch_country_profile(code, timeout=timeout),
+            attempts=retries,
+            backoff_seconds=backoff_seconds,
+        )
         payload = profile_payload(profile)
         result["name"] = profile.name
 
-        record = build_from_legacy_profile(payload)
-        try:
-            record = enrich_from_encyclopedia(
-                record,
+        def build_enriched_record():
+            fresh = build_from_legacy_profile(payload)
+            return enrich_from_encyclopedia(
+                fresh,
                 title=profile.name,
                 timeout=timeout,
             )
-        except (requests.RequestException, LookupError, ValueError) as exc:
-            result["validation_issues"].append(
-                f"encyclopedia_enrichment:{type(exc).__name__}"
+
+        try:
+            record = _retry_source_call(
+                build_enriched_record,
+                attempts=retries,
+                backoff_seconds=backoff_seconds,
+            )
+        except (
+            requests.RequestException,
+            LookupError,
+            ValueError,
+        ) as exc:
+            record = build_from_legacy_profile(payload)
+            result["source_issues"].append(
+                f"encyclopedia_enrichment:{type(exc).__name__}:{exc}"
             )
 
         canonical_fact = record.identity.get("encyclopedia_title")
@@ -183,15 +246,25 @@ def audit_country(code: str, timeout: float) -> dict[str, Any]:
             if canonical_fact is not None
             else profile.name
         )
+
         try:
-            record.flag = enrich_flag_profile(
-                record.flag,
-                flag_country_name,
-                timeout=timeout,
+            enriched_flag = _retry_source_call(
+                lambda: enrich_flag_profile(
+                    record.flag,
+                    flag_country_name,
+                    timeout=timeout,
+                ),
+                attempts=retries,
+                backoff_seconds=backoff_seconds,
             )
-        except (requests.RequestException, LookupError, ValueError) as exc:
-            result["validation_issues"].append(
-                f"flag_enrichment:{type(exc).__name__}"
+            record.flag = enriched_flag
+        except (
+            requests.RequestException,
+            LookupError,
+            ValueError,
+        ) as exc:
+            result["source_issues"].append(
+                f"flag_enrichment:{type(exc).__name__}:{exc}"
             )
 
         intelligence = record.to_dict()
@@ -214,22 +287,33 @@ def audit_country(code: str, timeout: float) -> dict[str, Any]:
         total = len(OFFICIAL_REPORT_SECTIONS)
         coverage = round(100.0 * present / total, 1) if total else 0.0
 
+        if result["source_issues"]:
+            status = "source_error"
+        elif not required_missing and not quality:
+            status = "pass"
+        else:
+            status = "review"
+
         result.update(
             {
-                "status": (
-                    "pass"
-                    if not required_missing and not quality
-                    else "review"
-                ),
+                "status": status,
                 "missing_required": required_missing,
                 "missing_optional": optional_missing,
-                "validation_issues": sorted(
-                    set(result["validation_issues"] + validation)
-                ),
+                "validation_issues": sorted(set(validation)),
                 "quality_issues": quality,
                 "coverage_percent": coverage,
             }
         )
+    except (
+        requests.RequestException,
+        LookupError,
+        ValueError,
+    ) as exc:
+        result["status"] = "source_error"
+        result["source_issues"].append(
+            f"profile:{type(exc).__name__}:{exc}"
+        )
+        result["exception"] = f"{type(exc).__name__}: {exc}"
     except Exception as exc:  # noqa: BLE001 - audit must record every country
         result["exception"] = f"{type(exc).__name__}: {exc}"
     finally:
@@ -262,6 +346,7 @@ def write_outputs(rows: list[dict[str, Any]], output_dir: Path, label: str) -> N
         "missing_optional",
         "validation_issues",
         "quality_issues",
+        "source_issues",
         "exception",
         "elapsed_seconds",
     ]
@@ -275,6 +360,7 @@ def write_outputs(rows: list[dict[str, Any]], output_dir: Path, label: str) -> N
                 "missing_optional",
                 "validation_issues",
                 "quality_issues",
+                "source_issues",
             ):
                 flattened[key] = " | ".join(row.get(key) or [])
             writer.writerow({key: flattened.get(key, "") for key in fieldnames})
@@ -282,6 +368,10 @@ def write_outputs(rows: list[dict[str, Any]], output_dir: Path, label: str) -> N
     total = len(rows)
     passed = sum(row.get("status") == "pass" for row in rows)
     review = sum(row.get("status") == "review" for row in rows)
+    source_errors = sum(
+        row.get("status") == "source_error"
+        for row in rows
+    )
     errors = sum(row.get("status") == "error" for row in rows)
     avg_coverage = (
         round(
@@ -299,25 +389,27 @@ def write_outputs(rows: list[dict[str, Any]], output_dir: Path, label: str) -> N
         f"- Countries/classes audited: **{total}**",
         f"- Pass: **{passed}**",
         f"- Review required: **{review}**",
-        f"- Errors: **{errors}**",
+        f"- Source errors after retry: **{source_errors}**",
+        f"- Code/data errors: **{errors}**",
         f"- Mean report coverage: **{avg_coverage}%**",
         "",
         "## Countries requiring review",
         "",
-        "| Code | Country | Coverage | Required missing | Quality issues | Error |",
-        "|---|---|---:|---|---|---|",
+        "| Code | Country | Coverage | Required missing | Quality issues | Source issues | Error |",
+        "|---|---|---:|---|---|---|---|",
     ]
 
     for row in rows:
         if row.get("status") == "pass":
             continue
         lines.append(
-            "| {code} | {name} | {coverage}% | {missing} | {quality} | {error} |".format(
+            "| {code} | {name} | {coverage}% | {missing} | {quality} | {source} | {error} |".format(
                 code=row.get("code", ""),
                 name=str(row.get("name", "")).replace("|", "/"),
                 coverage=row.get("coverage_percent", 0),
                 missing=", ".join(row.get("missing_required") or []),
                 quality=", ".join(row.get("quality_issues") or []),
+                source=", ".join(row.get("source_issues") or []).replace("|", "/"),
                 error=str(row.get("exception") or "").replace("|", "/"),
             )
         )
@@ -346,6 +438,7 @@ def merge_shards(input_dir: Path, output_dir: Path) -> int:
             "missing_optional": [],
             "validation_issues": [],
             "quality_issues": ["missing_from_audit_shards"],
+            "source_issues": [],
             "exception": "Country was not returned by any audit shard.",
             "elapsed_seconds": 0.0,
         }
@@ -358,6 +451,10 @@ def merge_shards(input_dir: Path, output_dir: Path) -> int:
         "classes_returned": len(merged),
         "pass": sum(row["status"] == "pass" for row in merged),
         "review": sum(row["status"] == "review" for row in merged),
+        "source_error": sum(
+            row["status"] == "source_error"
+            for row in merged
+        ),
         "error": sum(row["status"] == "error" for row in merged),
         "missing_codes": missing,
     }
@@ -373,7 +470,10 @@ def merge_shards(input_dir: Path, output_dir: Path) -> int:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", type=Path, default=Path("artifacts/audit"))
-    parser.add_argument("--timeout", type=float, default=10.0)
+    parser.add_argument("--timeout", type=float, default=12.0)
+    parser.add_argument("--retries", type=int, default=3)
+    parser.add_argument("--backoff-seconds", type=float, default=1.0)
+    parser.add_argument("--country-delay", type=float, default=0.25)
     parser.add_argument("--shard-index", type=int, default=0)
     parser.add_argument("--shard-count", type=int, default=1)
     parser.add_argument("--merge-dir", type=Path)
@@ -402,17 +502,31 @@ def main() -> int:
             f"[{index}/{len(selected)}] auditing {code.upper()}",
             flush=True,
         )
-        rows.append(audit_country(code, timeout=args.timeout))
+        rows.append(
+            audit_country(
+                code,
+                timeout=args.timeout,
+                retries=args.retries,
+                backoff_seconds=args.backoff_seconds,
+            )
+        )
+        if args.country_delay > 0:
+            time.sleep(args.country_delay)
 
     label = f"shard-{args.shard_index:02d}"
     write_outputs(rows, args.output_dir, label)
 
+    source_errors = sum(
+        row["status"] == "source_error"
+        for row in rows
+    )
     errors = sum(row["status"] == "error" for row in rows)
     print(
         json.dumps(
             {
                 "shard": args.shard_index,
                 "countries": len(rows),
+                "source_errors": source_errors,
                 "errors": errors,
             },
             indent=2,
