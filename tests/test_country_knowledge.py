@@ -832,3 +832,20 @@ def test_structured_geography_infobox_extracts_deep_country_facts(monkeypatch):
     assert "Tagus" in facts["rivers_lakes"]
     assert "Lago de Sanabria" in facts["rivers_lakes"]
     assert source.endswith("Geography_of_Spain")
+
+
+def test_multiline_country_infobox_values_are_supported():
+    wikitext = """
+{{Infobox economy
+| industries = {{plainlist|
+* aerospace
+* automotive
+* pharmaceuticals
+}}
+| export-goods = aircraft, machinery
+}}
+"""
+    industries = _infobox_field(wikitext, ("industries",))
+    assert "aerospace" in industries
+    assert "automotive" in industries
+    assert "pharmaceuticals" in industries
