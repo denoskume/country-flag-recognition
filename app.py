@@ -56,7 +56,11 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from flag_recognition.country_info import fetch_country_profile
-from flag_recognition.inference import load_inference_bundle, predict_image
+from flag_recognition.inference import (
+    load_inference_bundle,
+    predict_image,
+    predict_robust,
+)
 from flag_recognition.taxonomy import country_name_from_code
 
 
@@ -1561,7 +1565,7 @@ with st.container(border=True):
 @st.dialog("Recognition result", width="large")
 def show_result(image: Image.Image):
     with st.spinner("Processing image..."):
-        prediction = predict_image(
+        prediction = predict_robust(
             image,
             bundle,
             top_k=20,
