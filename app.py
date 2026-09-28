@@ -79,7 +79,10 @@ from flag_recognition.country_intelligence import (
     section_completion,
     validate_country_intelligence,
 )
-from flag_recognition.country_knowledge import enrich_from_encyclopedia
+from flag_recognition.country_knowledge import (
+    canonical_overview_text,
+    enrich_from_encyclopedia,
+)
 from flag_recognition.flag_knowledge import enrich_flag_profile
 from flag_recognition.learning import answer_country_question
 
@@ -1541,34 +1544,6 @@ def get_fresh_historical_profile(country_code: str):
     )
 
 
-def _canonical_overview_text(value: object, max_chars: int = 900) -> str:
-    """Keep stable descriptive overview text and avoid duplicate live metrics."""
-    text = str(value or "").strip()
-    if not text:
-        return "Not available"
-
-    sentences = [
-        sentence.strip()
-        for sentence in re.split(r"(?<=[.!?])\s+", " ".join(text.split()))
-        if sentence.strip()
-    ]
-    dynamic_terms = (
-        "inhabitants", "population", "gdp", "gross domestic product",
-        "head of state", "president", "prime minister",
-    )
-    stable = [
-        sentence
-        for sentence in sentences
-        if not any(term in sentence.lower() for term in dynamic_terms)
-    ]
-
-    selected = stable[:4] or sentences[:2]
-    result = " ".join(selected).strip()
-    if len(result) > max_chars:
-        result = result[:max_chars].rsplit(" ", 1)[0].rstrip() + "…"
-    return result or "Not available"
-
-
 def _learning_blocks(value: object) -> list[tuple[str, str]]:
     """Parse concise 'Heading: summary' encyclopedia context into learning blocks."""
     text = str(value or "").strip()
@@ -1608,7 +1583,7 @@ def _country_profile_payload(
         "official_languages": profile.official_languages,
         "continent": profile.continent,
         "area_km2": profile.area_km2,
-        "overview": _canonical_overview_text(profile.overview),
+        "overview": canonical_overview_text(profile.overview),
         "national_day": historical_profile.national_day,
         "independence_day": historical_profile.independence_day,
         "colonial_history": getattr(
