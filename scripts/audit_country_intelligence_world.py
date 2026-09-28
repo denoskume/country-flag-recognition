@@ -88,7 +88,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, default=Path("artifacts/world_audit"))
     parser.add_argument("--shard-index", type=int, default=0)
     parser.add_argument("--shard-count", type=int, default=1)
-    parser.add_argument("--timeout", type=float, default=8.0)
+    parser.add_argument("--timeout", type=float, default=12.0)
+    parser.add_argument(
+        "--inter-country-delay",
+        type=float,
+        default=0.4,
+        help="Pause between countries to reduce public-source rate limiting.",
+    )
     parser.add_argument("--merge-root", type=Path)
     parser.add_argument(
         "--fail-on-critical",
@@ -516,6 +522,9 @@ def main() -> None:
         )
         result = audit_country(code, args.timeout)
         rows.append(result)
+        if args.inter_country_delay > 0:
+            import time
+            time.sleep(args.inter_country_delay)
         print(
             f"  -> {result['status']} "
             f"critical={len(result.get('critical_issues', []))} "
