@@ -1579,7 +1579,7 @@ def resolve_emergency_numbers(
 
 
 COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-28-v16"
-COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-28-v6"
+COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-28-v7"
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_country_profile_v2(
@@ -2770,15 +2770,41 @@ def show_result(image: Image.Image):
         )
 
     with pdf_col:
-        st.download_button(
-            "Download PDF",
-            data=build_pdf_report(report, image),
-            file_name=(
-                f"{_report_filename_country(country)}_report.pdf"
-            ),
-            mime="application/pdf",
-            use_container_width=True,
+        missing_required = report.get(
+            "official_report_missing_required"
         )
+        report_ready = (
+            accepted
+            and isinstance(missing_required, list)
+            and not missing_required
+        )
+
+        if accepted and not report_ready:
+            missing_text = (
+                ", ".join(missing_required)
+                if isinstance(missing_required, list)
+                and missing_required
+                else "Country Intelligence enrichment"
+            )
+            st.warning(
+                "Official PDF withheld: required country knowledge is "
+                f"incomplete ({missing_text})."
+            )
+            st.button(
+                "Official PDF unavailable",
+                disabled=True,
+                use_container_width=True,
+            )
+        else:
+            st.download_button(
+                "Download PDF",
+                data=build_pdf_report(report, image),
+                file_name=(
+                    f"{_report_filename_country(country)}_report.pdf"
+                ),
+                mime="application/pdf",
+                use_container_width=True,
+            )
 
 
 if process and image is not None:
