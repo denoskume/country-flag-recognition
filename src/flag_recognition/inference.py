@@ -249,3 +249,94 @@ def predict_scene(
         unknown_threshold=bundle.unknown_threshold,
         inference_ms=inference_ms,
     )
+
+
+
+def _robust_views(image: Image.Image) -> list[Image.Image]:
+    """Create conservative test-time views without changing flag identity."""
+    image = image.convert("RGB")
+    width, height = image.size
+    views = [image]
+
+    # Small center crops remove accidental borders/margins around a flag.
+    for fraction in (0.96, 0.90):
+        crop_w = max(1, round(width * fraction))
+        crop_h = max(1, round(height * fraction))
+        left = max(0, (width - crop_w) // 2)
+        top = max(0, (height - crop_h) // 2)
+        views.append(
+            image.crop(
+                (left, top, left + crop_w, top + crop_h)
+            )
+        )
+
+    # Slight orientation errors are common in uploaded photos/screenshots.
+    for angle in (-4, 4):
+        views.append(
+            image.rotate(
+                angle,
+                resample=Image.Resampling.BICUBIC,
+                expand=False,
+                fillcolor=(245, 245, 245),
+            )
+        )
+
+    return views
+
+
+@torch.inference_mode()
+def predict_robust(
+    image: Image.Image,
+    bundle: InferenceBundle,
+    top_k: int = 5,
+) -> Prediction:
+    """Predict with test-time augmentation and consensus aggregation.
+
+    This is intended for deployment robustness. It preserves flag identity,
+    averages probabilities over conservative image views, and uses the same
+    classifier/checkpoint.
+    """
+    transform = build_eval_transform(bundle.image_size)
+    views = _robust_views(image)
+
+    batch = torch.stack(
+        [transform(view) for view in views],
+        dim=0,
+    ).to(bundle.device)
+
+    start = perf_counter()
+    logits = bundle.model(batch)
+    probabilities = torch.softmax(logits, dim=1)
+
+    if bundle.device.type == "cuda":
+        torch.cuda.synchronize()
+
+    inference_ms = (perf_counter() - start) * 1000.0
+
+    # Mean aggregation rewards predictions that remain stable across views.
+    aggregated = probabilities.mean(dim=0)
+
+    k = min(int(top_k), aggregated.numel())
+    values, indices = torch.topk(aggregated, k=k)
+
+    top5 = tuple(
+        (
+            bundle.index_to_class[int(index)],
+            float(value),
+        )
+        for value, index in zip(
+            values.cpu(),
+            indices.cpu(),
+        )
+    )
+
+    top1_country, top1_confidence = top5[0]
+
+    return Prediction(
+        top1_country=top1_country,
+        top1_confidence=top1_confidence,
+        top5=top5,
+        is_known=(top1_confidence >= bundle.unknown_threshold),
+        unknown_threshold=bundle.unknown_threshold,
+        inference_ms=inference_ms,
+    )
