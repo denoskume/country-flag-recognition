@@ -38,8 +38,22 @@ SECTION_ALIASES: dict[str, tuple[str, ...]] = {
         "colonial period", "independence",
     ),
     "geography": (
-        "geography", "climate", "biodiversity", "environment",
-        "physical geography",
+        "geography", "physical geography", "location", "terrain",
+    ),
+    "climate_seasons": (
+        "climate", "seasons", "weather", "precipitation", "temperature",
+    ),
+    "rivers_lakes": (
+        "rivers", "lakes", "hydrography", "drainage", "waterways",
+        "water resources",
+    ),
+    "mountains_relief": (
+        "mountains", "mountain ranges", "topography", "relief", "terrain",
+        "geology", "landforms",
+    ),
+    "natural_resources": (
+        "natural resources", "minerals", "mining", "forestry", "energy",
+        "petroleum", "oil and gas", "fisheries",
     ),
     "people_society": (
         "demographics", "population", "ethnic groups", "languages",
@@ -51,6 +65,11 @@ SECTION_ALIASES: dict[str, tuple[str, ...]] = {
     ),
     "economy": (
         "economy", "agriculture", "industry", "trade", "tourism",
+    ),
+    "economic_drivers": (
+        "oil industry", "petroleum industry", "energy", "agriculture",
+        "fisheries", "manufacturing", "industry", "services", "tourism",
+        "exports", "trade", "shipping", "finance",
     ),
     "infrastructure": (
         "infrastructure", "transport", "transportation", "energy",
@@ -123,6 +142,53 @@ def fetch_country_article(
     if not extract:
         raise LookupError(f"Empty encyclopedia article for {title!r}")
     return extract, canonical_title
+
+
+def fetch_topic_article(
+    country_name: str,
+    topic: str,
+    *,
+    timeout: float = 15.0,
+) -> tuple[str, str] | None:
+    """Fetch a dedicated topic article such as Geography/Economy of a country."""
+    query = f"{topic} of {country_name}"
+    try:
+        response = requests.get(
+            WIKIPEDIA_API,
+            params={
+                "action": "query",
+                "list": "search",
+                "srsearch": query,
+                "srlimit": 5,
+                "format": "json",
+                "formatversion": 2,
+            },
+            headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        results = response.json().get("query", {}).get("search", [])
+
+        preferred = query.lower()
+        candidates = [
+            str(item.get("title") or "").strip()
+            for item in results
+            if str(item.get("title") or "").strip()
+        ]
+        title = next(
+            (
+                candidate
+                for candidate in candidates
+                if candidate.lower() == preferred
+            ),
+            candidates[0] if candidates else None,
+        )
+        if not title:
+            return None
+
+        return fetch_country_article(title, timeout=timeout)
+    except (requests.RequestException, LookupError, ValueError):
+        return None
 
 
 def split_article_sections_detailed(text: str) -> list[ArticleSection]:
@@ -478,15 +544,78 @@ def enrich_from_encyclopedia(
         if item is not None:
             target.setdefault("context", item)
 
+    # Dedicated geography/economy articles usually contain the physical
+    # details absent from the general country article.
+    geography_article = fetch_topic_article(
+        record.name,
+        "Geography",
+        timeout=timeout,
+    )
+    geography_sections = detailed
+    geography_source_url = source_url
+    if geography_article is not None:
+        geography_text, geography_title = geography_article
+        geography_sections = split_article_sections_detailed(geography_text)
+        geography_source_url = WIKIPEDIA_PAGE + quote(
+            geography_title.replace(" ", "_"),
+            safe="()_-",
+        )
+
+    physical_domains = {
+        "climate_seasons": ("climate_seasons", record.environment),
+        "rivers_lakes": ("rivers_lakes", record.geography),
+        "mountains_relief": ("mountains_relief", record.geography),
+        "natural_resources": ("natural_resources", record.environment),
+    }
+    for domain, (key, target) in physical_domains.items():
+        text = collect_domain_text_detailed(
+            geography_sections,
+            domain,
+            max_chars=1800,
+            max_blocks=5,
+        )
+        item = _domain_evidence(text, geography_source_url)
+        if item is not None:
+            target.setdefault(key, item)
+
+    # Keep a concise general physical-geography context as a fallback.
     environment_text = collect_domain_text_detailed(
-        detailed,
+        geography_sections,
         "geography",
-        max_chars=1800,
+        max_chars=1600,
         max_blocks=4,
     )
-    environment_item = _domain_evidence(environment_text, source_url)
+    environment_item = _domain_evidence(
+        environment_text,
+        geography_source_url,
+    )
     if environment_item is not None:
         record.environment.setdefault("context", environment_item)
+
+    economy_article = fetch_topic_article(
+        record.name,
+        "Economy",
+        timeout=timeout,
+    )
+    if economy_article is not None:
+        economy_text, economy_title = economy_article
+        economy_sections = split_article_sections_detailed(economy_text)
+        economy_source_url = WIKIPEDIA_PAGE + quote(
+            economy_title.replace(" ", "_"),
+            safe="()_-",
+        )
+        drivers_text = collect_domain_text_detailed(
+            economy_sections,
+            "economic_drivers",
+            max_chars=2200,
+            max_blocks=6,
+        )
+        drivers_item = _domain_evidence(
+            drivers_text,
+            economy_source_url,
+        )
+        if drivers_item is not None:
+            record.economy.setdefault("economic_drivers", drivers_item)
 
     if history_text:
         compact_history = " ".join(
