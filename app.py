@@ -2833,120 +2833,141 @@ def show_result(
                 "supported by sourced data. Missing domains are never fabricated."
             )
 
-            flag_info = intelligence.get("flag") or {}
-            with st.expander("Flag Intelligence", expanded=True):
-                symbolism = flag_info.get("symbolism") or []
-                design_origin = flag_info.get("design_origin") or []
-                flag_history = flag_info.get("historical_flags") or []
-                adoption = flag_info.get("adoption_date")
-                proportion = flag_info.get("proportion")
-                similar_flags = flag_info.get("similar_flags") or []
+            intelligence_view = st.selectbox(
+                "Browse knowledge",
+                (
+                    "All topics",
+                    "Flag & History",
+                    "Geography & Environment",
+                    "People & Culture",
+                    "Economy & Infrastructure",
+                ),
+                key=f"knowledge-view-{decision_code}",
+                help="Choose a topic group to reduce scrolling.",
+            )
 
-                meta_left, meta_right = st.columns(2)
-                with meta_left:
-                    if isinstance(adoption, dict) and adoption.get("value"):
-                        st.metric("Adoption", adoption["value"])
-                    if isinstance(proportion, dict) and proportion.get("value"):
-                        st.metric("Proportion", proportion["value"])
-                with meta_right:
-                    if similar_flags:
-                        st.markdown("**Recognition alternatives**")
-                        st.write(", ".join(similar_flags[:4]))
+            show_flag_history = intelligence_view in (
+                "All topics",
+                "Flag & History",
+            )
 
-                if design_origin:
-                    st.markdown("**Design & construction**")
-                    for item in design_origin:
-                        if isinstance(item, dict):
-                            for heading, summary in _learning_blocks(
-                                item.get("value")
-                            ):
-                                st.markdown(f"**{heading}**")
-                                st.write(summary)
+            if show_flag_history:
+                flag_info = intelligence.get("flag") or {}
+                with st.expander("Flag Intelligence", expanded=True):
+                    symbolism = flag_info.get("symbolism") or []
+                    design_origin = flag_info.get("design_origin") or []
+                    flag_history = flag_info.get("historical_flags") or []
+                    adoption = flag_info.get("adoption_date")
+                    proportion = flag_info.get("proportion")
+                    similar_flags = flag_info.get("similar_flags") or []
 
-                if symbolism:
-                    st.markdown("**Meaning & symbolism**")
-                    for item in symbolism:
-                        if isinstance(item, dict):
-                            for heading, summary in _learning_blocks(
-                                item.get("value")
-                            ):
-                                st.markdown(f"**{heading}**")
-                                st.write(summary)
+                    meta_left, meta_right = st.columns(2)
+                    with meta_left:
+                        if isinstance(adoption, dict) and adoption.get("value"):
+                            st.metric("Adoption", adoption["value"])
+                        if isinstance(proportion, dict) and proportion.get("value"):
+                            st.metric("Proportion", proportion["value"])
+                    with meta_right:
+                        if similar_flags:
+                            st.markdown("**Recognition alternatives**")
+                            st.write(", ".join(similar_flags[:4]))
 
-                if flag_history:
-                    st.markdown("**Flag history**")
-                    for event in flag_history:
-                        if isinstance(event, dict):
+                    if design_origin:
+                        st.markdown("**Design & construction**")
+                        for item in design_origin:
+                            if isinstance(item, dict):
+                                for heading, summary in _learning_blocks(
+                                    item.get("value")
+                                ):
+                                    st.markdown(f"**{heading}**")
+                                    st.write(summary)
+
+                    if symbolism:
+                        st.markdown("**Meaning & symbolism**")
+                        for item in symbolism:
+                            if isinstance(item, dict):
+                                for heading, summary in _learning_blocks(
+                                    item.get("value")
+                                ):
+                                    st.markdown(f"**{heading}**")
+                                    st.write(summary)
+
+                    if flag_history:
+                        st.markdown("**Flag history**")
+                        for event in flag_history:
+                            if isinstance(event, dict):
+                                st.markdown(
+                                    f"**{event.get('period', 'Historical period')}**"
+                                )
+                                st.write(event.get("summary") or "Not available")
+
+                    if not (
+                        design_origin
+                        or symbolism
+                        or flag_history
+                        or adoption
+                        or proportion
+                        or similar_flags
+                    ):
+                        st.info(
+                            "A dedicated sourced flag-history article was not "
+                            "available for this country."
+                        )
+
+                timeline = intelligence.get("historical_timeline") or []
+                with st.expander("Historical Journey", expanded=True):
+                    if timeline:
+                        for event in timeline:
+                            period = event.get("period") or "Historical period"
+                            label = event.get("label") or "Event"
+                            st.markdown(f"**{period} — {label}**")
+                            st.write(event.get("summary") or "Not available")
+                    else:
+                        st.info(
+                            "No sufficiently supported structured timeline is "
+                            "available yet for this country."
+                        )
+
+                origins = intelligence.get("origins") or []
+                with st.expander("Origins & Early History", expanded=False):
+                    if origins:
+                        for event in origins:
                             st.markdown(
-                                f"**{event.get('period', 'Historical period')}**"
+                                f"**{event.get('label', 'Early history')}**"
                             )
                             st.write(event.get("summary") or "Not available")
-
-                if not (
-                    design_origin
-                    or symbolism
-                    or flag_history
-                    or adoption
-                    or proportion
-                    or similar_flags
-                ):
-                    st.info(
-                        "A dedicated sourced flag-history article was not "
-                        "available for this country."
-                    )
-
-            timeline = intelligence.get("historical_timeline") or []
-            with st.expander("Historical Journey", expanded=True):
-                if timeline:
-                    for event in timeline:
-                        period = event.get("period") or "Historical period"
-                        label = event.get("label") or "Event"
-                        st.markdown(f"**{period} — {label}**")
-                        st.write(event.get("summary") or "Not available")
-                else:
-                    st.info(
-                        "No sufficiently supported structured timeline is "
-                        "available yet for this country."
-                    )
-
-            origins = intelligence.get("origins") or []
-            with st.expander("Origins & Early History", expanded=False):
-                if origins:
-                    for event in origins:
-                        st.markdown(
-                            f"**{event.get('label', 'Early history')}**"
+                    else:
+                        st.info(
+                            "No explicit early-history section was found in the "
+                            "current sources."
                         )
-                        st.write(event.get("summary") or "Not available")
-                else:
-                    st.info(
-                        "No explicit early-history section was found in the "
-                        "current sources."
-                    )
 
             domain_labels = [
-                ("geography", "rivers_lakes", "Rivers, Lakes & Waterways"),
-                ("geography", "mountains_relief", "Mountains & Relief"),
-                ("environment", "climate_seasons", "Climate & Seasons"),
-                ("environment", "natural_resources", "Natural Resources & Raw Materials"),
-                ("environment", "context", "Environment & Biodiversity"),
-                ("government", "administrative_divisions", "Administrative Divisions"),
-                ("people_society", "context", "People & Society"),
-                ("people_society", "languages_religion", "Languages & Religion"),
-                ("people_society", "health_system", "Health System & Public Health"),
-                ("culture", "context", "Culture, Cuisine, Music & Sport"),
-                ("culture", "festivals_holidays", "Festivals, Holidays & Traditions"),
-                ("culture", "heritage_landmarks", "Heritage, UNESCO & Major Landmarks"),
-                ("economy", "context", "Economic Structure & Trade"),
-                ("economy", "economic_drivers", "Economic Drivers, Industries & Exports"),
-                ("infrastructure", "context", "Infrastructure Overview"),
-                ("infrastructure", "transport_network", "Transport Network, Ports & Airports"),
-                ("infrastructure", "energy_connectivity", "Energy & Connectivity"),
-                ("education_science", "context", "Education, Science & Innovation"),
-                ("international_relations", "context", "International Relations"),
-                ("culture", "notable_people", "Notable Public Figures"),
+                ("geography", "rivers_lakes", "Rivers, Lakes & Waterways", "Geography & Environment"),
+                ("geography", "mountains_relief", "Mountains & Relief", "Geography & Environment"),
+                ("environment", "climate_seasons", "Climate & Seasons", "Geography & Environment"),
+                ("environment", "natural_resources", "Natural Resources & Raw Materials", "Geography & Environment"),
+                ("environment", "context", "Environment & Biodiversity", "Geography & Environment"),
+                ("government", "administrative_divisions", "Administrative Divisions", "People & Culture"),
+                ("people_society", "context", "People & Society", "People & Culture"),
+                ("people_society", "languages_religion", "Languages & Religion", "People & Culture"),
+                ("people_society", "health_system", "Health System & Public Health", "People & Culture"),
+                ("culture", "context", "Culture, Cuisine, Music & Sport", "People & Culture"),
+                ("culture", "festivals_holidays", "Festivals, Holidays & Traditions", "People & Culture"),
+                ("culture", "heritage_landmarks", "Heritage, UNESCO & Major Landmarks", "People & Culture"),
+                ("culture", "notable_people", "Notable Public Figures", "People & Culture"),
+                ("economy", "context", "Economic Structure & Trade", "Economy & Infrastructure"),
+                ("economy", "economic_drivers", "Economic Drivers, Industries & Exports", "Economy & Infrastructure"),
+                ("infrastructure", "context", "Infrastructure Overview", "Economy & Infrastructure"),
+                ("infrastructure", "transport_network", "Transport Network, Ports & Airports", "Economy & Infrastructure"),
+                ("infrastructure", "energy_connectivity", "Energy & Connectivity", "Economy & Infrastructure"),
+                ("education_science", "context", "Education, Science & Innovation", "People & Culture"),
+                ("international_relations", "context", "International Relations", "People & Culture"),
             ]
 
-            for domain_key, context_key, domain_label in domain_labels:
+            for domain_key, context_key, domain_label, domain_group in domain_labels:
+                if intelligence_view not in ("All topics", domain_group):
+                    continue
                 section = intelligence.get(domain_key) or {}
                 context = (
                     section.get(context_key)
