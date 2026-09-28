@@ -545,8 +545,7 @@ def build_pdf_report(
     heading = Table(
         [[
             Paragraph(
-                f"<b>Date:</b> {report_date}<br/>"
-                f"<b>Time:</b> {report_time}",
+                f"<b>Generated:</b> {report_date} · {report_time}",
                 meta_style,
             ),
             Paragraph(
@@ -1608,7 +1607,7 @@ def show_result(image: Image.Image):
             st.caption(str(error))
 
     report = {
-        "generated_at": strftime("%Y-%m-%d %H:%M:%S"),
+        "generated_at": strftime("%Y-%m-%d %H:%M:%S UTC"),
         "accepted": accepted,
         "decision": country if accepted else "Unknown",
         "top_candidate": country,
