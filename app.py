@@ -420,10 +420,10 @@ def build_pdf_report(
             table = Table(
                 data,
                 colWidths=[
-                    30 * mm,
-                    55 * mm,
-                    30 * mm,
-                    55 * mm,
+                    28 * mm,
+                    34 * mm,
+                    28 * mm,
+                    34 * mm,
                 ],
                 hAlign="LEFT",
             )
@@ -605,7 +605,7 @@ def build_pdf_report(
         image_buffer.seek(0)
 
         preview = PDFImage(image_buffer)
-        preview._restrictSize(45 * mm, 31 * mm)
+        preview._restrictSize(40 * mm, 28 * mm)
 
         identity_table = info_grid(
             [
@@ -626,15 +626,15 @@ def build_pdf_report(
 
         identity_content = Table(
             [[preview, identity_table]],
-            colWidths=[48 * mm, 122 * mm],
+            colWidths=[46 * mm, 124 * mm],
         )
         identity_content.setStyle(
             TableStyle([
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 5),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-                ("TOPPADDING", (0, 0), (-1, -1), 5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("LEFTPADDING", (0, 0), (-1, -1), 3),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
             ])
         )
 
