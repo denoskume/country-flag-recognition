@@ -1400,49 +1400,56 @@ def enrich_from_encyclopedia(
     )
 
     # Transport article improves ports, airports, road/rail information.
-    transport_sections, transport_url = _dedicated_topic_sections(
-        canonical_title,
-        "Transport",
-        timeout=timeout,
-    )
-    _set_strict_context(
-        record.infrastructure,
-        "transport_network",
-        transport_sections,
-        "transport_network",
-        transport_url,
-        max_chars=2200,
-        max_blocks=6,
-    )
-    energy_sections, energy_url = _dedicated_topic_sections(
-        canonical_title,
-        "Energy",
-        timeout=timeout,
-    )
-    energy_text = collect_strict_domain_text(
-        energy_sections,
-        "energy_connectivity",
-        max_chars=2200,
-        max_blocks=6,
-    )
-    if not energy_text:
-        energy_lead = next(
-            (
-                section.body
-                for section in energy_sections
-                if section.heading == "overview" and section.body
-            ),
-            "",
+    try:
+        transport_sections, transport_url = _dedicated_topic_sections(
+            canonical_title,
+            "Transport",
+            timeout=timeout,
         )
-        energy_text = _compact_body(
+        _set_strict_context(
+            record.infrastructure,
+            "transport_network",
+            transport_sections,
+            "transport_network",
+            transport_url,
+            max_chars=2200,
+            max_blocks=6,
+        )
+    except (requests.RequestException, LookupError, ValueError):
+        pass
+
+    try:
+        energy_sections, energy_url = _dedicated_topic_sections(
+            canonical_title,
             "Energy",
-            energy_lead,
-            max_sentences=3,
-            max_chars=1200,
+            timeout=timeout,
         )
-    energy_item = _domain_evidence(energy_text, energy_url)
-    if energy_item is not None:
-        record.infrastructure["energy_connectivity"] = energy_item
+        energy_text = collect_strict_domain_text(
+            energy_sections,
+            "energy_connectivity",
+            max_chars=2200,
+            max_blocks=6,
+        )
+        if not energy_text:
+            energy_lead = next(
+                (
+                    section.body
+                    for section in energy_sections
+                    if section.heading == "overview" and section.body
+                ),
+                "",
+            )
+            energy_text = _compact_body(
+                "Energy",
+                energy_lead,
+                max_sentences=3,
+                max_chars=1200,
+            )
+        energy_item = _domain_evidence(energy_text, energy_url)
+        if energy_item is not None:
+            record.infrastructure["energy_connectivity"] = energy_item
+    except (requests.RequestException, LookupError, ValueError):
+        pass
 
     # Dedicated geography/economy articles usually contain the physical
     # details absent from the general country article.
