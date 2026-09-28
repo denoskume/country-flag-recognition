@@ -1579,7 +1579,7 @@ def resolve_emergency_numbers(
 
 
 COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-28-v18"
-COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-28-v20"
+COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-28-v21"
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_country_profile_v2(
