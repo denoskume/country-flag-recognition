@@ -631,19 +631,55 @@ def enrich_from_encyclopedia(
         safe="()_-",
     )
     detailed = split_article_sections_detailed(article_text)
+    canonical_title_fact = evidence(
+        canonical_title,
+        "Wikipedia canonical article title",
+        retrieved_at=datetime.now(timezone.utc).date().isoformat(),
+        confidence=1.0,
+    )
+    if canonical_title_fact is not None:
+        record.identity.setdefault(
+            "encyclopedia_title",
+            canonical_title_fact,
+        )
 
-    # History uses the entire History subtree instead of only the empty
-    # parent heading. This is essential for country articles with subsections.
-    history_sections = _domain_records(detailed, "history")
+    # Prefer a dedicated History article. The canonical Wikipedia title is
+    # important for countries whose displayed/native name differs from the
+    # English article naming convention (e.g. Côte d'Ivoire -> Ivory Coast).
+    history_article = fetch_topic_article(
+        canonical_title,
+        "History",
+        timeout=timeout,
+    )
+    history_sections = detailed
+    history_source_url = source_url
+    if history_article is not None:
+        history_article_text, history_title = history_article
+        history_sections = split_article_sections_detailed(
+            history_article_text
+        )
+        history_source_url = WIKIPEDIA_PAGE + quote(
+            history_title.replace(" ", "_"),
+            safe="()_-",
+        )
+    else:
+        history_sections = _domain_records(detailed, "history")
+
     history_text = " ".join(
         f"{section.heading}. {section.body}"
         for section in history_sections
         if section.body
     )
 
-    origins = record.origins or collect_origins(detailed, source_url)
+    origins = record.origins or collect_origins(
+        history_sections,
+        history_source_url,
+    )
     timeline = record.historical_timeline
-    extracted_timeline = extract_timeline(history_text, source_url)
+    extracted_timeline = extract_timeline(
+        history_text,
+        history_source_url,
+    )
 
     legacy_only = (
         len(timeline) == 1
@@ -671,7 +707,7 @@ def enrich_from_encyclopedia(
 
     # Social detail: use a dedicated Demographics article when available.
     demographics_sections, demographics_url = _topic_sections(
-        record.name,
+        canonical_title,
         "Demographics",
         detailed,
         source_url,
@@ -695,7 +731,7 @@ def enrich_from_encyclopedia(
     # Culture detail: cuisine/music stay in the main culture context, while
     # festivals and heritage get their own learning blocks.
     culture_sections, culture_url = _topic_sections(
-        record.name,
+        canonical_title,
         "Culture",
         detailed,
         source_url,
@@ -737,7 +773,7 @@ def enrich_from_encyclopedia(
 
     # Transport article improves ports, airports, road/rail information.
     transport_sections, transport_url = _topic_sections(
-        record.name,
+        canonical_title,
         "Transport",
         detailed,
         source_url,
@@ -760,10 +796,27 @@ def enrich_from_encyclopedia(
         transport_url,
     )
 
+    energy_sections, energy_url = _topic_sections(
+        canonical_title,
+        "Energy",
+        detailed,
+        source_url,
+        timeout=timeout,
+    )
+    _set_context(
+        record.infrastructure,
+        "energy_connectivity",
+        energy_sections,
+        "energy_connectivity",
+        energy_url,
+        max_chars=2200,
+        max_blocks=6,
+    )
+
     # Dedicated geography/economy articles usually contain the physical
     # details absent from the general country article.
     geography_article = fetch_topic_article(
-        record.name,
+        canonical_title,
         "Geography",
         timeout=timeout,
     )
@@ -809,7 +862,7 @@ def enrich_from_encyclopedia(
         record.environment.setdefault("context", environment_item)
 
     economy_article = fetch_topic_article(
-        record.name,
+        canonical_title,
         "Economy",
         timeout=timeout,
     )
@@ -832,6 +885,25 @@ def enrich_from_encyclopedia(
         )
         if drivers_item is not None:
             record.economy.setdefault("economic_drivers", drivers_item)
+
+        # Some countries describe mineral/agricultural resources primarily in
+        # the Economy article rather than in Geography.
+        if "natural_resources" not in record.environment:
+            resource_text = collect_domain_text_detailed(
+                economy_sections,
+                "natural_resources",
+                max_chars=1800,
+                max_blocks=5,
+            )
+            resource_item = _domain_evidence(
+                resource_text,
+                economy_source_url,
+            )
+            if resource_item is not None:
+                record.environment.setdefault(
+                    "natural_resources",
+                    resource_item,
+                )
 
     if history_text:
         compact_history = " ".join(
