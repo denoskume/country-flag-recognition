@@ -411,31 +411,114 @@ def validate_country_intelligence(
     return issues
 
 
+def _usable_context(section: dict[str, Evidence], minimum_chars: int = 180) -> bool:
+    context = section.get("context")
+    if context is None:
+        return False
+    return len(str(context.value).strip()) >= minimum_chars
+
+
+def _has_keys(section: dict[str, Evidence], keys: tuple[str, ...], minimum: int) -> bool:
+    return sum(key in section for key in keys) >= minimum
+
+
 def section_completion(record: CountryIntelligence) -> dict[str, bool]:
-    """Expose completion state for progressive enrichment and QA."""
+    """Expose strict learning-domain completion for QA and publication.
+
+    A domain is complete only when it contains enough useful, sourced content;
+    a single placeholder or generic paragraph is not sufficient.
+    """
+
+    timeline_years = [
+        int(event.period)
+        for event in record.historical_timeline
+        if str(event.period).isdigit()
+    ]
+    timeline_is_broad = (
+        len(record.historical_timeline) >= 4
+        and (
+            len(timeline_years) < 2
+            or max(timeline_years) - min(timeline_years) >= 30
+        )
+    )
+
+    flag_signals = sum([
+        bool(record.flag.adoption_date),
+        bool(record.flag.symbolism),
+        bool(record.flag.design_origin),
+        bool(record.flag.historical_flags),
+    ])
 
     return {
-        "identity": bool(record.identity),
-        "flag": bool(
-            record.flag.adoption_date
-            or record.flag.colors
-            or record.flag.symbolism
+        "identity": _has_keys(
+            record.identity,
+            ("capital", "currency", "languages", "population", "area_km2"),
+            4,
         ),
-        "geography": bool(record.geography),
+        "flag": flag_signals >= 2,
+        "geography": (
+            _has_keys(
+                record.geography,
+                ("borders", "largest_cities", "highest_point", "lowest_point"),
+                2,
+            )
+            and (
+                "latitude" in record.geography
+                and "longitude" in record.geography
+            )
+        ),
         "origins": bool(record.origins),
-        "historical_timeline": bool(record.historical_timeline),
-        "sovereignty": bool(record.sovereignty),
-        "national_identity": bool(record.national_identity),
-        "government": bool(record.government),
-        "people_society": bool(record.people_society),
-        "culture": bool(record.culture),
-        "economy": bool(record.economy),
-        "infrastructure": bool(record.infrastructure),
-        "education_science": bool(record.education_science),
-        "environment": bool(record.environment),
-        "practical": bool(record.practical),
-        "emergency": bool(record.emergency),
-        "international_relations": bool(record.international_relations),
+        "historical_timeline": timeline_is_broad,
+        "sovereignty": _has_keys(
+            record.sovereignty,
+            (
+                "independence_or_sovereignty_date",
+                "former_colonial_powers",
+                "colonial_period",
+                "historical_context",
+            ),
+            2,
+        ),
+        "national_identity": _has_keys(
+            record.national_identity,
+            ("national_day", "national_motto", "national_anthem"),
+            2,
+        ),
+        "government": _has_keys(
+            record.government,
+            (
+                "government_form",
+                "head_of_state",
+                "head_of_government",
+                "context",
+            ),
+            3,
+        ),
+        "people_society": _usable_context(record.people_society),
+        "culture": _usable_context(record.culture),
+        "economy": (
+            "gdp_current_usd" in record.economy
+            and _usable_context(record.economy, minimum_chars=120)
+        ),
+        "infrastructure": _usable_context(record.infrastructure),
+        "education_science": _usable_context(record.education_science),
+        "environment": _usable_context(record.environment),
+        "practical": _has_keys(
+            record.practical,
+            ("calling_code", "internet_domain", "driving_side"),
+            3,
+        ),
+        "emergency": (
+            len(record.emergency) >= 2
+            and all(contact.number for contact in record.emergency[:2])
+        ),
+        "international_relations": (
+            "international_organizations" in record.international_relations
+            and _usable_context(
+                record.international_relations,
+                minimum_chars=120,
+            )
+        ),
     }
 
 
