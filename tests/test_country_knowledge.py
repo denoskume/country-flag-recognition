@@ -3,6 +3,7 @@ from flag_recognition.country_knowledge import (
     collect_domain_text,
     collect_keyword_context,
     collect_strict_domain_text,
+    _infobox_field,
     collect_domain_text_detailed,
     collect_origins,
     extract_timeline,
@@ -399,3 +400,27 @@ Country overview text about borders, capital, and neighboring states.
     energy = collect_strict_domain_text(sections, "energy_connectivity")
 
     assert energy == ""
+
+
+def test_country_infobox_fields_extract_economic_goods_and_resources():
+    wikitext = """
+{{Infobox economy
+| industries = food processing; oil refining; gold mining
+| export-goods = cocoa beans, gold, rubber, refined petroleum
+| import-goods = rice, medicines, machinery
+| natural_resources = petroleum, natural gas, gold, manganese
+}}
+"""
+
+    assert (
+        _infobox_field(wikitext, ("industries",))
+        == "food processing; oil refining; gold mining"
+    )
+    assert "cocoa beans" in _infobox_field(
+        wikitext,
+        ("export-goods",),
+    )
+    assert "petroleum" in _infobox_field(
+        wikitext,
+        ("natural_resources",),
+    )
