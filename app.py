@@ -1003,7 +1003,7 @@ def build_pdf_report(
                 similar = flag_info.get("similar_flags")
                 if isinstance(similar, list) and similar:
                     flag_rows.append(
-                        ("Visually similar candidates", ", ".join(similar[:4]))
+                        ("Recognition alternatives", ", ".join(similar[:4]))
                     )
 
                 if flag_rows:
@@ -1176,7 +1176,39 @@ def build_pdf_report(
             context_value("international_relations"),
         )
 
-        # 7. Coverage — strict criteria
+        # 7. Did You Know? — only from already sourced profile facts
+        did_you_know_rows: list[tuple[str, object]] = []
+        if clean(profile.get("highest_point")) != "Not available":
+            did_you_know_rows.append(
+                ("Geography", f"Highest point: {clean(profile.get('highest_point'))}.")
+            )
+        if clean(profile.get("national_anthem")) != "Not available":
+            did_you_know_rows.append(
+                ("National identity", f"National anthem: {clean(profile.get('national_anthem'))}.")
+            )
+        if clean(profile.get("largest_cities")) != "Not available":
+            did_you_know_rows.append(
+                ("Urban geography", f"Major cities include {clean(profile.get('largest_cities'))}.")
+            )
+        if clean(profile.get("national_motto")) != "Not available":
+            did_you_know_rows.append(
+                ("National motto", clean(profile.get("national_motto")))
+            )
+        if clean(profile.get("timezones")) != "Not available":
+            did_you_know_rows.append(
+                ("Time zone", clean(profile.get("timezones")))
+            )
+
+        if did_you_know_rows:
+            story.extend([
+                section_box(
+                    "Did You Know?",
+                    info_grid(did_you_know_rows[:5], two_pairs=False),
+                ),
+                Spacer(1, 3 * mm),
+            ])
+
+        # 8. Coverage — strict criteria
         if isinstance(completion, dict):
             supported = sum(bool(value) for value in completion.values())
             missing = [
@@ -1203,7 +1235,7 @@ def build_pdf_report(
                 Spacer(1, 3 * mm),
             ])
 
-        # 8. Human-readable provenance
+        # 9. Human-readable provenance
         if isinstance(intelligence, dict):
             source_records: list[tuple[str, str, str, str]] = []
             seen_sources: set[tuple[str, str, str, str]] = set()
@@ -1353,7 +1385,7 @@ def build_pdf_report(
                 )
                 story.append(Spacer(1, 3 * mm))
 
-        # 9. Technical appendix
+        # 10. Technical appendix
         candidates = report.get("top_candidates", [])
         candidate_summary = " | ".join(
             f"{index}. {clean(candidate.get('country'))} "
@@ -2542,7 +2574,7 @@ def show_result(image: Image.Image):
                         st.metric("Proportion", proportion["value"])
                 with meta_right:
                     if similar_flags:
-                        st.markdown("**Visually similar candidates**")
+                        st.markdown("**Recognition alternatives**")
                         st.write(", ".join(similar_flags[:4]))
 
                 if design_origin:
