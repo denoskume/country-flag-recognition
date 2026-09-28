@@ -24,6 +24,18 @@ In 1960 the country became independent and established a republic.
 == Geography ==
 The country has coastal and inland regions.
 
+=== Climate ===
+The coastal region has mild winters and cool summers.
+
+=== Rivers ===
+The River Alpha drains the central plateau.
+
+=== Mountains ===
+The Beta Range contains the country's highest peaks.
+
+=== Natural resources ===
+The country has petroleum, forests and fisheries.
+
 == Demographics ==
 According to the 2021 census, the population was 29 million.
 The population includes multiple linguistic communities.
@@ -43,6 +55,12 @@ Cassava and plantain are common ingredients in many dishes.
 == Economy ==
 In 2009 farmers earned substantial export revenue.
 Agriculture and services are major parts of the economy.
+
+=== Oil industry ===
+Oil and gas exports are a major source of export revenue.
+
+=== Fisheries ===
+Fishing and aquaculture support coastal employment and exports.
 
 == Education ==
 According to a 2019 literacy estimate, literacy exceeded 80 percent.
@@ -131,3 +149,26 @@ def test_empty_history_does_not_invent_events():
         "",
         "https://en.wikipedia.org/wiki/Example",
     ) == ()
+
+
+def test_deep_geography_domains_are_separated():
+    sections = split_article_sections_detailed(ARTICLE)
+
+    climate = collect_domain_text_detailed(sections, "climate_seasons")
+    rivers = collect_domain_text_detailed(sections, "rivers_lakes")
+    relief = collect_domain_text_detailed(sections, "mountains_relief")
+    resources = collect_domain_text_detailed(sections, "natural_resources")
+
+    assert "mild winters" in climate
+    assert "River Alpha" in rivers
+    assert "Beta Range" in relief
+    assert "petroleum" in resources
+
+
+def test_economic_drivers_capture_key_industries():
+    sections = split_article_sections_detailed(ARTICLE)
+    drivers = collect_domain_text_detailed(sections, "economic_drivers")
+
+    assert "Oil industry" in drivers
+    assert "Fisheries" in drivers
+    assert "export revenue" in drivers
