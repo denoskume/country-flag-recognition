@@ -946,6 +946,7 @@ def build_pdf_report(
                 ("National anthem", profile.get("national_anthem")),
                 ("Official religion", profile.get("official_religion")),
                 ("Driving side", profile.get("driving_side")),
+                ("Emergency number(s)", profile.get("emergency_numbers")),
                 ("Internet domain", profile.get("internet_domain")),
             ]
         )
@@ -1223,7 +1224,7 @@ def get_deployment_threshold() -> float:
     return float(get_model().unknown_threshold)
 
 
-COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-28-v3"
+COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-28-v4"
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_country_profile_v2(
@@ -1811,6 +1812,15 @@ def show_result(image: Image.Image):
                     st.markdown("**Calling code**")
                     st.write(profile.calling_code)
 
+                    st.markdown("**Emergency number(s)**")
+                    st.write(
+                        getattr(
+                            profile,
+                            "emergency_numbers",
+                            "Not available",
+                        )
+                    )
+
                     st.markdown("**Internet domain**")
                     st.write(profile.internet_domain)
 
@@ -1975,6 +1985,11 @@ def show_result(image: Image.Image):
                 "head_of_government": profile.head_of_government,
                 "head_of_government_office": profile.head_of_government_office,
                 "calling_code": profile.calling_code,
+                "emergency_numbers": getattr(
+                    profile,
+                    "emergency_numbers",
+                    "Not available",
+                ),
                 "internet_domain": profile.internet_domain,
                 "driving_side": profile.driving_side,
                 "latitude": profile.latitude,
