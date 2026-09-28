@@ -151,16 +151,35 @@ def _fetch_flag_wikitext(
 
 
 def _infobox_value(wikitext: str, field: str) -> str:
-    """Extract one single-line infobox field conservatively."""
+    """Extract one infobox field, including common multiline values."""
     pattern = re.compile(
-        rf"^\|\s*{re.escape(field)}\s*=\s*(.+?)\s*$",
+        rf"^\|\s*{re.escape(field)}\s*=\s*(.*)$",
         flags=re.IGNORECASE | re.MULTILINE,
     )
     match = pattern.search(wikitext)
     if not match:
         return ""
 
-    value = match.group(1).strip()
+    lines = [match.group(1).strip()]
+    cursor = match.end()
+    for raw_line in wikitext[cursor:].splitlines():
+        if re.match(r"^\|\s*[A-Za-z0-9 _-]+\s*=", raw_line):
+            break
+        if re.match(r"^\}\}\s*$", raw_line):
+            break
+        lines.append(raw_line.strip())
+        if len(lines) >= 12:
+            break
+
+    value = "\n".join(line for line in lines if line).strip()
+    value = re.sub(
+        r"\{\{\s*(?:plainlist|ubl|unbulleted list)\s*\|",
+        "",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = value.replace("\n*", "; ").replace("\n", " ")
+    value = re.sub(r"\}\}\s*$", "", value).strip()
 
     start_date = re.fullmatch(
         r"\{\{Start date(?: and age)?\|(\d{4})\|(\d{1,2})\|(\d{1,2})(?:\|[^{}]*)?\}\}",
