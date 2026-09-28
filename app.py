@@ -2526,18 +2526,40 @@ def show_result(image: Image.Image):
                 symbolism = flag_info.get("symbolism") or []
                 design_origin = flag_info.get("design_origin") or []
                 flag_history = flag_info.get("historical_flags") or []
+                adoption = flag_info.get("adoption_date")
+                proportion = flag_info.get("proportion")
+                similar_flags = flag_info.get("similar_flags") or []
+
+                meta_left, meta_right = st.columns(2)
+                with meta_left:
+                    if isinstance(adoption, dict) and adoption.get("value"):
+                        st.metric("Adoption", adoption["value"])
+                    if isinstance(proportion, dict) and proportion.get("value"):
+                        st.metric("Proportion", proportion["value"])
+                with meta_right:
+                    if similar_flags:
+                        st.markdown("**Visually similar candidates**")
+                        st.write(", ".join(similar_flags[:4]))
 
                 if design_origin:
                     st.markdown("**Design & construction**")
                     for item in design_origin:
                         if isinstance(item, dict):
-                            st.write(item.get("value") or "Not available")
+                            for heading, summary in _learning_blocks(
+                                item.get("value")
+                            ):
+                                st.markdown(f"**{heading}**")
+                                st.write(summary)
 
                 if symbolism:
                     st.markdown("**Meaning & symbolism**")
                     for item in symbolism:
                         if isinstance(item, dict):
-                            st.write(item.get("value") or "Not available")
+                            for heading, summary in _learning_blocks(
+                                item.get("value")
+                            ):
+                                st.markdown(f"**{heading}**")
+                                st.write(summary)
 
                 if flag_history:
                     st.markdown("**Flag history**")
@@ -2548,7 +2570,14 @@ def show_result(image: Image.Image):
                             )
                             st.write(event.get("summary") or "Not available")
 
-                if not (design_origin or symbolism or flag_history):
+                if not (
+                    design_origin
+                    or symbolism
+                    or flag_history
+                    or adoption
+                    or proportion
+                    or similar_flags
+                ):
                     st.info(
                         "A dedicated sourced flag-history article was not "
                         "available for this country."
@@ -2602,7 +2631,13 @@ def show_result(image: Image.Image):
                 )
                 if value:
                     with st.expander(domain_label, expanded=False):
-                        st.write(value)
+                        blocks = _learning_blocks(value)
+                        if blocks:
+                            for heading, summary in blocks:
+                                st.markdown(f"**{heading}**")
+                                st.write(summary)
+                        else:
+                            st.write(value)
                         source = context.get("source")
                         retrieved = context.get("retrieved_at")
                         source_url = context.get("source_url")
