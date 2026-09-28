@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import re
 from io import BytesIO
 from pathlib import Path
@@ -11,7 +12,7 @@ import sys
 from time import strftime
 
 import pandas as pd
-from PIL import Image
+from PIL import Image, ImageDraw
 import requests
 import streamlit as st
 import yaml
@@ -302,55 +303,147 @@ def _build_pdf_location_map(
     longitude: float | None,
     area_km2: float | None = None,
 ) -> PDFImage | None:
-    """Fetch a static geographic locator map for the PDF."""
+    """Build a locator map directly from OpenStreetMap tiles."""
     if latitude is None or longitude is None:
         return None
 
     if area_km2 is None:
         zoom = 4
     elif area_km2 < 2_000:
-        zoom = 6
+        zoom = 7
     elif area_km2 < 50_000:
-        zoom = 5
+        zoom = 6
     elif area_km2 < 500_000:
+        zoom = 5
+    elif area_km2 < 2_000_000:
         zoom = 4
     else:
         zoom = 3
 
-    map_url = "https://staticmap.openstreetmap.de/staticmap.php"
-    params = {
-        "center": f"{latitude},{longitude}",
-        "zoom": zoom,
-        "size": "900x420",
-        "maptype": "mapnik",
-        "markers": f"{latitude},{longitude},ol-marker",
-    }
+    tile_size = 256
+    output_width = 900
+    output_height = 420
+    max_lat = 85.05112878
+    latitude = max(-max_lat, min(max_lat, float(latitude)))
+    longitude = float(longitude)
+
+    scale = tile_size * (2 ** zoom)
+    center_x = (longitude + 180.0) / 360.0 * scale
+
+    lat_rad = math.radians(latitude)
+    center_y = (
+        1.0
+        - math.log(
+            math.tan(lat_rad)
+            + (1.0 / math.cos(lat_rad))
+        )
+        / math.pi
+    ) / 2.0 * scale
+
+    left_px = center_x - output_width / 2
+    top_px = center_y - output_height / 2
+    right_px = center_x + output_width / 2
+    bottom_px = center_y + output_height / 2
+
+    min_tile_x = math.floor(left_px / tile_size)
+    max_tile_x = math.floor((right_px - 1) / tile_size)
+    min_tile_y = math.floor(top_px / tile_size)
+    max_tile_y = math.floor((bottom_px - 1) / tile_size)
+
+    tile_count = 2 ** zoom
+    canvas = Image.new(
+        "RGB",
+        (output_width, output_height),
+        "#E9EEF3",
+    )
+
+    loaded_tiles = 0
 
     try:
-        response = requests.get(
-            map_url,
-            params=params,
-            headers={
-                "User-Agent": (
-                    "Flag-Intelligence/1.0 "
-                    "(educational country knowledge report)"
-                ),
-                "Referer": "https://github.com/denoskume/country-flag-recognition",
-            },
-            timeout=15,
-        )
-        response.raise_for_status()
+        for tile_y in range(min_tile_y, max_tile_y + 1):
+            if tile_y < 0 or tile_y >= tile_count:
+                continue
 
-        content_type = response.headers.get("content-type", "")
-        if "image" not in content_type.lower():
+            for tile_x in range(min_tile_x, max_tile_x + 1):
+                wrapped_x = tile_x % tile_count
+                tile_url = (
+                    "https://tile.openstreetmap.org/"
+                    f"{zoom}/{wrapped_x}/{tile_y}.png"
+                )
+
+                response = requests.get(
+                    tile_url,
+                    headers={
+                        "User-Agent": (
+                            "Flag-Intelligence/1.0 "
+                            "(educational country knowledge report; "
+                            "github.com/denoskume/country-flag-recognition)"
+                        ),
+                    },
+                    timeout=12,
+                )
+                response.raise_for_status()
+
+                with Image.open(BytesIO(response.content)) as tile_source:
+                    tile_source.load()
+                    tile = tile_source.convert("RGB").copy()
+
+                paste_x = int(
+                    tile_x * tile_size - left_px
+                )
+                paste_y = int(
+                    tile_y * tile_size - top_px
+                )
+                canvas.paste(
+                    tile,
+                    (paste_x, paste_y),
+                )
+                loaded_tiles += 1
+
+        if loaded_tiles == 0:
             return None
 
-        with Image.open(BytesIO(response.content)) as source:
-            source.load()
-            safe_map = source.convert("RGB").copy()
+        # Central location marker.
+        draw = ImageDraw.Draw(canvas)
+        marker_x = output_width // 2
+        marker_y = output_height // 2
+
+        draw.ellipse(
+            (
+                marker_x - 12,
+                marker_y - 12,
+                marker_x + 12,
+                marker_y + 12,
+            ),
+            fill="#FFFFFF",
+            outline="#FFFFFF",
+            width=3,
+        )
+        draw.ellipse(
+            (
+                marker_x - 8,
+                marker_y - 8,
+                marker_x + 8,
+                marker_y + 8,
+            ),
+            fill="#E11D2E",
+            outline="#B91C1C",
+            width=2,
+        )
+
+        # Small source label.
+        draw.rectangle(
+            (6, output_height - 24, 190, output_height - 6),
+            fill="#FFFFFF",
+        )
+        draw.text(
+            (10, output_height - 21),
+            "© OpenStreetMap contributors",
+            fill="#333333",
+        )
 
         map_buffer = BytesIO()
-        safe_map.save(
+        canvas.save(
             map_buffer,
             format="JPEG",
             quality=90,
