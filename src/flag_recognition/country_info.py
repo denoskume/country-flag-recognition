@@ -36,6 +36,14 @@ COUNTRY_PROFILE_OVERRIDES = {
         "national_motto": "Liberté, Égalité, Fraternité",
         "national_anthem": "La Marseillaise",
     },
+    "tl": {
+        "national_day": "May 20",
+        "independence_day": "May 20, 2002",
+    },
+    "gb": {
+        "national_day": "No single official national day",
+        "independence_day": "Not applicable",
+    },
 }
 
 
@@ -1019,6 +1027,97 @@ def _extract_colonial_history(
     return f"Former colonial power: {power_text}"
 
 
+MONTH_NAMES = {
+    "january": "January",
+    "february": "February",
+    "march": "March",
+    "april": "April",
+    "may": "May",
+    "june": "June",
+    "july": "July",
+    "august": "August",
+    "september": "September",
+    "october": "October",
+    "november": "November",
+    "december": "December",
+}
+
+
+def _national_day_from_independence(
+    independence_day: str,
+) -> str:
+    """Convert a dated independence value into a reusable national-day date."""
+    if (
+        not independence_day
+        or independence_day in ("Not available", "Not applicable")
+    ):
+        return "Not available"
+
+    match = re.search(
+        r"\b("
+        + "|".join(MONTH_NAMES.keys())
+        + r")\s+(\d{1,2})\b",
+        independence_day.lower(),
+    )
+    if not match:
+        return "Not available"
+
+    month = MONTH_NAMES[match.group(1)]
+    day = int(match.group(2))
+    return f"{month} {day}"
+
+
+def _extract_national_day_from_overview(
+    overview: str,
+) -> str:
+    """Infer the country's principal national-day date from encyclopedic text."""
+    if not overview or overview == "Not available":
+        return "Not available"
+
+    text = " ".join(overview.split())
+    month_pattern = (
+        r"(January|February|March|April|May|June|July|August|"
+        r"September|October|November|December)"
+    )
+
+    patterns = [
+        rf"(?:independence|independent)[^.{{0,120}}]*?"
+        rf"{month_pattern}\s+(\d{{1,2}})",
+        rf"{month_pattern}\s+(\d{{1,2}})[^.{{0,120}}]*?"
+        r"(?:independence|independent)",
+        rf"(?:national day|republic day|constitution day)[^.{{0,100}}]*?"
+        rf"{month_pattern}\s+(\d{{1,2}})",
+        rf"{month_pattern}\s+(\d{{1,2}})[^.{{0,100}}]*?"
+        r"(?:national day|republic day|constitution day)",
+    ]
+
+    for pattern in patterns:
+        match = re.search(
+            pattern,
+            text,
+            flags=re.IGNORECASE,
+        )
+        if not match:
+            continue
+
+        groups = match.groups()
+        month = None
+        day = None
+
+        for value in groups:
+            if value is None:
+                continue
+            if value.lower() in MONTH_NAMES:
+                month = MONTH_NAMES[value.lower()]
+            elif value.isdigit():
+                day = int(value)
+
+        if month and day:
+            return f"{month} {day}"
+
+    return "Not available"
+
+
 def fetch_country_profile(
     code: str,
     timeout: float = 12.0,
@@ -1166,15 +1265,6 @@ def fetch_country_profile(
         str(country_dates["independence_day"]),
     )
 
-    national_day = str(country_dates["national_day"])
-    if national_day == "Not available":
-        national_day = str(
-            overrides.get(
-                "national_day",
-                national_day,
-            )
-        )
-
     independence_day = str(country_dates["independence_day"])
     if independence_day == "Not available":
         independence_day = str(
@@ -1183,6 +1273,30 @@ def fetch_country_profile(
                 independence_day,
             )
         )
+
+    national_day = str(country_dates["national_day"])
+
+    if national_day == "Not available":
+        national_day = str(
+            overrides.get(
+                "national_day",
+                national_day,
+            )
+        )
+
+    if national_day == "Not available":
+        national_day = _national_day_from_independence(
+            independence_day
+        )
+
+    if national_day == "Not available":
+        national_day = _extract_national_day_from_overview(
+            overview
+        )
+
+    if national_day == "Not available":
+        # Some states genuinely do not designate one unique national day.
+        national_day = "No single official national day documented"
 
     national_motto = str(wikidata["national_motto"])
     if national_motto == "Not available":
