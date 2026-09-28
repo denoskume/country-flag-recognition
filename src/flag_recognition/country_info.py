@@ -67,6 +67,7 @@ COUNTRY_PROFILE_OVERRIDES = {
             "with Félix Houphouët-Boigny as the central independence-era "
             "political leader and first president."
         ),
+        "national_motto": "Union – Discipline – Travail",
     },
 }
 
@@ -164,6 +165,54 @@ def _unique_join(values: Iterable[str]) -> str:
         if cleaned
         else "Not available"
     )
+
+
+def _preferred_wikidata_literal(
+    bindings: list[dict[str, object]],
+    field: str,
+    preferred_languages: tuple[str, ...] = ("en", "fr"),
+) -> str:
+    """Select one readable Wikidata literal instead of concatenating translations."""
+    candidates: list[tuple[str, str]] = []
+
+    for row in bindings:
+        raw = row.get(field)
+        if not isinstance(raw, dict):
+            continue
+
+        value = str(raw.get("value", "")).strip()
+        if not value or _is_raw_wikidata_identifier(value):
+            continue
+
+        language = str(
+            raw.get("xml:lang")
+            or raw.get("lang")
+            or ""
+        ).lower()
+
+        pair = (language, value)
+        if pair not in candidates:
+            candidates.append(pair)
+
+    if not candidates:
+        return "Not available"
+
+    # Prefer one canonical translation instead of returning every language.
+    for language in preferred_languages:
+        for candidate_language, value in candidates:
+            if candidate_language == language:
+                return value
+
+    # Prefer a Latin-script value for the PDF/report when no EN/FR label exists.
+    latin_pattern = re.compile(
+        r"^[\x00-\x7FÀ-ÖØ-öø-ÿĀ-ž’'“”–—·.,;:!?()\-\s]+$"
+    )
+    for _, value in candidates:
+        if latin_pattern.fullmatch(value):
+            return value
+
+    # Last resort: exactly one value, never the multilingual concatenation.
+    return candidates[0][1]
 
 
 def _first_float(
@@ -457,15 +506,13 @@ def fetch_wikidata_profile(
                 "drivingSideLabel"
             )
         ),
-        "national_motto": _unique_join(
-            values(
-                "nationalMotto"
-            )
+        "national_motto": _preferred_wikidata_literal(
+            bindings,
+            "nationalMotto",
         ),
-        "national_anthem": _unique_join(
-            values(
-                "nationalAnthemLabel"
-            )
+        "national_anthem": _preferred_wikidata_literal(
+            bindings,
+            "nationalAnthemLabel",
         ),
         "official_religion": _unique_join(
             values(
@@ -1886,23 +1933,19 @@ def fetch_country_profile(
             f"Sovereignty/independence documented on {independence_day}."
         )
 
-    national_motto = str(wikidata["national_motto"])
-    if national_motto == "Not available":
-        national_motto = str(
-            overrides.get(
-                "national_motto",
-                national_motto,
-            )
+    national_motto = str(
+        overrides.get(
+            "national_motto",
+            wikidata["national_motto"],
         )
+    )
 
-    national_anthem = str(wikidata["national_anthem"])
-    if national_anthem == "Not available":
-        national_anthem = str(
-            overrides.get(
-                "national_anthem",
-                national_anthem,
-            )
+    national_anthem = str(
+        overrides.get(
+            "national_anthem",
+            wikidata["national_anthem"],
         )
+    )
 
     country_record = pycountry.countries.get(
         alpha_2=normalized_code.upper()
