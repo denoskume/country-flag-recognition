@@ -76,6 +76,7 @@ class CountryProfile:
     overview: str
     national_day: str
     independence_day: str
+    colonial_history: str
     national_motto: str
     national_anthem: str
     region: str
@@ -468,7 +469,7 @@ def _format_wikidata_date(value: str | None) -> str:
         value,
     )
     if not match:
-        return value
+        return "Not available"
 
     year, month, day = match.groups()
     months = [
@@ -933,6 +934,91 @@ def fetch_latest_population(
     )
 
 
+COLONIAL_POWER_PATTERNS = {
+    "British": "United Kingdom",
+    "French": "France",
+    "Portuguese": "Portugal",
+    "Spanish": "Spain",
+    "Belgian": "Belgium",
+    "Dutch": "Netherlands",
+    "German": "Germany",
+    "Italian": "Italy",
+}
+
+
+def _extract_colonial_history(
+    overview: str,
+    independence_day: str,
+) -> str:
+    """Extract concise colonial-independence context from the country overview."""
+    if not overview or overview == "Not available":
+        return "Not applicable"
+
+    text = " ".join(overview.split())
+    lower = text.lower()
+
+    colonial_powers: list[str] = []
+
+    # Explicit independence wording.
+    explicit_patterns = [
+        r"(?:gained|achieved|declared|won|obtained) independence from "
+        r"([A-Z][A-Za-z .'-]+?)(?: on| in|,|\.|;)",
+        r"became independent from "
+        r"([A-Z][A-Za-z .'-]+?)(?: on| in|,|\.|;)",
+    ]
+
+    for pattern in explicit_patterns:
+        for match in re.finditer(pattern, text):
+            value = match.group(1).strip()
+            if value and value not in colonial_powers:
+                colonial_powers.append(value)
+
+    # Colonial-adjective wording covers introductions such as
+    # "a British colony/protectorate" even when the independence sentence
+    # omits the former power.
+    for adjective, country in COLONIAL_POWER_PATTERNS.items():
+        if re.search(
+            rf"\b{adjective.lower()}\b.*\b"
+            r"(?:colony|protectorate|territory|rule|administration)\b",
+            lower,
+        ):
+            if country not in colonial_powers:
+                colonial_powers.append(country)
+
+    independence_year = None
+
+    if independence_day != "Not available":
+        year_match = re.search(r"\b(1[5-9]\d{2}|20\d{2})\b", independence_day)
+        if year_match:
+            independence_year = year_match.group(1)
+
+    if independence_year is None:
+        year_patterns = [
+            r"(?:independence|independent)[^\.]{0,80}\b"
+            r"(1[5-9]\d{2}|20\d{2})\b",
+            r"\b(1[5-9]\d{2}|20\d{2})\b[^\.]{0,80}"
+            r"(?:independence|independent)",
+        ]
+        for pattern in year_patterns:
+            match = re.search(pattern, lower)
+            if match:
+                independence_year = match.group(1)
+                break
+
+    if not colonial_powers:
+        return "Not applicable"
+
+    power_text = ", ".join(colonial_powers)
+
+    if independence_year:
+        return (
+            f"{independence_year}; former colonial power: "
+            f"{power_text}"
+        )
+
+    return f"Former colonial power: {power_text}"
+
+
 def fetch_country_profile(
     code: str,
     timeout: float = 12.0,
@@ -1075,6 +1161,11 @@ def fetch_country_profile(
             )
         )
 
+    colonial_history = _extract_colonial_history(
+        overview,
+        str(country_dates["independence_day"]),
+    )
+
     national_day = str(country_dates["national_day"])
     if national_day == "Not available":
         national_day = str(
@@ -1201,6 +1292,7 @@ def fetch_country_profile(
         overview=overview,
         national_day=national_day,
         independence_day=independence_day,
+        colonial_history=colonial_history,
         national_motto=national_motto,
         national_anthem=national_anthem,
         region=str(supplemental["region"]),
