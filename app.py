@@ -930,27 +930,35 @@ def build_pdf_report(
             ]
         )
 
+        history = info_grid(
+            [
+                ("National Day", profile.get("national_day")),
+                (
+                    "Former colonial power(s)",
+                    profile.get("former_colonial_powers"),
+                ),
+                (
+                    "Colonial period / status",
+                    profile.get("colonial_period"),
+                ),
+                (
+                    "Independence / sovereignty date",
+                    profile.get("independence_day"),
+                ),
+                (
+                    "Key independence figure",
+                    profile.get("independence_leader"),
+                ),
+                (
+                    "Historical context",
+                    profile.get("historical_context"),
+                ),
+            ],
+            two_pairs=False,
+        )
+
         symbols = info_grid(
             [
-                (
-                    "National Day",
-                    (
-                        f"{profile.get('national_day')} · "
-                        f"{profile.get('colonial_history')}"
-                        if (
-                            profile.get("colonial_history")
-                            not in (None, "", "Not applicable", "Not available")
-                            and profile.get("national_day")
-                            not in (None, "", "Not available")
-                        )
-                        else (
-                            profile.get("colonial_history")
-                            if profile.get("colonial_history")
-                            not in (None, "", "Not applicable", "Not available")
-                            else profile.get("national_day")
-                        )
-                    ),
-                ),
                 ("National motto", profile.get("national_motto")),
                 ("National anthem", profile.get("national_anthem")),
                 ("Official religion", profile.get("official_religion")),
@@ -961,6 +969,8 @@ def build_pdf_report(
 
         story.extend([
             section_box("Geography & Demographics", geography),
+            Spacer(1, 3 * mm),
+            section_box("Historical Background", history),
             Spacer(1, 3 * mm),
             section_box("National Identity & Practical Facts", symbols),
             Spacer(1, 3 * mm),
@@ -1282,7 +1292,7 @@ def resolve_emergency_numbers(
     )
 
 
-COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-28-v8"
+COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-28-v9"
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_country_profile_v2(
@@ -1833,6 +1843,36 @@ def show_result(image: Image.Image):
                     st.markdown("**Demonym**")
                     st.write(getattr(profile, "demonym", "Not available"))
 
+                    st.markdown("**Former colonial power(s)**")
+                    st.write(
+                        getattr(
+                            profile,
+                            "former_colonial_powers",
+                            "Not applicable",
+                        )
+                    )
+
+                    st.markdown("**Colonial period / status**")
+                    st.write(
+                        getattr(
+                            profile,
+                            "colonial_period",
+                            "Not applicable",
+                        )
+                    )
+
+                    st.markdown("**Independence / sovereignty date**")
+                    st.write(profile.independence_day)
+
+                    st.markdown("**Key independence figure**")
+                    st.write(
+                        getattr(
+                            profile,
+                            "independence_leader",
+                            "Not applicable",
+                        )
+                    )
+
                     st.markdown("**National motto**")
                     st.write(profile.national_motto)
 
@@ -2009,10 +2049,26 @@ def show_result(image: Image.Image):
                     "colonial_history",
                     "Not applicable",
                 ),
-                "colonial_history": getattr(
+                "former_colonial_powers": getattr(
                     profile,
-                    "colonial_history",
+                    "former_colonial_powers",
                     "Not applicable",
+                ),
+                "colonial_period": getattr(
+                    profile,
+                    "colonial_period",
+                    "Not applicable",
+                ),
+                "independence_leader": getattr(
+                    profile,
+                    "independence_leader",
+                    "Not applicable",
+                ),
+                "historical_context": getattr(
+                    profile,
+                    "historical_context",
+                    "No classical colonial-independence transition is documented "
+                    "in the available country overview.",
                 ),
                 "national_motto": profile.national_motto,
                 "national_anthem": profile.national_anthem,
