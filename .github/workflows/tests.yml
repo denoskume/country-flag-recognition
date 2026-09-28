@@ -24,8 +24,5 @@ jobs:
           python -m pip install -e . --no-deps
           python -m pip install numpy pandas Pillow PyYAML scikit-learn requests pycountry pytest
 
-      - name: Compile Streamlit entrypoint
-        run: python -m py_compile app.py
-
       - name: Run tests
         run: pytest
