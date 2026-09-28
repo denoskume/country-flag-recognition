@@ -333,17 +333,21 @@ def _build_geography_deck(
 ) -> pdk.Deck:
     """Build the single CARTO map used by both the app and the PDF."""
     if area_km2 is None:
-        zoom = 4.5
+        zoom = 4.2
     elif area_km2 < 2_000:
         zoom = 7.0
-    elif area_km2 < 50_000:
-        zoom = 6.0
-    elif area_km2 < 500_000:
-        zoom = 5.0
+    elif area_km2 < 20_000:
+        zoom = 6.2
+    elif area_km2 < 100_000:
+        zoom = 5.3
+    elif area_km2 < 300_000:
+        zoom = 4.6
+    elif area_km2 < 800_000:
+        zoom = 4.0
     elif area_km2 < 2_000_000:
-        zoom = 4.3
-    else:
         zoom = 3.6
+    else:
+        zoom = 3.2
 
     data = pd.DataFrame(
         [{
@@ -976,7 +980,7 @@ def build_pdf_report(
                 ("Time zones", profile.get("timezones")),
                 ("Highest point", profile.get("highest_point")),
                 ("Lowest point", profile.get("lowest_point")),
-                ("Coordinates", coordinates),
+                ("Country reference coordinates", coordinates),
             ]
         )
         story.extend([
