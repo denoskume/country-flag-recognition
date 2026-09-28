@@ -216,56 +216,46 @@ def draw_pdf_watermark(canvas, document) -> None:
     )
 
     # ------------------------------------------------------------------
-    # Final template contact block - top right
+    # Contact is shown only on the first page; later pages use a compact
+    # document marker so educational content gets more visual space.
     # ------------------------------------------------------------------
     contact_x = right - 68 * mm
     contact_y = page_height - 23 * mm
 
-    canvas.setFillColor(colors.HexColor("#111111"))
-    canvas.setFont("Helvetica", 9.3)
-    canvas.drawString(
-        contact_x,
-        contact_y,
-        "Contact :",
-    )
+    if getattr(document, "page", 1) == 1:
+        canvas.setFillColor(colors.HexColor("#111111"))
+        canvas.setFont("Helvetica", 9.3)
+        canvas.drawString(contact_x, contact_y, "Contact")
 
-    canvas.setFont("Helvetica", 8.6)
-    canvas.setFillColor(colors.HexColor("#D9D9D9"))
-    canvas.drawString(
-        contact_x,
-        contact_y - 5.0 * mm,
-        "☎",
-    )
-    canvas.setFillColor(colors.HexColor("#111111"))
-    canvas.drawString(
-        contact_x + 6.4 * mm,
-        contact_y - 5.0 * mm,
-        "+33 (0)6 62 91 94 68",
-    )
-
-    canvas.setFillColor(colors.HexColor("#111111"))
-    canvas.setFont("Helvetica", 9.0)
-    canvas.drawString(
-        contact_x,
-        contact_y - 10.2 * mm,
-        "✉",
-    )
-    canvas.setFont("Helvetica", 8.6)
-    canvas.drawString(
-        contact_x + 6.4 * mm,
-        contact_y - 10.2 * mm,
-        "denoskume@yahoo.com",
-    )
+        canvas.setFont("Helvetica", 8.6)
+        canvas.drawString(
+            contact_x,
+            contact_y - 5.0 * mm,
+            "+33 (0)6 62 91 94 68",
+        )
+        canvas.drawString(
+            contact_x,
+            contact_y - 10.2 * mm,
+            "denoskume@yahoo.com",
+        )
+    else:
+        canvas.setFillColor(colors.HexColor("#555555"))
+        canvas.setFont("Helvetica-Bold", 8.2)
+        canvas.drawRightString(
+            right,
+            contact_y,
+            "FLAG INTELLIGENCE · COUNTRY INTELLIGENCE",
+        )
 
     # ------------------------------------------------------------------
-    # Final template footer
+    # Footer
     # ------------------------------------------------------------------
-    canvas.setFillColor(colors.HexColor("#111111"))
-    canvas.setFont("Helvetica", 9.0)
+    canvas.setFillColor(colors.HexColor("#555555"))
+    canvas.setFont("Helvetica", 7.6)
     canvas.drawCentredString(
         (left + right) / 2,
         15 * mm,
-        "© 2026 Flag Intelligence, all right reserved.",
+        f"© 2026 Flag Intelligence. All rights reserved. · Page {document.page}",
     )
 
     canvas.restoreState()
@@ -840,15 +830,61 @@ def build_pdf_report(
         ):
             gdp_value += f" ({profile.get('gdp_year')})"
 
-        # Flag + identity overview. Facts here are not repeated later.
+        intelligence = report.get("country_intelligence_v2")
+        completion = report.get("country_intelligence_completion")
+
+        def context_value(section_name: str) -> str:
+            if not isinstance(intelligence, dict):
+                return "Not available"
+            section = intelligence.get(section_name)
+            if not isinstance(section, dict):
+                return "Not available"
+            context = section.get("context")
+            if isinstance(context, dict):
+                return clean(context.get("value"))
+            return "Not available"
+
+        def learning_table(text: object) -> Table | None:
+            blocks = _learning_blocks(text)
+            if not blocks:
+                return None
+
+            rows = [
+                [
+                    Paragraph(heading, label_style),
+                    Paragraph(summary, body_style),
+                ]
+                for heading, summary in blocks[:6]
+            ]
+            table = Table(
+                rows,
+                colWidths=[38 * mm, (REPORT_WIDTH_MM - 38.0) * mm],
+                hAlign="LEFT",
+            )
+            table.setStyle(
+                TableStyle([
+                    ("BOX", (0, 0), (-1, -1), 0.45, colors.HexColor("#D6D6D6")),
+                    ("INNERGRID", (0, 0), (-1, -1), 0.2, colors.HexColor("#E5E7EB")),
+                    ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#F6F7F9")),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4.5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4.5),
+                ])
+            )
+            return table
+
+        def add_learning_section(title: str, text: object) -> None:
+            table = learning_table(text)
+            if table is not None:
+                story.extend(split_section(title, table))
+
+        # 1. Country at a Glance
         image_buffer = BytesIO()
         preview_image = image.copy().convert("RGB")
         preview_image.thumbnail((1000, 700))
-        preview_image.save(
-            image_buffer,
-            format="JPEG",
-            quality=90,
-        )
+        preview_image.save(image_buffer, format="JPEG", quality=90)
         image_buffer.seek(0)
 
         preview = PDFImage(image_buffer)
@@ -856,52 +892,57 @@ def build_pdf_report(
 
         identity_table = info_grid(
             [
-                ("Official name", profile.get("name")),
                 ("Capital", profile.get("capital")),
                 ("Country code", country_code),
                 ("ISO alpha-3", profile.get("iso_alpha3")),
-                ("Continent", profile.get("continent")),
-                ("Region", profile.get("region")),
+                ("Region", profile.get("subregion") or profile.get("region")),
                 ("Population", population_value),
                 ("Area", area_value),
                 ("Language(s)", profile.get("official_languages")),
                 ("Currency", profile.get("currency")),
-                ("Demonym", profile.get("demonym")),
+                ("National Day", profile.get("national_day")),
                 ("Calling code", profile.get("calling_code")),
-                (
-                    "Emergency number(s)",
-                    profile.get("emergency_numbers"),
-                ),
+                ("Emergency", profile.get("emergency_numbers")),
+                ("Recognition confidence", f"{confidence:.2%}"),
             ],
             width_mm=REPORT_WIDTH_MM - 46.0,
         )
 
         identity_content = Table(
             [[preview, identity_table]],
-            colWidths=[
-                46 * mm,
-                (REPORT_WIDTH_MM - 46.0) * mm,
-            ],
+            colWidths=[46 * mm, (REPORT_WIDTH_MM - 46.0) * mm],
         )
         identity_content.setStyle(
             TableStyle([
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("ALIGN", (0, 0), (0, 0), "CENTER"),
-                # No horizontal cell padding here: the nested identity
-                # table already consumes the full right-column width.
-                # Extra padding caused the visible right-side overflow.
                 ("LEFTPADDING", (0, 0), (-1, -1), 0),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 0),
                 ("TOPPADDING", (0, 0), (-1, -1), 4),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
             ])
         )
-
         story.extend([
-            section_box("Country Profile", identity_content),
+            section_box("Country at a Glance", identity_content),
             Spacer(1, 3 * mm),
         ])
 
+        overview = clean(profile.get("overview"))
+        if overview != "Not available":
+            overview_paragraph = Paragraph(
+                overview,
+                ParagraphStyle(
+                    "CountryOverviewV3",
+                    parent=body_style,
+                    leftIndent=6,
+                    rightIndent=6,
+                    spaceBefore=4,
+                    spaceAfter=4,
+                ),
+            )
+            story.extend(split_section("Country Overview", overview_paragraph))
+
+        # 2. Geography
         location_map = _build_pdf_location_map(
             profile.get("latitude"),
             profile.get("longitude"),
@@ -910,7 +951,6 @@ def build_pdf_report(
             capital=clean(profile.get("capital")),
             country_code=country_code,
         )
-
         if location_map is not None:
             location_content = Table(
                 [[location_map]],
@@ -921,193 +961,63 @@ def build_pdf_report(
                 TableStyle([
                     ("ALIGN", (0, 0), (-1, -1), "CENTER"),
                     ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 5),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-                    ("TOPPADDING", (0, 0), (-1, -1), 5),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
                 ])
             )
-        else:
-            location_content = Table(
-                [[Paragraph(
-                    "Geographic map temporarily unavailable.",
-                    value_style,
-                )]],
-                colWidths=[REPORT_WIDTH_MM * mm],
-            )
-            location_content.setStyle(
-                TableStyle([
-                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-                    ("TOPPADDING", (0, 0), (-1, -1), 10),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-                ])
-            )
-
-        story.extend([
-            section_box("Geographic Location", location_content),
-            Spacer(1, 3 * mm),
-        ])
+            story.extend(split_section("Geographic Location", location_content))
 
         geography = info_grid(
             [
-                ("Subregion", profile.get("subregion")),
                 ("Largest cities", profile.get("largest_cities")),
                 ("Bordering countries", profile.get("borders")),
                 ("Time zones", profile.get("timezones")),
                 ("Highest point", profile.get("highest_point")),
                 ("Lowest point", profile.get("lowest_point")),
                 ("Coordinates", coordinates),
-                ("Population source", profile.get("population_source")),
             ]
         )
-
-        history = info_grid(
-            [
-                ("National Day", profile.get("national_day")),
-                (
-                    "Former colonial power(s)",
-                    profile.get("former_colonial_powers"),
-                ),
-                (
-                    "Colonial period / status",
-                    profile.get("colonial_period"),
-                ),
-                (
-                    "Independence / sovereignty date",
-                    profile.get("independence_day"),
-                ),
-                (
-                    "Key independence figure",
-                    profile.get("independence_leader"),
-                ),
-                (
-                    "Historical context",
-                    profile.get("historical_context"),
-                ),
-            ],
-            two_pairs=False,
-        )
-
-        symbols = info_grid(
-            [
-                ("National motto", profile.get("national_motto")),
-                ("National anthem", profile.get("national_anthem")),
-                ("Official religion", profile.get("official_religion")),
-                ("Driving side", profile.get("driving_side")),
-                ("Internet domain", profile.get("internet_domain")),
-            ]
-        )
-
         story.extend([
-            section_box("Geography & Demographics", geography),
-            Spacer(1, 3 * mm),
-            section_box("Historical Background", history),
-            Spacer(1, 3 * mm),
-            section_box("National Identity & Practical Facts", symbols),
+            section_box("Geography — Key Facts", geography),
             Spacer(1, 3 * mm),
         ])
 
         story.append(PageBreak())
 
-        government = info_grid(
-            [
-                ("Government form", profile.get("government_form")),
-                ("Head of State", profile.get("head_of_state")),
-                ("Head of State office", profile.get("head_of_state_office")),
-                ("Head of Government", profile.get("head_of_government")),
-                (
-                    "Head of Government office",
-                    profile.get("head_of_government_office"),
-                ),
-                (
-                    "International organizations",
-                    compact_list(
-                        profile.get("international_organizations"),
-                        limit=10,
-                    ),
-                ),
-            ],
-            two_pairs=False,
-        )
-
-        economy = info_grid(
-            [
-                ("GDP (current US$)", gdp_value),
-                ("GDP source", profile.get("gdp_source")),
-            ]
-        )
-
-        story.extend([
-            section_box("Government & Institutions", government),
-            Spacer(1, 3 * mm),
-            section_box("Economy", economy),
-            Spacer(1, 3 * mm),
-        ])
-
-        overview = clean(profile.get("overview"))
-        if overview != "Not available":
-            # Keep the educational summary concise enough for a report.
-            if len(overview) > 1400:
-                overview = overview[:1397].rstrip() + "..."
-
-            overview_table = Table(
-                [[Paragraph(overview, body_style)]],
-                colWidths=[REPORT_WIDTH_MM * mm],
-            )
-            overview_table.setStyle(
-                TableStyle([
-                    ("LEFTPADDING", (0, 0), (-1, -1), 7),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 7),
-                    ("TOPPADDING", (0, 0), (-1, -1), 6),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ])
-            )
-
-            story.extend([
-                section_box("Country Overview", overview_table),
-                Spacer(1, 3 * mm),
-            ])
-
-        intelligence = report.get("country_intelligence_v2")
+        # 3. Flag Intelligence
         if isinstance(intelligence, dict):
-            def _context_value(section_name: str) -> str:
-                section = intelligence.get(section_name)
-                if not isinstance(section, dict):
-                    return "Not available"
-                context = section.get("context")
-                if isinstance(context, dict):
-                    return clean(context.get("value"))
-                return "Not available"
-
-            def _text_section(title: str, text: object) -> None:
-                value = clean(text)
-                if value == "Not available":
-                    return
-                paragraph = Paragraph(
-                    value.replace("\n", "<br/>"),
-                    ParagraphStyle(
-                        f"LongSection_{title}",
-                        parent=body_style,
-                        leftIndent=7,
-                        rightIndent=7,
-                        spaceBefore=5,
-                        spaceAfter=5,
-                        borderWidth=0.5,
-                        borderColor=colors.HexColor("#D6D6D6"),
-                        borderPadding=6,
-                    ),
-                )
-                story.extend(split_section(title, paragraph))
-
             flag_info = intelligence.get("flag")
             if isinstance(flag_info, dict):
-                flag_rows = []
-                for label, field in (
-                    ("Design & construction", "design_origin"),
-                    ("Meaning & symbolism", "symbolism"),
+                flag_rows: list[tuple[str, object]] = []
+
+                adoption = flag_info.get("adoption_date")
+                if isinstance(adoption, dict):
+                    flag_rows.append(("Adoption", adoption.get("value")))
+
+                proportion = flag_info.get("proportion")
+                if isinstance(proportion, dict):
+                    flag_rows.append(("Proportion", proportion.get("value")))
+
+                similar = flag_info.get("similar_flags")
+                if isinstance(similar, list) and similar:
+                    flag_rows.append(
+                        ("Recognition alternatives", ", ".join(similar[:4]))
+                    )
+
+                if flag_rows:
+                    story.extend([
+                        section_box(
+                            "Flag Intelligence — Key Facts",
+                            info_grid(flag_rows, two_pairs=False),
+                        ),
+                        Spacer(1, 3 * mm),
+                    ])
+
+                for title, field in (
+                    ("Flag Design & Construction", "design_origin"),
+                    ("Flag Meaning & Symbolism", "symbolism"),
                 ):
                     items = flag_info.get(field)
                     if isinstance(items, list):
@@ -1118,27 +1028,27 @@ def build_pdf_report(
                             and clean(item.get("value")) != "Not available"
                         ]
                         if values:
-                            flag_rows.append((label, "\n\n".join(values)))
+                            add_learning_section(title, "\n\n".join(values))
 
-                history_items = flag_info.get("historical_flags")
-                if isinstance(history_items, list) and history_items:
-                    history_text = "\n".join(
-                        f"{clean(item.get('period'))}: {clean(item.get('summary'))}"
-                        for item in history_items[:10]
-                        if isinstance(item, dict)
-                    )
-                    if history_text:
-                        flag_rows.append(("Flag history", history_text))
-
-                if flag_rows:
-                    story.append(PageBreak())
-                    story.extend(
-                        split_section(
-                            "Flag Intelligence",
-                            info_grid(flag_rows, two_pairs=False),
+                flag_history = flag_info.get("historical_flags")
+                if isinstance(flag_history, list) and flag_history:
+                    rows = [
+                        (
+                            clean(item.get("period")),
+                            clean(item.get("summary")),
                         )
-                    )
+                        for item in flag_history[:8]
+                        if isinstance(item, dict)
+                    ]
+                    if rows:
+                        story.extend(
+                            split_section(
+                                "Flag History",
+                                info_grid(rows, two_pairs=False),
+                            )
+                        )
 
+            # 4. Origins and Historical Journey
             origins = intelligence.get("origins")
             if isinstance(origins, list) and origins:
                 origin_rows = [
@@ -1150,7 +1060,6 @@ def build_pdf_report(
                     if isinstance(event, dict)
                 ]
                 if origin_rows:
-                    story.append(PageBreak())
                     story.extend(
                         split_section(
                             "Origins & Early History",
@@ -1169,8 +1078,6 @@ def build_pdf_report(
                     if isinstance(event, dict)
                 ]
                 if timeline_rows:
-                    if not (isinstance(origins, list) and origins):
-                        story.append(PageBreak())
                     story.extend(
                         split_section(
                             "Historical Journey",
@@ -1178,116 +1085,307 @@ def build_pdf_report(
                         )
                     )
 
-            narrative_sections = [
-                ("People & Society", "people_society"),
-                ("Culture", "culture"),
-                ("Economic Context", "economy"),
-                ("Infrastructure & Transport", "infrastructure"),
-                ("Education, Science & Innovation", "education_science"),
-                ("Environment & Climate", "environment"),
-                ("International Relations", "international_relations"),
+        # 5. State Formation, identity and institutions
+        sovereignty = info_grid(
+            [
+                ("Former colonial power(s)", profile.get("former_colonial_powers")),
+                ("Colonial / sovereignty status", profile.get("colonial_period")),
+                ("Independence / sovereignty date", profile.get("independence_day")),
+                ("Key independence figure", profile.get("independence_leader")),
+            ],
+            two_pairs=False,
+        )
+        story.extend([
+            section_box("State Formation & Sovereignty", sovereignty),
+            Spacer(1, 3 * mm),
+        ])
+
+        national_identity = info_grid(
+            [
+                ("National Day", profile.get("national_day")),
+                ("National motto", profile.get("national_motto")),
+                ("National anthem", profile.get("national_anthem")),
+                ("Demonym", profile.get("demonym")),
             ]
+        )
+        story.extend([
+            section_box("National Identity", national_identity),
+            Spacer(1, 3 * mm),
+        ])
 
-            for title, key in narrative_sections:
-                _text_section(title, _context_value(key))
+        government = info_grid(
+            [
+                ("Government form", profile.get("government_form")),
+                ("Head of State", profile.get("head_of_state")),
+                ("Head of State office", profile.get("head_of_state_office")),
+                ("Head of Government", profile.get("head_of_government")),
+                ("Head of Government office", profile.get("head_of_government_office")),
+            ],
+            two_pairs=False,
+        )
+        story.extend([
+            section_box("Government & Institutions", government),
+            Spacer(1, 3 * mm),
+        ])
 
-            completion = report.get("country_intelligence_completion")
-            if isinstance(completion, dict):
-                supported = sum(bool(value) for value in completion.values())
-                coverage_rows = [
-                    ("Supported knowledge domains", f"{supported}/{len(completion)}"),
-                    (
-                        "Publication rule",
-                        "Missing or unsupported domains are omitted rather than fabricated.",
-                    ),
-                ]
-                story.extend([
-                    section_box(
-                        "Knowledge Coverage",
-                        info_grid(coverage_rows, two_pairs=False),
-                    ),
-                    Spacer(1, 3 * mm),
-                ])
+        # 6. Learning domains
+        add_learning_section("People & Society", context_value("people_society"))
+        add_learning_section("Culture", context_value("culture"))
 
-        intelligence = report.get("country_intelligence_v2")
+        economy_summary = info_grid(
+            [
+                ("GDP (current US$)", gdp_value),
+                ("GDP source", profile.get("gdp_source")),
+            ]
+        )
+        story.extend([
+            section_box("Economy — Key Metric", economy_summary),
+            Spacer(1, 3 * mm),
+        ])
+        add_learning_section("Economy & Trade", context_value("economy"))
+        add_learning_section(
+            "Infrastructure & Transport",
+            context_value("infrastructure"),
+        )
+        add_learning_section(
+            "Education, Science & Innovation",
+            context_value("education_science"),
+        )
+        add_learning_section(
+            "Environment & Climate",
+            context_value("environment"),
+        )
+
+        practical_rows: list[tuple[str, object]] = [
+            ("Calling code", profile.get("calling_code")),
+            ("Emergency numbers", profile.get("emergency_numbers")),
+            ("Driving side", profile.get("driving_side")),
+            ("Internet domain", profile.get("internet_domain")),
+            ("Time zones", profile.get("timezones")),
+        ]
+        story.extend([
+            section_box(
+                "Practical & Emergency Information",
+                info_grid(practical_rows, two_pairs=False),
+            ),
+            Spacer(1, 3 * mm),
+        ])
+
+        add_learning_section(
+            "International Relations",
+            context_value("international_relations"),
+        )
+
+        # 7. Did You Know? — only from already sourced profile facts
+        did_you_know_rows: list[tuple[str, object]] = []
+        if clean(profile.get("highest_point")) != "Not available":
+            did_you_know_rows.append(
+                ("Geography", f"Highest point: {clean(profile.get('highest_point'))}.")
+            )
+        if clean(profile.get("national_anthem")) != "Not available":
+            did_you_know_rows.append(
+                ("National identity", f"National anthem: {clean(profile.get('national_anthem'))}.")
+            )
+        if clean(profile.get("largest_cities")) != "Not available":
+            did_you_know_rows.append(
+                ("Urban geography", f"Major cities include {clean(profile.get('largest_cities'))}.")
+            )
+        if clean(profile.get("national_motto")) != "Not available":
+            did_you_know_rows.append(
+                ("National motto", clean(profile.get("national_motto")))
+            )
+        if clean(profile.get("timezones")) != "Not available":
+            did_you_know_rows.append(
+                ("Time zone", clean(profile.get("timezones")))
+            )
+
+        if did_you_know_rows:
+            story.extend([
+                section_box(
+                    "Did You Know?",
+                    info_grid(did_you_know_rows[:5], two_pairs=False),
+                ),
+                Spacer(1, 3 * mm),
+            ])
+
+        # 8. Coverage — strict criteria
+        if isinstance(completion, dict):
+            supported = sum(bool(value) for value in completion.values())
+            missing = [
+                key.replace("_", " ").title()
+                for key, value in completion.items()
+                if not value
+            ]
+            coverage_rows = [
+                ("Complete learning domains", f"{supported}/{len(completion)}"),
+                (
+                    "Still incomplete",
+                    ", ".join(missing) if missing else "None",
+                ),
+                (
+                    "Publication rule",
+                    "Unsupported or insufficient domains are omitted rather than fabricated.",
+                ),
+            ]
+            story.extend([
+                section_box(
+                    "Knowledge Coverage",
+                    info_grid(coverage_rows, two_pairs=False),
+                ),
+                Spacer(1, 3 * mm),
+            ])
+
+        # 9. Human-readable provenance
         if isinstance(intelligence, dict):
-            source_rows: list[tuple[str, str]] = []
-            seen_sources: set[tuple[str, str]] = set()
+            source_records: list[tuple[str, str, str, str]] = []
+            seen_sources: set[tuple[str, str, str, str]] = set()
 
-            def _collect_sources(node: object, path: str = "") -> None:
+            friendly_sections = {
+                "identity": "Country Identity",
+                "flag": "Flag Intelligence",
+                "geography": "Geography",
+                "origins": "Origins & Early History",
+                "historical_timeline": "Historical Journey",
+                "sovereignty": "State Formation & Sovereignty",
+                "national_identity": "National Identity",
+                "government": "Government & Institutions",
+                "people_society": "People & Society",
+                "culture": "Culture",
+                "economy": "Economy",
+                "infrastructure": "Infrastructure & Transport",
+                "education_science": "Education, Science & Innovation",
+                "environment": "Environment & Climate",
+                "practical": "Practical Information",
+                "emergency": "Emergency Information",
+                "international_relations": "International Relations",
+            }
+
+            def source_label(path: str) -> str:
+                root = re.split(r"[.[]", path, maxsplit=1)[0]
+                remainder = path[len(root):].strip(".")
+                if root in {"origins", "historical_timeline"}:
+                    return friendly_sections[root]
+                if root == "flag":
+                    if "symbolism" in path:
+                        return "Flag Meaning & Symbolism"
+                    if "design_origin" in path:
+                        return "Flag Design & Construction"
+                    if "historical_flags" in path:
+                        return "Flag History"
+                    return "Flag Intelligence"
+                if remainder.endswith("context") or remainder == "context":
+                    return friendly_sections.get(root, root.replace("_", " ").title())
+
+                key = re.sub(r"\[\d+\]", "", remainder.split(".")[-1])
+                special = {
+                    "gdp_current_usd": "GDP (current US$)",
+                    "head_of_state": "Head of State",
+                    "head_of_government": "Head of Government",
+                    "national_day": "National Day",
+                    "national_motto": "National Motto",
+                    "national_anthem": "National Anthem",
+                    "international_organizations": "International Organizations",
+                    "calling_code": "Calling Code",
+                    "internet_domain": "Internet Domain",
+                    "driving_side": "Driving Side",
+                    "area_km2": "Area",
+                }
+                return special.get(key, key.replace("_", " ").title())
+
+            def collect_sources(node: object, path: str = "") -> None:
                 if isinstance(node, dict):
                     source = node.get("source")
-                    source_url = node.get("source_url")
-                    reference_year = node.get("reference_year")
-                    retrieved_at = node.get("retrieved_at")
+                    reference = node.get("reference_year")
+                    verified = node.get("retrieved_at")
 
                     if source:
-                        detail_parts = [str(source)]
-                        if reference_year:
-                            detail_parts.append(f"reference {reference_year}")
-                        if retrieved_at:
-                            detail_parts.append(f"retrieved {retrieved_at}")
-                        if source_url:
-                            detail_parts.append(str(source_url))
-
-                        key = (path or "Fact", " · ".join(detail_parts))
-                        if key not in seen_sources:
-                            seen_sources.add(key)
-                            source_rows.append(key)
+                        record = (
+                            source_label(path or "source"),
+                            str(source),
+                            str(reference or "—"),
+                            str(verified or "—"),
+                        )
+                        if record not in seen_sources:
+                            seen_sources.add(record)
+                            source_records.append(record)
 
                     sources = node.get("sources")
-                    urls = node.get("source_urls")
-                    if isinstance(sources, list):
-                        for index, source_name in enumerate(sources):
-                            url = (
-                                urls[index]
-                                if isinstance(urls, list) and index < len(urls)
-                                else ""
+                    if isinstance(sources, list) and sources:
+                        for source_name in sources:
+                            record = (
+                                source_label(path or "history"),
+                                str(source_name),
+                                str(node.get("period") or "—"),
+                                "—",
                             )
-                            detail = str(source_name)
-                            if url:
-                                detail += f" · {url}"
-                            key = (path or "Historical event", detail)
-                            if key not in seen_sources:
-                                seen_sources.add(key)
-                                source_rows.append(key)
+                            if record not in seen_sources:
+                                seen_sources.add(record)
+                                source_records.append(record)
 
                     for child_key, child_value in node.items():
                         if child_key in {
                             "source", "source_url", "reference_year",
                             "retrieved_at", "sources", "source_urls",
+                            "confidence", "status",
                         }:
                             continue
-                        child_path = (
-                            f"{path}.{child_key}" if path else str(child_key)
-                        )
-                        _collect_sources(child_value, child_path)
+                        child_path = f"{path}.{child_key}" if path else str(child_key)
+                        collect_sources(child_value, child_path)
 
                 elif isinstance(node, list):
                     for index, child in enumerate(node):
-                        _collect_sources(child, f"{path}[{index}]")
+                        collect_sources(child, f"{path}[{index}]")
 
-            _collect_sources(intelligence)
+            collect_sources(intelligence)
 
-            if source_rows:
-                compact_sources = source_rows[:45]
-                if len(source_rows) > len(compact_sources):
-                    compact_sources.append(
-                        (
-                            "Additional sourced fields",
-                            f"{len(source_rows) - len(compact_sources)} more "
-                            "provenance records available in the JSON export.",
-                        )
-                    )
+            if source_records:
+                provenance_data: list[list[object]] = [[
+                    Paragraph("Field / domain", label_style),
+                    Paragraph("Source", label_style),
+                    Paragraph("Reference", label_style),
+                    Paragraph("Last verified", label_style),
+                ]]
+                for label, source, reference, verified in source_records[:38]:
+                    provenance_data.append([
+                        Paragraph(label, value_style),
+                        Paragraph(source, value_style),
+                        Paragraph(reference, value_style),
+                        Paragraph(verified, value_style),
+                    ])
 
-                story.extend(
-                    split_section(
-                        "Sources & Data Freshness",
-                        info_grid(compact_sources, two_pairs=False),
+                provenance = Table(
+                    provenance_data,
+                    colWidths=[
+                        58 * mm,
+                        46 * mm,
+                        28 * mm,
+                        (REPORT_WIDTH_MM - 132.0) * mm,
+                    ],
+                    repeatRows=1,
+                )
+                provenance.setStyle(
+                    TableStyle([
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F0F1F3")),
+                        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#777777")),
+                        ("INNERGRID", (0, 0), (-1, -1), 0.2, colors.HexColor("#DDDDDD")),
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                        ("TOPPADDING", (0, 0), (-1, -1), 3),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                    ])
+                )
+                story.extend(split_section("Sources & Data Freshness", provenance))
+                story.append(
+                    Paragraph(
+                        "Source links and full field-level provenance are available "
+                        "in the JSON export.",
+                        small_style,
                     )
                 )
+                story.append(Spacer(1, 3 * mm))
 
-        # Recognition is intentionally compact and secondary.
+        # 10. Technical appendix
         candidates = report.get("top_candidates", [])
         candidate_summary = " | ".join(
             f"{index}. {clean(candidate.get('country'))} "
@@ -1305,9 +1403,9 @@ def build_pdf_report(
             ],
             two_pairs=False,
         )
-
+        story.append(PageBreak())
         story.extend([
-            section_box("Recognition Summary", technical),
+            section_box("Technical Recognition Appendix", technical),
             Spacer(1, 2.5 * mm),
         ])
 
@@ -1347,7 +1445,11 @@ def build_pdf_report(
             ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
         ])
     )
-    story.append(source_note)
+    if not accepted or not isinstance(
+        report.get("country_intelligence_v2"),
+        dict,
+    ):
+        story.append(source_note)
 
     document.build(
         story,
@@ -1560,6 +1662,56 @@ def get_fresh_historical_profile(country_code: str):
     )
 
 
+def _canonical_overview_text(value: object, max_chars: int = 900) -> str:
+    """Keep stable descriptive overview text and avoid duplicate live metrics."""
+    text = str(value or "").strip()
+    if not text:
+        return "Not available"
+
+    sentences = [
+        sentence.strip()
+        for sentence in re.split(r"(?<=[.!?])\\s+", " ".join(text.split()))
+        if sentence.strip()
+    ]
+    dynamic_terms = (
+        "inhabitants", "population", "gdp", "gross domestic product",
+        "head of state", "president", "prime minister",
+    )
+    stable = [
+        sentence
+        for sentence in sentences
+        if not any(term in sentence.lower() for term in dynamic_terms)
+    ]
+
+    selected = stable[:4] or sentences[:2]
+    result = " ".join(selected).strip()
+    if len(result) > max_chars:
+        result = result[:max_chars].rsplit(" ", 1)[0].rstrip() + "…"
+    return result or "Not available"
+
+
+def _learning_blocks(value: object) -> list[tuple[str, str]]:
+    """Parse concise 'Heading: summary' encyclopedia context into learning blocks."""
+    text = str(value or "").strip()
+    if not text or text == "Not available":
+        return []
+
+    blocks: list[tuple[str, str]] = []
+    for raw in re.split(r"\\n\\s*\\n", text):
+        raw = raw.strip()
+        if not raw:
+            continue
+        if ":" in raw:
+            heading, summary = raw.split(":", 1)
+        else:
+            heading, summary = "Overview", raw
+        heading = heading.strip()
+        summary = summary.strip()
+        if summary:
+            blocks.append((heading, summary))
+    return blocks
+
+
 def _country_profile_payload(
     country_code: str,
     profile,
@@ -1577,7 +1729,7 @@ def _country_profile_payload(
         "official_languages": profile.official_languages,
         "continent": profile.continent,
         "area_km2": profile.area_km2,
-        "overview": profile.overview,
+        "overview": _canonical_overview_text(profile.overview),
         "national_day": historical_profile.national_day,
         "independence_day": historical_profile.independence_day,
         "colonial_history": getattr(
@@ -1652,7 +1804,7 @@ def _country_profile_payload(
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def get_country_intelligence_v2(country_code: str):
+def get_country_intelligence_v2(\n    country_code: str,\n    similar_flags: tuple[str, ...] = (),\n):
     """Build and enrich a reusable source-aware country knowledge payload."""
     profile = get_country_profile_v2(country_code)
     try:
@@ -1680,6 +1832,7 @@ def get_country_intelligence_v2(country_code: str):
         intelligence.flag = enrich_flag_profile(
             intelligence.flag,
             profile.name,
+            similar_flags=similar_flags,
         )
     except (requests.RequestException, LookupError, ValueError):
         # A missing dedicated flag article must never hide country knowledge.
@@ -2385,7 +2538,13 @@ def show_result(image: Image.Image):
                     else:
                         st.write("Not available")
 
-            knowledge = get_country_intelligence_v2(decision_code)
+            knowledge = get_country_intelligence_v2(
+                decision_code,
+                tuple(
+                display_country_name(code)
+                for code, _ in display_candidates[1:5]
+            ),
+            )
             intelligence = knowledge["intelligence"]
             completion = knowledge["completion"]
 
@@ -2403,18 +2562,40 @@ def show_result(image: Image.Image):
                 symbolism = flag_info.get("symbolism") or []
                 design_origin = flag_info.get("design_origin") or []
                 flag_history = flag_info.get("historical_flags") or []
+                adoption = flag_info.get("adoption_date")
+                proportion = flag_info.get("proportion")
+                similar_flags = flag_info.get("similar_flags") or []
+
+                meta_left, meta_right = st.columns(2)
+                with meta_left:
+                    if isinstance(adoption, dict) and adoption.get("value"):
+                        st.metric("Adoption", adoption["value"])
+                    if isinstance(proportion, dict) and proportion.get("value"):
+                        st.metric("Proportion", proportion["value"])
+                with meta_right:
+                    if similar_flags:
+                        st.markdown("**Recognition alternatives**")
+                        st.write(", ".join(similar_flags[:4]))
 
                 if design_origin:
                     st.markdown("**Design & construction**")
                     for item in design_origin:
                         if isinstance(item, dict):
-                            st.write(item.get("value") or "Not available")
+                            for heading, summary in _learning_blocks(
+                                item.get("value")
+                            ):
+                                st.markdown(f"**{heading}**")
+                                st.write(summary)
 
                 if symbolism:
                     st.markdown("**Meaning & symbolism**")
                     for item in symbolism:
                         if isinstance(item, dict):
-                            st.write(item.get("value") or "Not available")
+                            for heading, summary in _learning_blocks(
+                                item.get("value")
+                            ):
+                                st.markdown(f"**{heading}**")
+                                st.write(summary)
 
                 if flag_history:
                     st.markdown("**Flag history**")
@@ -2425,7 +2606,14 @@ def show_result(image: Image.Image):
                             )
                             st.write(event.get("summary") or "Not available")
 
-                if not (design_origin or symbolism or flag_history):
+                if not (
+                    design_origin
+                    or symbolism
+                    or flag_history
+                    or adoption
+                    or proportion
+                    or similar_flags
+                ):
                     st.info(
                         "A dedicated sourced flag-history article was not "
                         "available for this country."
@@ -2479,7 +2667,13 @@ def show_result(image: Image.Image):
                 )
                 if value:
                     with st.expander(domain_label, expanded=False):
-                        st.write(value)
+                        blocks = _learning_blocks(value)
+                        if blocks:
+                            for heading, summary in blocks:
+                                st.markdown(f"**{heading}**")
+                                st.write(summary)
+                        else:
+                            st.write(value)
                         source = context.get("source")
                         retrieved = context.get("retrieved_at")
                         source_url = context.get("source_url")
@@ -2587,7 +2781,13 @@ def show_result(image: Image.Image):
             except Exception:
                 historical_profile = profile
 
-            knowledge = get_country_intelligence_v2(decision_code)
+            knowledge = get_country_intelligence_v2(
+                decision_code,
+                tuple(
+                display_country_name(code)
+                for code, _ in display_candidates[1:5]
+            ),
+            )
             report["country_profile"] = knowledge["profile"]
             report["country_intelligence_v2"] = knowledge["intelligence"]
             report["country_intelligence_completion"] = knowledge["completion"]

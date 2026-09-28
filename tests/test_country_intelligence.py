@@ -82,9 +82,13 @@ def test_validation_requires_reference_years_and_history():
 
 def test_completion_exposes_missing_knowledge_domains():
     record = CountryIntelligence(code="CI", name="Côte d'Ivoire")
-    record.identity["capital"] = Evidence(
-        value="Yamoussoukro",
-        source="Wikidata",
+    record.identity["capital"] = Evidence(value="Yamoussoukro", source="Wikidata")
+    record.identity["currency"] = Evidence(value="XOF", source="Wikidata")
+    record.identity["languages"] = Evidence(value="French", source="Wikidata")
+    record.identity["population"] = Evidence(
+        value=32_000_000,
+        source="World Bank",
+        reference_year="2025",
     )
 
     completion = section_completion(record)

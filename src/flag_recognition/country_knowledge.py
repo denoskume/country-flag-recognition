@@ -1,12 +1,14 @@
-"""Generic encyclopedic enrichment for Country Intelligence V2.
+"""Generic encyclopedic enrichment for Country Intelligence.
 
-Structured sources remain authoritative for compact facts. This module adds
-broad educational context from a country encyclopedia article without
-country-specific code. Missing sections remain missing.
+Structured sources remain authoritative for compact facts. This module turns
+encyclopedic country articles into concise educational context while preserving
+source provenance. Missing sections remain missing; unsupported facts are never
+invented.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import re
 from typing import Iterable
@@ -25,7 +27,7 @@ from .country_intelligence import (
 WIKIPEDIA_API = "https://en.wikipedia.org/w/api.php"
 WIKIPEDIA_PAGE = "https://en.wikipedia.org/wiki/"
 USER_AGENT = (
-    "country-flag-recognition/0.2 "
+    "country-flag-recognition/0.3 "
     "(Flag Intelligence educational portfolio project)"
 )
 
@@ -35,7 +37,10 @@ SECTION_ALIASES: dict[str, tuple[str, ...]] = {
         "medieval history", "modern history", "colonial history",
         "colonial period", "independence",
     ),
-    "geography": ("geography", "climate", "biodiversity", "environment"),
+    "geography": (
+        "geography", "climate", "biodiversity", "environment",
+        "physical geography",
+    ),
     "people_society": (
         "demographics", "population", "ethnic groups", "languages",
         "religion", "society", "health",
@@ -44,23 +49,43 @@ SECTION_ALIASES: dict[str, tuple[str, ...]] = {
         "culture", "arts", "music", "literature", "cuisine",
         "sport", "sports", "media", "festivals",
     ),
-    "economy": ("economy", "agriculture", "industry", "trade", "tourism"),
+    "economy": (
+        "economy", "agriculture", "industry", "trade", "tourism",
+    ),
     "infrastructure": (
         "infrastructure", "transport", "transportation", "energy",
-        "communications",
+        "communications", "telecommunications", "roads", "rail",
     ),
     "education_science": (
         "education", "science and technology", "science", "technology",
-        "research",
+        "research", "innovation",
     ),
-    "government": ("government", "politics", "law", "administrative divisions"),
-    "international_relations": ("foreign relations", "international relations"),
+    "government": (
+        "government", "politics", "law", "administrative divisions",
+    ),
+    "international_relations": (
+        "foreign relations", "international relations",
+    ),
 }
 
 EARLY_HISTORY_HEADINGS = (
     "prehistory", "early history", "ancient history", "pre-colonial",
-    "precolonial", "origins", "antiquity",
+    "precolonial", "origins", "antiquity", "early states",
 )
+
+_DYNAMIC_HEADINGS = (
+    "population", "demographics", "health", "media", "economy",
+    "education", "science", "technology", "employment", "poverty",
+)
+
+_CURRENT_YEAR = datetime.now(timezone.utc).year
+
+
+@dataclass(frozen=True)
+class ArticleSection:
+    heading: str
+    level: int
+    body: str
 
 
 def _clean_heading(value: str) -> str:
@@ -100,26 +125,40 @@ def fetch_country_article(
     return extract, canonical_title
 
 
-def split_article_sections(text: str) -> list[tuple[str, str]]:
-    """Split MediaWiki plaintext into ordered heading/body pairs."""
+def split_article_sections_detailed(text: str) -> list[ArticleSection]:
+    """Split plaintext while preserving MediaWiki heading depth."""
     heading_re = re.compile(r"^(={2,6})\s*(.+?)\s*\1\s*$", re.MULTILINE)
     matches = list(heading_re.finditer(text))
-    if not matches:
-        return [("overview", text.strip())] if text.strip() else []
 
-    sections: list[tuple[str, str]] = []
+    if not matches:
+        return [ArticleSection("overview", 1, text.strip())] if text.strip() else []
+
+    sections: list[ArticleSection] = []
     lead = text[: matches[0].start()].strip()
     if lead:
-        sections.append(("overview", lead))
+        sections.append(ArticleSection("overview", 1, lead))
 
     for index, match in enumerate(matches):
         start = match.end()
         end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
-        heading = match.group(2).strip()
         body = text[start:end].strip()
-        if body:
-            sections.append((heading, body))
+        sections.append(
+            ArticleSection(
+                heading=match.group(2).strip(),
+                level=len(match.group(1)),
+                body=body,
+            )
+        )
     return sections
+
+
+def split_article_sections(text: str) -> list[tuple[str, str]]:
+    """Backward-compatible heading/body view used by tests and helpers."""
+    return [
+        (section.heading, section.body)
+        for section in split_article_sections_detailed(text)
+        if section.body
+    ]
 
 
 def _matches_alias(heading: str, aliases: Iterable[str]) -> bool:
@@ -133,40 +172,170 @@ def _matches_alias(heading: str, aliases: Iterable[str]) -> bool:
     return False
 
 
+def _sentences(text: str) -> list[str]:
+    compact = " ".join(str(text).split())
+    return [
+        sentence.strip()
+        for sentence in re.split(r"(?<=[.!?])\s+", compact)
+        if sentence.strip()
+    ]
+
+
+def _latest_year(text: str) -> int | None:
+    years = [
+        int(value)
+        for value in re.findall(r"(?<!\d)(1[89]\d{2}|20\d{2})(?!\d)", text)
+    ]
+    return max(years) if years else None
+
+
+def _compact_body(
+    heading: str,
+    body: str,
+    *,
+    max_sentences: int = 2,
+    max_chars: int = 760,
+) -> str:
+    """Create a short extractive learning summary without generating facts."""
+    sentences = _sentences(body)
+    if not sentences:
+        return ""
+
+    normalized = _clean_heading(heading)
+    dynamic = any(token in normalized for token in _DYNAMIC_HEADINGS)
+
+    if dynamic:
+        recent = []
+        qualitative = []
+        for sentence in sentences:
+            year = _latest_year(sentence)
+            if year is not None and year >= _CURRENT_YEAR - 8:
+                recent.append((year, sentence))
+            elif year is None:
+                qualitative.append(sentence)
+
+        recent.sort(key=lambda item: item[0], reverse=True)
+        selected = [sentence for _, sentence in recent[:1]]
+        selected.extend(qualitative[: max_sentences - len(selected)])
+
+        # Do not present old dynamic statistics as if they were current.
+        if not selected:
+            return ""
+    else:
+        selected = sentences[:max_sentences]
+
+    text = " ".join(selected[:max_sentences]).strip()
+    if len(text) > max_chars:
+        text = text[:max_chars].rsplit(" ", 1)[0].rstrip() + "…"
+    return text
+
+
+def _domain_records(
+    sections: list[ArticleSection],
+    domain: str,
+) -> list[ArticleSection]:
+    """Return matching sections, including children of matching parent sections."""
+    aliases = SECTION_ALIASES.get(domain, ())
+    selected: list[ArticleSection] = []
+    active_parent_level: int | None = None
+
+    for section in sections:
+        matches = _matches_alias(section.heading, aliases)
+
+        if active_parent_level is not None and section.level <= active_parent_level:
+            active_parent_level = None
+
+        if matches:
+            selected.append(section)
+            # Top-level sections such as History, Culture and Economy frequently
+            # store their useful content in child headings.
+            active_parent_level = section.level
+            continue
+
+        if active_parent_level is not None and section.level > active_parent_level:
+            selected.append(section)
+
+    # Preserve order and remove duplicate headings/body pairs.
+    deduped: list[ArticleSection] = []
+    seen: set[tuple[str, str]] = set()
+    for section in selected:
+        key = (section.heading, section.body)
+        if key not in seen:
+            seen.add(key)
+            deduped.append(section)
+    return deduped
+
+
 def collect_domain_text(
     sections: list[tuple[str, str]],
     domain: str,
     *,
     max_chars: int = 4200,
 ) -> str:
-    """Collect matching section text for one knowledge domain."""
+    """Compatibility helper for simple heading/body lists."""
     aliases = SECTION_ALIASES.get(domain, ())
     blocks: list[str] = []
     for heading, body in sections:
         if _matches_alias(heading, aliases):
-            compact = re.sub(r"\n{3,}", "\n\n", body).strip()
+            compact = _compact_body(heading, body)
             if compact:
                 blocks.append(f"{heading}: {compact}")
     combined = "\n\n".join(blocks)
     if len(combined) <= max_chars:
         return combined
-    clipped = combined[:max_chars].rsplit(" ", 1)[0].rstrip()
-    return clipped + "…"
+    return combined[:max_chars].rsplit(" ", 1)[0].rstrip() + "…"
+
+
+def collect_domain_text_detailed(
+    sections: list[ArticleSection],
+    domain: str,
+    *,
+    max_chars: int = 2600,
+    max_blocks: int = 6,
+) -> str:
+    """Create concise subheaded learning context for one domain."""
+    blocks: list[str] = []
+
+    for section in _domain_records(sections, domain):
+        compact = _compact_body(section.heading, section.body)
+        if not compact:
+            continue
+        blocks.append(f"{section.heading}: {compact}")
+        if len(blocks) >= max_blocks:
+            break
+
+    combined = "\n\n".join(blocks)
+    if len(combined) <= max_chars:
+        return combined
+    return combined[:max_chars].rsplit(" ", 1)[0].rstrip() + "…"
 
 
 def collect_origins(
-    sections: list[tuple[str, str]],
+    sections: list[tuple[str, str]] | list[ArticleSection],
     source_url: str,
 ) -> tuple[TimelineEvent, ...]:
-    """Capture explicitly early/origin sections without inventing eras."""
+    """Capture explicit early/origin sections without inventing eras."""
     events: list[TimelineEvent] = []
-    for heading, body in sections:
+
+    for raw in sections:
+        if isinstance(raw, ArticleSection):
+            heading, body = raw.heading, raw.body
+        else:
+            heading, body = raw
+
         normalized = _clean_heading(heading)
         if not any(alias in normalized for alias in EARLY_HISTORY_HEADINGS):
             continue
-        summary = " ".join(body.split())
-        if len(summary) > 1200:
-            summary = summary[:1197].rsplit(" ", 1)[0] + "…"
+
+        summary = _compact_body(
+            heading,
+            body,
+            max_sentences=3,
+            max_chars=1000,
+        )
+        if not summary:
+            continue
+
         events.append(
             TimelineEvent(
                 label=heading,
@@ -179,6 +348,7 @@ def collect_origins(
         )
         if len(events) >= 6:
             break
+
     return tuple(events)
 
 
@@ -187,6 +357,7 @@ _HISTORY_KEYWORDS = (
     "independ", "colon", "kingdom", "empire", "republic", "constitution",
     "president", "war", "coup", "election", "annex", "occupation",
     "federation", "state", "sovereign", "settlement", "founded", "established",
+    "crisis", "conflict", "peace", "referendum", "transition",
 )
 
 
@@ -201,7 +372,8 @@ def extract_timeline(
         return ()
 
     candidates: list[tuple[int, str]] = []
-    sentences = re.split(r"(?<=[.!?])\s+", " ".join(history_text.split()))
+    sentences = _sentences(history_text)
+
     for sentence in sentences:
         year_match = _DATE_TOKEN.search(sentence)
         if not year_match:
@@ -209,11 +381,10 @@ def extract_timeline(
         lower = sentence.lower()
         if not any(keyword in lower for keyword in _HISTORY_KEYWORDS):
             continue
-        sentence = sentence.strip()
         if len(sentence) < 35:
             continue
-        if len(sentence) > 700:
-            sentence = sentence[:697].rsplit(" ", 1)[0] + "…"
+        if len(sentence) > 560:
+            sentence = sentence[:557].rsplit(" ", 1)[0] + "…"
         candidates.append((int(year_match.group("year")), sentence))
 
     unique: dict[tuple[int, str], tuple[int, str]] = {}
@@ -229,7 +400,7 @@ def extract_timeline(
 
     return tuple(
         TimelineEvent(
-            label=f"Historical event — {year}",
+            label="Historical event",
             period=str(year),
             summary=sentence,
             sources=("Wikipedia",),
@@ -259,7 +430,7 @@ def enrich_from_encyclopedia(
     title: str | None = None,
     timeout: float = 15.0,
 ) -> CountryIntelligence:
-    """Enrich a record only with sections actually present in the article."""
+    """Enrich a record with concise, sourced educational context."""
     article_text, canonical_title = fetch_country_article(
         title or record.name,
         timeout=timeout,
@@ -268,19 +439,27 @@ def enrich_from_encyclopedia(
         canonical_title.replace(" ", "_"),
         safe="()_-",
     )
-    sections = split_article_sections(article_text)
-    history_text = collect_domain_text(sections, "history", max_chars=16000)
+    detailed = split_article_sections_detailed(article_text)
 
-    origins = record.origins or collect_origins(sections, source_url)
+    # History uses the entire History subtree instead of only the empty
+    # parent heading. This is essential for country articles with subsections.
+    history_sections = _domain_records(detailed, "history")
+    history_text = " ".join(
+        f"{section.heading}. {section.body}"
+        for section in history_sections
+        if section.body
+    )
+
+    origins = record.origins or collect_origins(detailed, source_url)
     timeline = record.historical_timeline
     extracted_timeline = extract_timeline(history_text, source_url)
-    if extracted_timeline:
-        legacy_only = (
-            len(timeline) == 1
-            and timeline[0].label == "Legacy historical context"
-        )
-        if not timeline or legacy_only:
-            timeline = extracted_timeline
+
+    legacy_only = (
+        len(timeline) == 1
+        and timeline[0].label == "Legacy historical context"
+    )
+    if extracted_timeline and (not timeline or legacy_only):
+        timeline = extracted_timeline
 
     mappings = {
         "geography": record.geography,
@@ -294,18 +473,27 @@ def enrich_from_encyclopedia(
     }
 
     for domain, target in mappings.items():
-        domain_text = collect_domain_text(sections, domain)
+        domain_text = collect_domain_text_detailed(detailed, domain)
         item = _domain_evidence(domain_text, source_url)
         if item is not None:
             target.setdefault("context", item)
 
-    environment_text = collect_domain_text(sections, "geography")
+    environment_text = collect_domain_text_detailed(
+        detailed,
+        "geography",
+        max_chars=1800,
+        max_blocks=4,
+    )
     environment_item = _domain_evidence(environment_text, source_url)
     if environment_item is not None:
         record.environment.setdefault("context", environment_item)
 
     if history_text:
-        history_item = _domain_evidence(history_text[:4200], source_url)
+        compact_history = " ".join(
+            event.summary
+            for event in extracted_timeline[:8]
+        )
+        history_item = _domain_evidence(compact_history[:2600], source_url)
         if history_item is not None:
             record.sovereignty.setdefault("historical_context", history_item)
 
