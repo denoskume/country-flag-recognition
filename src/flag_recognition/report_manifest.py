@@ -25,7 +25,7 @@ OFFICIAL_REPORT_SECTIONS: tuple[ReportSectionSpec, ...] = (
     ReportSectionSpec("rivers", "Rivers, Lakes & Waterways"),
     ReportSectionSpec("relief", "Mountains & Relief"),
     ReportSectionSpec("resources", "Natural Resources & Raw Materials"),
-    ReportSectionSpec("flag", "Flag Intelligence", True),
+    ReportSectionSpec("flag", "Flag Intelligence", False),
     ReportSectionSpec("origins", "Origins & Early History"),
     ReportSectionSpec("history", "Historical Journey", True),
     ReportSectionSpec("sovereignty", "State Formation & Sovereignty", True),
