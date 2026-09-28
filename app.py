@@ -55,7 +55,11 @@ SRC_DIR = ROOT_DIR / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from flag_recognition.country_info import fetch_country_profile
+from flag_recognition.country_info import (
+    fetch_country_profile,
+    fetch_emergency_numbers,
+    fetch_emergency_numbers_fallback,
+)
 from flag_recognition.inference import (
     load_inference_bundle,
     predict_image,
@@ -1227,7 +1231,32 @@ def get_deployment_threshold() -> float:
     return float(get_model().unknown_threshold)
 
 
-COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-28-v6"
+def resolve_emergency_numbers(
+    country_code: str,
+    profile_value: str | None = None,
+) -> str:
+    """Return emergency numbers even if a stale profile/cache is incomplete."""
+    current = str(profile_value or "").strip()
+    if current and current != "Not available":
+        return current
+
+    try:
+        value = fetch_emergency_numbers(country_code)
+    except Exception:
+        value = "Not available"
+
+    if value != "Not available":
+        return value
+
+    try:
+        value = fetch_emergency_numbers_fallback(country_code)
+    except Exception:
+        value = "No national emergency number documented"
+
+    return value
+
+
+COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-28-v7"
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_country_profile_v2(
@@ -1817,10 +1846,13 @@ def show_result(image: Image.Image):
 
                     st.markdown("**Emergency number(s)**")
                     st.write(
-                        getattr(
-                            profile,
-                            "emergency_numbers",
-                            "Not available",
+                        resolve_emergency_numbers(
+                            decision_code,
+                            getattr(
+                                profile,
+                                "emergency_numbers",
+                                None,
+                            ),
                         )
                     )
 
@@ -1988,10 +2020,13 @@ def show_result(image: Image.Image):
                 "head_of_government": profile.head_of_government,
                 "head_of_government_office": profile.head_of_government_office,
                 "calling_code": profile.calling_code,
-                "emergency_numbers": getattr(
-                    profile,
-                    "emergency_numbers",
-                    "Not available",
+                "emergency_numbers": resolve_emergency_numbers(
+                    decision_code,
+                    getattr(
+                        profile,
+                        "emergency_numbers",
+                        None,
+                    ),
                 ),
                 "internet_domain": profile.internet_domain,
                 "driving_side": profile.driving_side,
