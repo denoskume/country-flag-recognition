@@ -172,3 +172,116 @@ def test_economic_drivers_capture_key_industries():
     assert "Oil industry" in drivers
     assert "Fisheries" in drivers
     assert "export revenue" in drivers
+
+
+DEEP_ARTICLE = """
+== Geography ==
+General geography.
+
+=== Climate ===
+The country has a tropical climate with a dry season and a rainy season.
+
+=== Rivers ===
+The Bandama and Comoé are major rivers.
+
+=== Mountains ===
+Mount Nimba and other uplands shape the western relief.
+
+=== Natural resources ===
+The country has petroleum, natural gas, gold, manganese and forest resources.
+
+== Demographics ==
+Population overview.
+
+=== Languages ===
+French is the official language and many indigenous languages are spoken.
+
+=== Religion ===
+Islam and Christianity are major religions.
+
+=== Health ===
+The health system includes public hospitals and regional health services.
+
+== Culture ==
+General cultural overview.
+
+=== Festivals ===
+National and local festivals are celebrated throughout the year.
+
+=== World Heritage ===
+Several cultural and natural sites are recognized by UNESCO.
+
+=== Notable people ===
+The country has internationally known writers, athletes and artists.
+
+== Economy ==
+General economy.
+
+=== Agriculture ===
+Cocoa and cashew production are important export activities.
+
+=== Industry ===
+Food processing, energy and construction are important sectors.
+
+=== Exports ===
+Cocoa, petroleum products and gold are major exports.
+
+== Transport ==
+General transport overview.
+
+=== Roads ===
+The road network links major cities.
+
+=== Ports ===
+The main commercial port handles regional trade.
+
+=== Airports ===
+International airports connect the country to other regions.
+
+=== Telecommunications ===
+Mobile and internet services are widely used.
+
+== Administrative divisions ==
+The country is divided into districts and regions.
+"""
+
+
+def test_extended_country_domains_are_extractable():
+    sections = split_article_sections_detailed(DEEP_ARTICLE)
+
+    assert "dry season" in collect_domain_text_detailed(
+        sections, "climate_seasons"
+    )
+    assert "Bandama" in collect_domain_text_detailed(
+        sections, "rivers_lakes"
+    )
+    assert "Mount Nimba" in collect_domain_text_detailed(
+        sections, "mountains_relief"
+    )
+    assert "petroleum" in collect_domain_text_detailed(
+        sections, "natural_resources"
+    )
+    assert "French" in collect_domain_text_detailed(
+        sections, "languages_religion"
+    )
+    assert "public hospitals" in collect_domain_text_detailed(
+        sections, "health_system"
+    )
+    assert "festivals" in collect_domain_text_detailed(
+        sections, "festivals_holidays"
+    ).lower()
+    assert "UNESCO" in collect_domain_text_detailed(
+        sections, "heritage_landmarks"
+    )
+    assert "Cocoa" in collect_domain_text_detailed(
+        sections, "economic_drivers"
+    )
+    assert "Ports" in collect_domain_text_detailed(
+        sections, "transport_network"
+    )
+    assert "internet" in collect_domain_text_detailed(
+        sections, "energy_connectivity"
+    ).lower()
+    assert "districts" in collect_domain_text_detailed(
+        sections, "administrative_divisions"
+    )
