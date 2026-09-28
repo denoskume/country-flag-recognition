@@ -180,26 +180,31 @@ def _extract_adoption(article: str, source_url: str) -> Evidence | None:
         if sentence.strip()
     ]
 
-    for sentence in sentences[:12]:
-        lower = sentence.lower()
-        if "adopt" not in lower:
-            continue
+    month_names = (
+        "January|February|March|April|May|June|July|August|"
+        "September|October|November|December"
+    )
+    patterns = [
+        rf"\b\d{{1,2}}\s+(?:{month_names})\s+(?:1[89]\d{{2}}|20\d{{2}})\b",
+        rf"\b(?:{month_names})\s+\d{{1,2}},?\s+(?:1[89]\d{{2}}|20\d{{2}})\b",
+        r"\b(?:1[89]\d{2}|20\d{2})\b",
+    ]
 
-        match = re.search(
-            r"(?:(January|February|March|April|May|June|July|August|"
-            r"September|October|November|December)\s+\d{1,2},?\s+)?"
-            r"(1[89]\d{2}|20\d{2})",
-            sentence,
-        )
-        if match:
-            return _fact(match.group(0), source_url)
+    for sentence in sentences[:16]:
+        if "adopt" not in sentence.lower():
+            continue
+        for pattern in patterns:
+            match = re.search(pattern, sentence)
+            if match:
+                return _fact(match.group(0), source_url)
     return None
 
 
 def _extract_proportion(article: str, source_url: str) -> Evidence | None:
     patterns = [
         r"(?:ratio|proportion|dimensions?)\s+(?:of\s+)?(\d+\s*:\s*\d+)",
-        r"(\d+\s*:\s*\d+)\s+(?:ratio|proportion)",
+        r"(\d+\s*:\s*\d+)(?:\s+[a-z-]+){0,4}\s+(?:ratio|proportion)",
+        r"\b(\d+\s*:\s*\d+)\b",
     ]
     for pattern in patterns:
         match = re.search(pattern, article, flags=re.IGNORECASE)
@@ -234,6 +239,36 @@ def enrich_flag_profile(
 
     design_fact = _fact(design, source_url)
     symbolism_fact = _fact(symbolism, source_url)
+
+    if design_fact is None:
+        lead = next(
+            (
+                section.body
+                for section in sections
+                if section.heading == "overview" and section.body
+            ),
+            "",
+        )
+        lead_sentences = [
+            sentence.strip()
+            for sentence in re.split(
+                r"(?<=[.!?])\s+",
+                " ".join(lead.split()),
+            )
+            if sentence.strip()
+        ]
+        design_sentence = next(
+            (
+                sentence
+                for sentence in lead_sentences
+                if any(
+                    token in sentence.lower()
+                    for token in ("tricolour", "tricolor", "flag", "bands")
+                )
+            ),
+            "",
+        )
+        design_fact = _fact(design_sentence, source_url)
     history_events = extract_timeline(
         history,
         source_url,
