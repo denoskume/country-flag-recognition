@@ -1,3 +1,4 @@
+# UI restoration redeploy marker
 """Focused Streamlit interface for worldwide flag recognition."""
 
 from __future__ import annotations
