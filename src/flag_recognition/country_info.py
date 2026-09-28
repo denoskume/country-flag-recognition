@@ -1657,12 +1657,21 @@ def format_emergency_numbers(
                     f"{label.strip()}: {', '.join(cleaned_numbers)}"
                 )
         else:
-            cleaned = _normalize_emergency_number_label(
-                part,
-                calling_code,
-            )
-            if cleaned:
-                formatted.append(cleaned)
+            raw_items = [
+                item.strip()
+                for item in part.split(",")
+                if item.strip()
+            ]
+            cleaned_items: list[str] = []
+            for raw in raw_items:
+                cleaned = _normalize_emergency_number_label(
+                    raw,
+                    calling_code,
+                )
+                if cleaned and cleaned not in cleaned_items:
+                    cleaned_items.append(cleaned)
+            if cleaned_items:
+                formatted.append(", ".join(cleaned_items))
 
     return " | ".join(formatted) if formatted else value
 
@@ -1782,20 +1791,34 @@ def fetch_country_profile(
     ):
         emergency_numbers = "Not available"
 
-    if emergency_numbers == "Not available":
+    if (
+        emergency_numbers == "Not available"
+        or (
+            ":" not in emergency_numbers
+            and "," in emergency_numbers
+        )
+    ):
         try:
-            emergency_numbers = fetch_emergency_numbers_fallback(
+            fallback_emergency = fetch_emergency_numbers_fallback(
                 code,
                 timeout=timeout,
             )
+            if (
+                fallback_emergency != "No national emergency number documented"
+                and ":" in fallback_emergency
+            ):
+                emergency_numbers = fallback_emergency
+            elif emergency_numbers == "Not available":
+                emergency_numbers = fallback_emergency
         except (
             requests.RequestException,
             ValueError,
             LookupError,
         ):
-            emergency_numbers = (
-                "No national emergency number documented"
-            )
+            if emergency_numbers == "Not available":
+                emergency_numbers = (
+                    "No national emergency number documented"
+                )
 
     emergency_override = str(
         COUNTRY_PROFILE_OVERRIDES.get(
