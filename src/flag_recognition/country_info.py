@@ -22,15 +22,13 @@ def _get_with_retry(
     for attempt in range(attempts):
         try:
             response = requests.get(url, **kwargs)
-            status_code = getattr(response, "status_code", 200)
-            if status_code not in (429, 500, 502, 503, 504):
+            if response.status_code not in (429, 500, 502, 503, 504):
                 return response
 
             if attempt >= attempts - 1:
                 return response
 
-            headers = getattr(response, "headers", {}) or {}
-            retry_after = headers.get("Retry-After")
+            retry_after = response.headers.get("Retry-After")
             try:
                 delay = float(retry_after) if retry_after else backoff * (2 ** attempt)
             except (TypeError, ValueError):
