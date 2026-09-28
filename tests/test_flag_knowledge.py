@@ -3,6 +3,7 @@ from flag_recognition.flag_knowledge import (
     _collect,
     _extract_adoption,
     _extract_proportion,
+    _fetch_flag_wikitext,
     _infobox_value,
     FLAG_SECTION_ALIASES,
 )
@@ -79,3 +80,40 @@ def test_flag_infobox_fields_are_extracted_without_narrative_parser():
         _infobox_value(wikitext, "design")
         == "A vertical tricolour of orange, white, and green"
     )
+
+
+class _ParseResponse:
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return {
+            "parse": {
+                "title": "Flag of Ivory Coast",
+                "wikitext": {
+                    "*": (
+                        "{{Infobox flag\n"
+                        "| proportion = 2:3\n"
+                        "| adoption = 3 December 1959\n"
+                        "| design = A vertical tricolour of orange, white, and green\n"
+                        "}}"
+                    )
+                },
+            }
+        }
+
+
+def test_flag_wikitext_uses_mediawiki_parse_api(monkeypatch):
+    import flag_recognition.flag_knowledge as module
+
+    monkeypatch.setattr(
+        module.requests,
+        "get",
+        lambda *args, **kwargs: _ParseResponse(),
+    )
+
+    text, title = _fetch_flag_wikitext("Flag of Ivory Coast")
+
+    assert title == "Flag of Ivory Coast"
+    assert "| proportion = 2:3" in text
+    assert "| adoption = 3 December 1959" in text
