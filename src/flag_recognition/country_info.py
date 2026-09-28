@@ -4,10 +4,50 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
+import time
 from typing import Iterable
 from urllib.parse import quote, unquote, urlparse
 
 import requests
+
+def _get_with_retry(
+    url: str,
+    *,
+    attempts: int = 4,
+    backoff: float = 0.75,
+    **kwargs,
+):
+    """HTTP GET with bounded retries for transient network/rate-limit failures."""
+    last_error = None
+    for attempt in range(attempts):
+        try:
+            response = requests.get(url, **kwargs)
+            if response.status_code not in (429, 500, 502, 503, 504):
+                return response
+
+            if attempt >= attempts - 1:
+                return response
+
+            retry_after = response.headers.get("Retry-After")
+            try:
+                delay = float(retry_after) if retry_after else backoff * (2 ** attempt)
+            except (TypeError, ValueError):
+                delay = backoff * (2 ** attempt)
+            time.sleep(min(max(delay, 0.0), 12.0))
+        except (
+            requests.Timeout,
+            requests.ConnectionError,
+        ) as exc:
+            last_error = exc
+            if attempt >= attempts - 1:
+                raise
+            time.sleep(min(backoff * (2 ** attempt), 12.0))
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("HTTP retry loop exited unexpectedly")
+
+
 import pycountry
 
 
@@ -364,7 +404,7 @@ def fetch_wikidata_profile(
     }}
     """
 
-    response = requests.get(
+    response = _get_with_retry(
         WIKIDATA_ENDPOINT,
         params={
             "query": query,
@@ -606,7 +646,7 @@ def fetch_country_dates(
     LIMIT 50
     """
 
-    response = requests.get(
+    response = _get_with_retry(
         WIKIDATA_ENDPOINT,
         params={"query": query, "format": "json"},
         headers={
@@ -673,7 +713,7 @@ def fetch_rest_country_profile(
             "longitude": 21.167,
         }
 
-    response = requests.get(
+    response = _get_with_retry(
         f"{REST_COUNTRIES_BASE}/alpha/{normalized_code}",
         params={
             "fields": (
@@ -748,7 +788,7 @@ def fetch_latest_gdp(
             else normalized_code.upper()
         )
 
-    response = requests.get(
+    response = _get_with_retry(
         (
             f"{WORLD_BANK_BASE}/country/{lookup_code}"
             "/indicator/NY.GDP.MKTP.CD"
@@ -806,7 +846,7 @@ def fetch_largest_cities(
     LIMIT 5
     """
 
-    response = requests.get(
+    response = _get_with_retry(
         WIKIDATA_ENDPOINT,
         params={"query": query, "format": "json"},
         headers={
@@ -851,7 +891,7 @@ def fetch_wikipedia_overview(
         )
     )
 
-    response = requests.get(
+    response = _get_with_retry(
         endpoint,
         headers={
             "Accept": "application/json",
@@ -890,7 +930,7 @@ def fetch_wikipedia_history_text(
     if not title:
         return "Not available"
 
-    response = requests.get(
+    response = _get_with_retry(
         "https://en.wikipedia.org/w/api.php",
         params={
             "action": "query",
@@ -954,7 +994,7 @@ def fetch_wikidata_population(
     LIMIT 1
     """
 
-    response = requests.get(
+    response = _get_with_retry(
         WIKIDATA_ENDPOINT,
         params={"query": query, "format": "json"},
         headers={
@@ -1022,7 +1062,7 @@ def fetch_latest_population(
             else normalized_code.upper()
         )
 
-    response = requests.get(
+    response = _get_with_retry(
         (
             f"{WORLD_BANK_BASE}/country/{lookup_code}"
             "/indicator/SP.POP.TOTL"
@@ -1445,7 +1485,7 @@ def fetch_emergency_numbers(
     ORDER BY ?telephone ?emergencyNumberLabel
     """
 
-    response = requests.get(
+    response = _get_with_retry(
         WIKIDATA_ENDPOINT,
         params={"query": query, "format": "json"},
         headers={
@@ -1534,7 +1574,7 @@ def fetch_emergency_numbers_fallback(
     """Fetch emergency numbers by ISO code from EmergencyNumberAPI data."""
     normalized = code.upper().strip()
 
-    response = requests.get(
+    response = _get_with_retry(
         EMERGENCY_NUMBERS_DATA_URL,
         headers={
             "User-Agent": (
