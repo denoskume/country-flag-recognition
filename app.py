@@ -1051,6 +1051,111 @@ def build_pdf_report(
                 Spacer(1, 3 * mm),
             ])
 
+        intelligence = report.get("country_intelligence_v2")
+        if isinstance(intelligence, dict):
+            def _context_value(section_name: str) -> str:
+                section = intelligence.get(section_name)
+                if not isinstance(section, dict):
+                    return "Not available"
+                context = section.get("context")
+                if isinstance(context, dict):
+                    return clean(context.get("value"))
+                return "Not available"
+
+            def _text_section(title: str, text: object) -> None:
+                value = clean(text)
+                if value == "Not available":
+                    return
+                table = Table(
+                    [[Paragraph(value.replace("\n", "<br/>"), body_style)]],
+                    colWidths=[REPORT_WIDTH_MM * mm],
+                )
+                table.setStyle(
+                    TableStyle([
+                        ("LEFTPADDING", (0, 0), (-1, -1), 7),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+                        ("TOPPADDING", (0, 0), (-1, -1), 6),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ])
+                )
+                story.extend([
+                    section_box(title, table),
+                    Spacer(1, 3 * mm),
+                ])
+
+            origins = intelligence.get("origins")
+            if isinstance(origins, list) and origins:
+                origin_rows = [
+                    (
+                        clean(event.get("label")),
+                        clean(event.get("summary")),
+                    )
+                    for event in origins[:6]
+                    if isinstance(event, dict)
+                ]
+                if origin_rows:
+                    story.append(PageBreak())
+                    story.extend([
+                        section_box(
+                            "Origins & Early History",
+                            info_grid(origin_rows, two_pairs=False),
+                        ),
+                        Spacer(1, 3 * mm),
+                    ])
+
+            timeline = intelligence.get("historical_timeline")
+            if isinstance(timeline, list) and timeline:
+                timeline_rows = [
+                    (
+                        clean(event.get("period")),
+                        clean(event.get("summary")),
+                    )
+                    for event in timeline[:18]
+                    if isinstance(event, dict)
+                ]
+                if timeline_rows:
+                    if not (isinstance(origins, list) and origins):
+                        story.append(PageBreak())
+                    story.extend([
+                        section_box(
+                            "Historical Journey",
+                            info_grid(timeline_rows, two_pairs=False),
+                        ),
+                        Spacer(1, 3 * mm),
+                    ])
+
+            narrative_sections = [
+                ("People & Society", "people_society"),
+                ("Culture", "culture"),
+                ("Economic Context", "economy"),
+                ("Infrastructure & Transport", "infrastructure"),
+                ("Education, Science & Innovation", "education_science"),
+                ("Environment & Climate", "environment"),
+                ("International Relations", "international_relations"),
+            ]
+
+            for title, key in narrative_sections:
+                _text_section(title, _context_value(key))
+
+            completion = report.get("country_intelligence_completion")
+            if isinstance(completion, dict):
+                supported = sum(bool(value) for value in completion.values())
+                coverage_rows = [
+                    ("Supported knowledge domains", f"{supported}/{len(completion)}"),
+                    (
+                        "Publication rule",
+                        "Missing or unsupported domains are omitted rather than fabricated.",
+                    ),
+                ]
+                story.extend([
+                    section_box(
+                        "Knowledge Coverage",
+                        info_grid(coverage_rows, two_pairs=False),
+                    ),
+                    Spacer(1, 3 * mm),
+                ])
+
         # Recognition is intentionally compact and secondary.
         candidates = report.get("top_candidates", [])
         candidate_summary = " | ".join(
@@ -2140,9 +2245,95 @@ def show_result(image: Image.Image):
                     else:
                         st.write("Not available")
 
+            knowledge = get_country_intelligence_v2(decision_code)
+            intelligence = knowledge["intelligence"]
+            completion = knowledge["completion"]
+
+            st.markdown("### Country Intelligence")
+            complete_count = sum(bool(value) for value in completion.values())
+            total_count = max(len(completion), 1)
+            st.progress(complete_count / total_count)
             st.caption(
-                "Country metadata: Wikidata · Population: World Bank · "
-                "Overview: Wikipedia"
+                f"{complete_count}/{total_count} knowledge domains currently "
+                "supported by sourced data. Missing domains are never fabricated."
+            )
+
+            timeline = intelligence.get("historical_timeline") or []
+            with st.expander("Historical Journey", expanded=True):
+                if timeline:
+                    for event in timeline:
+                        period = event.get("period") or "Historical period"
+                        label = event.get("label") or "Event"
+                        st.markdown(f"**{period} — {label}**")
+                        st.write(event.get("summary") or "Not available")
+                else:
+                    st.info(
+                        "No sufficiently supported structured timeline is "
+                        "available yet for this country."
+                    )
+
+            origins = intelligence.get("origins") or []
+            with st.expander("Origins & Early History", expanded=False):
+                if origins:
+                    for event in origins:
+                        st.markdown(
+                            f"**{event.get('label', 'Early history')}**"
+                        )
+                        st.write(event.get("summary") or "Not available")
+                else:
+                    st.info(
+                        "No explicit early-history section was found in the "
+                        "current sources."
+                    )
+
+            domain_labels = [
+                ("people_society", "People & Society"),
+                ("culture", "Culture"),
+                ("economy", "Economy"),
+                ("infrastructure", "Infrastructure & Transport"),
+                ("education_science", "Education, Science & Innovation"),
+                ("environment", "Environment & Climate"),
+                ("international_relations", "International Relations"),
+            ]
+
+            for domain_key, domain_label in domain_labels:
+                section = intelligence.get(domain_key) or {}
+                context = section.get("context") if isinstance(section, dict) else None
+                value = (
+                    context.get("value")
+                    if isinstance(context, dict)
+                    else None
+                )
+                if value:
+                    with st.expander(domain_label, expanded=False):
+                        st.write(value)
+                        source = context.get("source")
+                        retrieved = context.get("retrieved_at")
+                        source_url = context.get("source_url")
+                        source_note = " · ".join(
+                            part
+                            for part in (
+                                source,
+                                f"retrieved {retrieved}" if retrieved else None,
+                            )
+                            if part
+                        )
+                        if source_url:
+                            st.markdown(
+                                f"[{source_note or 'Source'}]({source_url})"
+                            )
+                        elif source_note:
+                            st.caption(source_note)
+
+            validation = knowledge.get("validation") or []
+            if validation:
+                with st.expander("Coverage & validation notes", expanded=False):
+                    for issue in validation:
+                        st.write(f"• {issue}")
+
+            st.caption(
+                "Structured facts: Wikidata / World Bank / REST Countries · "
+                "Educational context: Wikipedia where a matching section exists."
             )
 
         except (requests.RequestException, LookupError, ValueError) as error:
