@@ -11,6 +11,7 @@ from flag_recognition.country_knowledge import (
     fetch_topic_article,
     _infobox_field,
     _heritage_sites_from_wikitext,
+    _structured_geography_facts,
     collect_domain_text_detailed,
     collect_origins,
     extract_timeline,
@@ -799,3 +800,35 @@ def test_reference_sections_do_not_feed_historical_timeline():
     assert "1975" in periods
     assert "1991" not in periods
     assert "2019" not in periods
+
+
+def test_structured_geography_infobox_extracts_deep_country_facts(monkeypatch):
+    import flag_recognition.country_knowledge as module
+
+    monkeypatch.setattr(
+        module,
+        "fetch_topic_article",
+        lambda *args, **kwargs: ("article", "Geography of Spain"),
+    )
+    monkeypatch.setattr(
+        module,
+        "_fetch_topic_wikitext",
+        lambda *args, **kwargs: """
+{{Infobox geography
+| climate = Temperate; hot summers and cool winters
+| terrain = Large plateau surrounded by rugged hills and the Pyrenees
+| natural_resources = coal, iron ore, copper, hydropower, arable land
+| longest river = Tagus
+| largest lake = Lago de Sanabria
+}}
+""",
+    )
+
+    facts, source = _structured_geography_facts("Spain")
+
+    assert "Temperate" in facts["climate_seasons"]
+    assert "plateau" in facts["mountains_relief"]
+    assert "coal" in facts["natural_resources"]
+    assert "Tagus" in facts["rivers_lakes"]
+    assert "Lago de Sanabria" in facts["rivers_lakes"]
+    assert source.endswith("Geography_of_Spain")
