@@ -1,0 +1,106 @@
+name: Country Intelligence Worldwide Audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - "scripts/audit_country_intelligence_worldwide.py"
+      - ".github/workflows/country-intelligence-audit.yml"
+
+jobs:
+  audit:
+    name: Audit shard ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install audit dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . --no-deps
+          python -m pip install requests pycountry
+
+      - name: Verify worldwide taxonomy size
+        run: |
+          python - <<'PY'
+          import pycountry
+          codes = {country.alpha_2.lower() for country in pycountry.countries}
+          codes.add("xk")
+          assert len(codes) == 250, f"Expected 250 classes, got {len(codes)}"
+          print("Worldwide taxonomy:", len(codes), "classes")
+          PY
+
+      - name: Audit country intelligence
+        env:
+          PYTHONPATH: src
+        run: |
+          python scripts/audit_country_intelligence_worldwide.py             --shard-index ${{ matrix.shard }}             --shard-count 10             --timeout 10             --output-dir artifacts/audit
+
+      - name: Upload shard
+        uses: actions/upload-artifact@v4
+        with:
+          name: country-intelligence-shard-${{ matrix.shard }}
+          path: artifacts/audit/
+          if-no-files-found: error
+          retention-days: 30
+
+  merge:
+    name: Merge worldwide audit
+    needs: audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install merge dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . --no-deps
+          python -m pip install pycountry
+
+      - name: Download all shards
+        uses: actions/download-artifact@v4
+        with:
+          pattern: country-intelligence-shard-*
+          path: artifacts/audit-shards
+          merge-multiple: true
+
+      - name: Merge and verify all 250 classes
+        env:
+          PYTHONPATH: src
+        run: |
+          python scripts/audit_country_intelligence_worldwide.py             --merge-dir artifacts/audit-shards             --output-dir artifacts/worldwide-audit
+
+      - name: Show summary
+        run: |
+          cat artifacts/worldwide-audit/country_intelligence_audit_summary.json
+          echo
+          head -80 artifacts/worldwide-audit/country_intelligence_audit_worldwide.md
+
+      - name: Upload worldwide audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: country-intelligence-worldwide-audit
+          path: artifacts/worldwide-audit/
+          if-no-files-found: error
+          retention-days: 90
