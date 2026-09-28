@@ -315,8 +315,22 @@ def _report_filename_country(country_name: str) -> str:
 def _build_geography_deck(
     latitude: float,
     longitude: float,
+    area_km2: float | None = None,
 ) -> pdk.Deck:
     """Build the single CARTO map used by both the app and the PDF."""
+    if area_km2 is None:
+        zoom = 4.5
+    elif area_km2 < 2_000:
+        zoom = 7.0
+    elif area_km2 < 50_000:
+        zoom = 6.0
+    elif area_km2 < 500_000:
+        zoom = 5.0
+    elif area_km2 < 2_000_000:
+        zoom = 4.3
+    else:
+        zoom = 3.6
+
     data = pd.DataFrame(
         [{
             "lat": float(latitude),
@@ -341,7 +355,7 @@ def _build_geography_deck(
     view_state = pdk.ViewState(
         latitude=float(latitude),
         longitude=float(longitude),
-        zoom=3,
+        zoom=zoom,
         pitch=0,
         bearing=0,
     )
@@ -357,6 +371,7 @@ def _build_geography_deck(
 def _render_geography_deck_png(
     latitude: float | None,
     longitude: float | None,
+    area_km2: float | None = None,
 ) -> bytes | None:
     """Render the exact app CARTO/PyDeck map to PNG for the PDF."""
     if latitude is None or longitude is None:
@@ -373,6 +388,7 @@ def _render_geography_deck_png(
     deck = _build_geography_deck(
         float(latitude),
         float(longitude),
+        area_km2,
     )
 
     try:
@@ -431,6 +447,7 @@ def _build_pdf_location_map(
     map_bytes = _render_geography_deck_png(
         latitude,
         longitude,
+        area_km2,
     )
     if map_bytes is None:
         return None
@@ -1760,6 +1777,7 @@ def show_result(image: Image.Image):
                         geography_deck = _build_geography_deck(
                             profile.latitude,
                             profile.longitude,
+                            profile.area_km2,
                         )
                         st.pydeck_chart(
                             geography_deck,
