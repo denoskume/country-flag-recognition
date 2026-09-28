@@ -79,6 +79,7 @@ from flag_recognition.country_intelligence import (
     section_completion,
     validate_country_intelligence,
 )
+from flag_recognition.country_knowledge import enrich_from_encyclopedia
 
 
 DISPLAY_NAME_OVERRIDES = {
@@ -1323,6 +1324,130 @@ def get_fresh_historical_profile(country_code: str):
     )
 
 
+def _country_profile_payload(
+    country_code: str,
+    profile,
+    historical_profile,
+) -> dict[str, object]:
+    """Normalize the legacy profile once for UI, JSON and PDF."""
+    return {
+        "code": country_code.upper(),
+        "name": profile.name,
+        "capital": profile.capital,
+        "population": profile.population.value,
+        "population_year": profile.population.year,
+        "population_source": profile.population.source,
+        "currency": profile.currency,
+        "official_languages": profile.official_languages,
+        "continent": profile.continent,
+        "area_km2": profile.area_km2,
+        "overview": profile.overview,
+        "national_day": historical_profile.national_day,
+        "independence_day": historical_profile.independence_day,
+        "colonial_history": getattr(
+            historical_profile,
+            "colonial_history",
+            "Not applicable",
+        ),
+        "former_colonial_powers": getattr(
+            historical_profile,
+            "former_colonial_powers",
+            "Not applicable",
+        ),
+        "colonial_period": getattr(
+            historical_profile,
+            "colonial_period",
+            "Not applicable",
+        ),
+        "independence_leader": getattr(
+            historical_profile,
+            "independence_leader",
+            "Not applicable",
+        ),
+        "historical_context": getattr(
+            historical_profile,
+            "historical_context",
+            "No classical colonial-independence transition is documented "
+            "in the available country overview.",
+        ),
+        "national_motto": profile.national_motto,
+        "national_anthem": profile.national_anthem,
+        "region": getattr(profile, "region", "Not available"),
+        "subregion": getattr(profile, "subregion", "Not available"),
+        "demonym": getattr(profile, "demonym", "Not available"),
+        "iso_alpha3": getattr(profile, "iso_alpha3", "Not available"),
+        "timezones": getattr(profile, "timezones", "Not available"),
+        "borders": getattr(profile, "borders", "Not available"),
+        "largest_cities": getattr(profile, "largest_cities", "Not available"),
+        "international_organizations": getattr(
+            profile,
+            "international_organizations",
+            "Not available",
+        ),
+        "official_religion": getattr(
+            profile,
+            "official_religion",
+            "Not available",
+        ),
+        "highest_point": getattr(profile, "highest_point", "Not available"),
+        "lowest_point": getattr(profile, "lowest_point", "Not available"),
+        "gdp_usd": getattr(getattr(profile, "gdp", None), "value_usd", None),
+        "gdp_year": getattr(getattr(profile, "gdp", None), "year", None),
+        "gdp_source": getattr(
+            getattr(profile, "gdp", None),
+            "source",
+            "World Bank",
+        ),
+        "government_form": profile.government_form,
+        "head_of_state": profile.head_of_state,
+        "head_of_state_office": profile.head_of_state_office,
+        "head_of_government": profile.head_of_government,
+        "head_of_government_office": profile.head_of_government_office,
+        "calling_code": profile.calling_code,
+        "emergency_numbers": resolve_emergency_numbers(
+            country_code,
+            getattr(profile, "emergency_numbers", None),
+        ),
+        "internet_domain": profile.internet_domain,
+        "driving_side": profile.driving_side,
+        "latitude": profile.latitude,
+        "longitude": profile.longitude,
+    }
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def get_country_intelligence_v2(country_code: str):
+    """Build and enrich a reusable source-aware country knowledge payload."""
+    profile = get_country_profile_v2(country_code)
+    try:
+        historical_profile = get_fresh_historical_profile(country_code)
+    except Exception:
+        historical_profile = profile
+
+    payload = _country_profile_payload(
+        country_code,
+        profile,
+        historical_profile,
+    )
+    intelligence = build_from_legacy_profile(payload)
+
+    try:
+        intelligence = enrich_from_encyclopedia(
+            intelligence,
+            title=profile.name,
+        )
+    except (requests.RequestException, LookupError, ValueError):
+        # Structured facts remain available even if narrative enrichment fails.
+        pass
+
+    return {
+        "profile": payload,
+        "intelligence": intelligence.to_dict(),
+        "completion": section_completion(intelligence),
+        "validation": validate_country_intelligence(intelligence),
+    }
+
+
 def build_flag_banner_html() -> str:
     flags_html = "".join(
         f'<img src="https://flagcdn.com/w80/{code}.png" loading="lazy" alt="{code} flag">'
@@ -2064,112 +2189,11 @@ def show_result(image: Image.Image):
             except Exception:
                 historical_profile = profile
 
-            report["country_profile"] = {
-                "code": decision_code.upper(),
-                "name": profile.name,
-                "capital": profile.capital,
-                "population": profile.population.value,
-                "population_year": profile.population.year,
-                "population_source": profile.population.source,
-                "currency": profile.currency,
-                "official_languages": profile.official_languages,
-                "continent": profile.continent,
-                "area_km2": profile.area_km2,
-                "overview": profile.overview,
-                "national_day": historical_profile.national_day,
-                "independence_day": historical_profile.independence_day,
-                "colonial_history": getattr(
-                    historical_profile,
-                    "colonial_history",
-                    "Not applicable",
-                ),
-                "former_colonial_powers": getattr(
-                    historical_profile,
-                    "former_colonial_powers",
-                    "Not applicable",
-                ),
-                "colonial_period": getattr(
-                    historical_profile,
-                    "colonial_period",
-                    "Not applicable",
-                ),
-                "independence_leader": getattr(
-                    historical_profile,
-                    "independence_leader",
-                    "Not applicable",
-                ),
-                "historical_context": getattr(
-                    historical_profile,
-                    "historical_context",
-                    "No classical colonial-independence transition is documented "
-                    "in the available country overview.",
-                ),
-                "national_motto": profile.national_motto,
-                "national_anthem": profile.national_anthem,
-                "region": getattr(profile, "region", "Not available"),
-                "subregion": getattr(profile, "subregion", "Not available"),
-                "demonym": getattr(profile, "demonym", "Not available"),
-                "iso_alpha3": getattr(profile, "iso_alpha3", "Not available"),
-                "timezones": getattr(profile, "timezones", "Not available"),
-                "borders": getattr(profile, "borders", "Not available"),
-                "largest_cities": getattr(profile, "largest_cities", "Not available"),
-                "international_organizations": getattr(profile, "international_organizations", "Not available"),
-                "official_religion": getattr(profile, "official_religion", "Not available"),
-                "highest_point": getattr(profile, "highest_point", "Not available"),
-                "lowest_point": getattr(profile, "lowest_point", "Not available"),
-                "gdp_usd": (
-                    getattr(getattr(profile, "gdp", None), "value_usd", None)
-                ),
-                "gdp_year": (
-                    getattr(getattr(profile, "gdp", None), "year", None)
-                ),
-                "gdp_source": (
-                    getattr(
-                        getattr(profile, "gdp", None),
-                        "source",
-                        "World Bank",
-                    )
-                ),
-                "government_form": profile.government_form,
-                "head_of_state": profile.head_of_state,
-                "head_of_state_office": profile.head_of_state_office,
-                "head_of_government": profile.head_of_government,
-                "head_of_government_office": profile.head_of_government_office,
-                "calling_code": profile.calling_code,
-                "emergency_numbers": resolve_emergency_numbers(
-                    decision_code,
-                    getattr(
-                        profile,
-                        "emergency_numbers",
-                        None,
-                    ),
-                ),
-                "internet_domain": profile.internet_domain,
-                "driving_side": profile.driving_side,
-                "latitude": profile.latitude,
-                "longitude": profile.longitude,
-            }
-
-            # Build the source-aware Country Intelligence V2 payload without
-            # disrupting the current UI/PDF while the richer knowledge domains
-            # are progressively connected to verified sources.
-            intelligence = build_from_legacy_profile(
-                report["country_profile"],
-                {
-                    "recognition_status": report.get("status"),
-                    "confidence": report.get("confidence"),
-                    "top1_margin": report.get("decision_margin"),
-                    "decision_mode": report.get("decision_reason"),
-                    "top_candidates": report.get("top_candidates"),
-                },
-            )
-            report["country_intelligence_v2"] = intelligence.to_dict()
-            report["country_intelligence_completion"] = section_completion(
-                intelligence
-            )
-            report["country_intelligence_validation"] = (
-                validate_country_intelligence(intelligence)
-            )
+            knowledge = get_country_intelligence_v2(decision_code)
+            report["country_profile"] = knowledge["profile"]
+            report["country_intelligence_v2"] = knowledge["intelligence"]
+            report["country_intelligence_completion"] = knowledge["completion"]
+            report["country_intelligence_validation"] = knowledge["validation"]
         except (requests.RequestException, LookupError, ValueError):
             pass
 
