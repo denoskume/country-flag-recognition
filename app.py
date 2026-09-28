@@ -2641,243 +2641,12 @@ def show_result(
                 decision_code,
                 schema_version=COUNTRY_PROFILE_SCHEMA_VERSION,
             )
-
             try:
                 historical_profile = get_fresh_historical_profile(
                     decision_code
                 )
             except Exception:
                 historical_profile = profile
-
-            st.divider()
-            st.markdown("### Country profile")
-
-            overview_tab, government_tab, geography_tab = st.tabs(
-                ["Overview", "Government", "Geography"]
-            )
-
-            with overview_tab:
-                o1, o2, o3, o4 = st.columns(4)
-                with o1:
-                    st.metric("Capital", profile.capital)
-                with o2:
-                    population = (
-                        f"{profile.population.value:,}"
-                        if profile.population.value is not None
-                        else "Not available"
-                    )
-                    st.metric("Population", population)
-                    if profile.population.value is not None:
-                        population_note = profile.population.source
-                        if profile.population.year:
-                            population_note += f" · {profile.population.year}"
-                        st.caption(population_note)
-                with o3:
-                    st.metric("Currency", profile.currency)
-                with o4:
-                    area = (
-                        f"{profile.area_km2:,.0f} km²"
-                        if profile.area_km2 is not None
-                        else "Not available"
-                    )
-                    st.metric("Area", area)
-
-                profile_gdp = getattr(profile, "gdp", None)
-                if (
-                    profile_gdp is not None
-                    and getattr(profile_gdp, "value_usd", None) is not None
-                ):
-                    st.metric(
-                        "GDP",
-                        f"$ {profile_gdp.value_usd / 1_000_000_000:,.1f}B",
-                    )
-                    gdp_note = getattr(
-                        profile_gdp,
-                        "source",
-                        "World Bank",
-                    )
-                    if getattr(profile_gdp, "year", None):
-                        gdp_note += f" · {profile_gdp.year}"
-                    st.caption(gdp_note)
-
-                national_day_text = profile.national_day
-                colonial_history = getattr(
-                    historical_profile,
-                    "colonial_history",
-                    "Not applicable",
-                )
-                if colonial_history != "Not applicable":
-                    national_day_text = (
-                        f"{national_day_text} · "
-                        f"{colonial_history}"
-                        if national_day_text != "Not available"
-                        else colonial_history
-                    )
-
-                st.metric("National Day", national_day_text)
-
-                info_left, info_right = st.columns(2, gap="large")
-                with info_left:
-                    st.markdown("**Official language(s)**")
-                    st.write(profile.official_languages)
-
-                    st.markdown("**Continent**")
-                    st.write(profile.continent)
-
-                    st.markdown("**Region / Subregion**")
-                    st.write(
-                        f"{getattr(profile, 'region', 'Not available')} · "
-                        f"{getattr(profile, 'subregion', 'Not available')}"
-                    )
-
-                    st.markdown("**Demonym**")
-                    st.write(getattr(profile, "demonym", "Not available"))
-
-                    st.markdown("**Former colonial power(s)**")
-                    st.write(
-                        getattr(
-                            historical_profile,
-                            "former_colonial_powers",
-                            "Not applicable",
-                        )
-                    )
-
-                    st.markdown("**Colonial period / status**")
-                    st.write(
-                        getattr(
-                            historical_profile,
-                            "colonial_period",
-                            "Not applicable",
-                        )
-                    )
-
-                    st.markdown("**Independence / sovereignty date**")
-                    st.write(historical_profile.independence_day)
-
-                    st.markdown("**Key independence figure**")
-                    st.write(
-                        getattr(
-                            historical_profile,
-                            "independence_leader",
-                            "Not applicable",
-                        )
-                    )
-
-                    st.markdown("**National motto**")
-                    st.write(profile.national_motto)
-
-                with info_right:
-                    st.markdown("**National anthem**")
-                    st.write(profile.national_anthem)
-
-                    st.markdown("**Country overview**")
-                    st.write(profile.overview)
-
-            with government_tab:
-                g1, g2 = st.columns(2, gap="large")
-
-                with g1:
-                    st.markdown("**Government form**")
-                    st.write(profile.government_form)
-
-                    st.markdown("**Head of State**")
-                    st.write(profile.head_of_state)
-                    if profile.head_of_state_office != "Not available":
-                        st.caption(profile.head_of_state_office)
-
-                    st.markdown("**Head of Government**")
-                    st.write(profile.head_of_government)
-                    if profile.head_of_government_office != "Not available":
-                        st.caption(profile.head_of_government_office)
-
-                with g2:
-                    st.markdown("**Official religion**")
-                    st.write(getattr(profile, "official_religion", "Not available"))
-
-                    st.markdown("**International organizations**")
-                    st.write(getattr(profile, "international_organizations", "Not available"))
-
-                    st.markdown("**Calling code**")
-                    st.write(profile.calling_code)
-
-                    st.markdown("**Emergency number(s)**")
-                    st.write(
-                        resolve_emergency_numbers(
-                            decision_code,
-                            getattr(
-                                profile,
-                                "emergency_numbers",
-                                None,
-                            ),
-                        )
-                    )
-
-                    st.markdown("**Internet domain**")
-                    st.write(profile.internet_domain)
-
-                    st.markdown("**Driving side**")
-                    st.write(profile.driving_side)
-
-            with geography_tab:
-                geo_left, geo_right = st.columns([1.35, 0.65], gap="large")
-
-                with geo_left:
-                    if (
-                        profile.latitude is not None
-                        and profile.longitude is not None
-                    ):
-                        geography_deck = _build_geography_deck(
-                            profile.latitude,
-                            profile.longitude,
-                            profile.area_km2,
-                        )
-                        st.pydeck_chart(
-                            geography_deck,
-                            use_container_width=True,
-                            height=500,
-                        )
-                    else:
-                        st.info(
-                            "Geographic coordinates are not available."
-                        )
-
-                with geo_right:
-                    st.markdown("**Continent**")
-                    st.write(profile.continent)
-
-                    st.markdown("**Area**")
-                    st.write(
-                        f"{profile.area_km2:,.0f} km²"
-                        if profile.area_km2 is not None
-                        else "Not available"
-                    )
-
-                    st.markdown("**Largest cities**")
-                    st.write(getattr(profile, "largest_cities", "Not available"))
-
-                    st.markdown("**Borders**")
-                    st.write(getattr(profile, "borders", "Not available"))
-
-                    st.markdown("**Time zones**")
-                    st.write(getattr(profile, "timezones", "Not available"))
-
-                    st.markdown("**Highest point**")
-                    st.write(getattr(profile, "highest_point", "Not available"))
-
-                    st.markdown("**Lowest point**")
-                    st.write(getattr(profile, "lowest_point", "Not available"))
-
-                    st.markdown("**Coordinates**")
-                    if (
-                        profile.latitude is not None
-                        and profile.longitude is not None
-                    ):
-                        st.write(
-                            f"{profile.latitude:.3f}, "
-                            f"{profile.longitude:.3f}"
-                        )
-                    else:
-                        st.write("Not available")
 
             knowledge = get_country_intelligence_v2(
                 decision_code,
@@ -2890,231 +2659,441 @@ def show_result(
             intelligence = knowledge["intelligence"]
             completion = knowledge["completion"]
 
-            st.markdown("### Country Intelligence")
-            complete_count = sum(bool(value) for value in completion.values())
-            total_count = max(len(completion), 1)
-            st.progress(complete_count / total_count)
-            st.caption(
-                f"{complete_count}/{total_count} knowledge domains currently "
-                "supported by sourced data. Missing domains are never fabricated."
+            st.markdown(
+                f'<div class="breadcrumb">FLAG INTELLIGENCE &nbsp;/&nbsp; '
+                f'COUNTRIES &nbsp;/&nbsp; <strong>{country}</strong></div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f'<div class="content-title">{country}</div>'
+                f'<div class="content-subtitle">'
+                f'Country profile and source-aware intelligence · '
+                f'{decision_code.upper()}'
+                f'</div>',
+                unsafe_allow_html=True,
             )
 
-            intelligence_view = st.selectbox(
-                "Browse knowledge",
-                (
-                    "All topics",
-                    "Flag & History",
-                    "Geography & Environment",
-                    "People & Culture",
-                    "Economy & Infrastructure",
-                ),
-                key=f"knowledge-view-{decision_code}",
-                help="Choose a topic group to reduce scrolling.",
+            country_rail, country_main = st.columns(
+                [0.24, 0.76],
+                gap="large",
             )
 
-            show_flag_history = intelligence_view in (
-                "All topics",
-                "Flag & History",
-            )
+            with country_rail:
+                st.markdown(
+                    '<div class="section-rail-title">Country sections</div>',
+                    unsafe_allow_html=True,
+                )
+                country_section = st.radio(
+                    "Country sections",
+                    (
+                        "Overview",
+                        "Flag & History",
+                        "Geography",
+                        "Government & Society",
+                        "Economy & Infrastructure",
+                        "Ask & Export",
+                    ),
+                    label_visibility="collapsed",
+                    key=f"country-section-{decision_code}",
+                )
 
-            if show_flag_history:
-                flag_info = intelligence.get("flag") or {}
-                with st.expander("Flag Intelligence", expanded=True):
-                    symbolism = flag_info.get("symbolism") or []
-                    design_origin = flag_info.get("design_origin") or []
-                    flag_history = flag_info.get("historical_flags") or []
+                complete_count = sum(bool(value) for value in completion.values())
+                total_count = max(len(completion), 1)
+                st.progress(complete_count / total_count)
+                st.caption(
+                    f"{complete_count}/{total_count} knowledge domains supported"
+                )
+
+                with st.expander("Coverage notes", expanded=False):
+                    validation = knowledge.get("validation") or []
+                    if validation:
+                        for issue in validation:
+                            st.write(f"• {issue}")
+                    else:
+                        st.caption("No validation warnings for the current record.")
+
+            with country_main:
+                if country_section == "Overview":
+                    o1, o2, o3, o4 = st.columns(4)
+                    with o1:
+                        st.metric("Capital", profile.capital)
+                    with o2:
+                        population = (
+                            f"{profile.population.value:,}"
+                            if profile.population.value is not None
+                            else "Not available"
+                        )
+                        st.metric("Population", population)
+                        if profile.population.value is not None:
+                            population_note = profile.population.source
+                            if profile.population.year:
+                                population_note += f" · {profile.population.year}"
+                            st.caption(population_note)
+                    with o3:
+                        st.metric("Currency", profile.currency)
+                    with o4:
+                        area = (
+                            f"{profile.area_km2:,.0f} km²"
+                            if profile.area_km2 is not None
+                            else "Not available"
+                        )
+                        st.metric("Area", area)
+
+                    profile_gdp = getattr(profile, "gdp", None)
+                    metric_cols = st.columns(2)
+                    with metric_cols[0]:
+                        if (
+                            profile_gdp is not None
+                            and getattr(profile_gdp, "value_usd", None) is not None
+                        ):
+                            st.metric(
+                                "GDP",
+                                f"$ {profile_gdp.value_usd / 1_000_000_000:,.1f}B",
+                            )
+                            gdp_note = getattr(
+                                profile_gdp,
+                                "source",
+                                "World Bank",
+                            )
+                            if getattr(profile_gdp, "year", None):
+                                gdp_note += f" · {profile_gdp.year}"
+                            st.caption(gdp_note)
+                    with metric_cols[1]:
+                        st.metric("National Day", profile.national_day)
+
+                    st.markdown("#### Identity")
+                    identity_left, identity_right = st.columns(2, gap="large")
+                    with identity_left:
+                        st.markdown("**Official language(s)**")
+                        st.write(profile.official_languages)
+                        st.markdown("**Region / Subregion**")
+                        st.write(
+                            f"{getattr(profile, 'region', 'Not available')} · "
+                            f"{getattr(profile, 'subregion', 'Not available')}"
+                        )
+                        st.markdown("**Demonym**")
+                        st.write(getattr(profile, "demonym", "Not available"))
+                        st.markdown("**National motto**")
+                        st.write(profile.national_motto)
+                    with identity_right:
+                        st.markdown("**National anthem**")
+                        st.write(profile.national_anthem)
+                        st.markdown("**Country overview**")
+                        st.write(profile.overview)
+
+                elif country_section == "Flag & History":
+                    flag_info = intelligence.get("flag") or {}
+                    st.markdown("#### Flag Intelligence")
+
                     adoption = flag_info.get("adoption_date")
                     proportion = flag_info.get("proportion")
-                    similar_flags = flag_info.get("similar_flags") or []
-
-                    meta_left, meta_right = st.columns(2)
-                    with meta_left:
+                    flag_meta = st.columns(2)
+                    with flag_meta[0]:
                         if isinstance(adoption, dict) and adoption.get("value"):
                             st.metric("Adoption", adoption["value"])
+                    with flag_meta[1]:
                         if isinstance(proportion, dict) and proportion.get("value"):
                             st.metric("Proportion", proportion["value"])
-                    with meta_right:
-                        if similar_flags:
-                            st.markdown("**Recognition alternatives**")
-                            st.write(", ".join(similar_flags[:4]))
 
-                    if design_origin:
-                        st.markdown("**Design & construction**")
-                        for item in design_origin:
-                            if isinstance(item, dict):
-                                for heading, summary in _learning_blocks(
-                                    item.get("value")
-                                ):
-                                    st.markdown(f"**{heading}**")
-                                    st.write(summary)
-
-                    if symbolism:
-                        st.markdown("**Meaning & symbolism**")
-                        for item in symbolism:
-                            if isinstance(item, dict):
-                                for heading, summary in _learning_blocks(
-                                    item.get("value")
-                                ):
-                                    st.markdown(f"**{heading}**")
-                                    st.write(summary)
-
-                    if flag_history:
-                        st.markdown("**Flag history**")
-                        for event in flag_history:
-                            if isinstance(event, dict):
-                                st.markdown(
-                                    f"**{event.get('period', 'Historical period')}**"
-                                )
-                                st.write(event.get("summary") or "Not available")
-
-                    if not (
-                        design_origin
-                        or symbolism
-                        or flag_history
-                        or adoption
-                        or proportion
-                        or similar_flags
+                    for heading, key in (
+                        ("Design & construction", "design_origin"),
+                        ("Meaning & symbolism", "symbolism"),
                     ):
-                        st.info(
-                            "A dedicated sourced flag-history article was not "
-                            "available for this country."
-                        )
+                        items = flag_info.get(key) or []
+                        if items:
+                            st.markdown(f"**{heading}**")
+                            for item in items:
+                                if isinstance(item, dict):
+                                    blocks = _learning_blocks(item.get("value"))
+                                    if blocks:
+                                        for block_heading, summary in blocks:
+                                            st.markdown(f"**{block_heading}**")
+                                            st.write(summary)
 
-                timeline = intelligence.get("historical_timeline") or []
-                with st.expander("Historical Journey", expanded=True):
+                    timeline = intelligence.get("historical_timeline") or []
+                    st.markdown("#### Historical Journey")
                     if timeline:
                         for event in timeline:
                             period = event.get("period") or "Historical period"
                             label = event.get("label") or "Event"
-                            st.markdown(f"**{period} — {label}**")
-                            st.write(event.get("summary") or "Not available")
+                            with st.expander(f"{period} — {label}", expanded=False):
+                                st.write(event.get("summary") or "Not available")
                     else:
-                        st.info(
-                            "No sufficiently supported structured timeline is "
-                            "available yet for this country."
-                        )
+                        st.info("No sufficiently supported historical timeline is available.")
 
-                origins = intelligence.get("origins") or []
-                with st.expander("Origins & Early History", expanded=False):
+                    origins = intelligence.get("origins") or []
                     if origins:
+                        st.markdown("#### Origins & Early History")
                         for event in origins:
                             st.markdown(
                                 f"**{event.get('label', 'Early history')}**"
                             )
                             st.write(event.get("summary") or "Not available")
-                    else:
-                        st.info(
-                            "No explicit early-history section was found in the "
-                            "current sources."
+
+                    st.markdown("#### State formation & sovereignty")
+                    sovereignty_left, sovereignty_right = st.columns(2)
+                    with sovereignty_left:
+                        st.markdown("**Former colonial power(s)**")
+                        st.write(
+                            getattr(
+                                historical_profile,
+                                "former_colonial_powers",
+                                "Not applicable",
+                            )
+                        )
+                        st.markdown("**Colonial period / status**")
+                        st.write(
+                            getattr(
+                                historical_profile,
+                                "colonial_period",
+                                "Not applicable",
+                            )
+                        )
+                    with sovereignty_right:
+                        st.markdown("**Independence / sovereignty date**")
+                        st.write(historical_profile.independence_day)
+                        st.markdown("**Key independence figure**")
+                        st.write(
+                            getattr(
+                                historical_profile,
+                                "independence_leader",
+                                "Not applicable",
+                            )
                         )
 
-            domain_labels = [
-                ("geography", "rivers_lakes", "Rivers, Lakes & Waterways", "Geography & Environment"),
-                ("geography", "mountains_relief", "Mountains & Relief", "Geography & Environment"),
-                ("environment", "climate_seasons", "Climate & Seasons", "Geography & Environment"),
-                ("environment", "natural_resources", "Natural Resources & Raw Materials", "Geography & Environment"),
-                ("environment", "context", "Environment & Biodiversity", "Geography & Environment"),
-                ("government", "administrative_divisions", "Administrative Divisions", "People & Culture"),
-                ("people_society", "context", "People & Society", "People & Culture"),
-                ("people_society", "languages_religion", "Languages & Religion", "People & Culture"),
-                ("people_society", "health_system", "Health System & Public Health", "People & Culture"),
-                ("culture", "context", "Culture, Cuisine, Music & Sport", "People & Culture"),
-                ("culture", "festivals_holidays", "Festivals, Holidays & Traditions", "People & Culture"),
-                ("culture", "heritage_landmarks", "Heritage, UNESCO & Major Landmarks", "People & Culture"),
-                ("culture", "notable_people", "Notable Public Figures", "People & Culture"),
-                ("economy", "context", "Economic Structure & Trade", "Economy & Infrastructure"),
-                ("economy", "economic_drivers", "Economic Drivers, Industries & Exports", "Economy & Infrastructure"),
-                ("infrastructure", "context", "Infrastructure Overview", "Economy & Infrastructure"),
-                ("infrastructure", "transport_network", "Transport Network, Ports & Airports", "Economy & Infrastructure"),
-                ("infrastructure", "energy_connectivity", "Energy & Connectivity", "Economy & Infrastructure"),
-                ("education_science", "context", "Education, Science & Innovation", "People & Culture"),
-                ("international_relations", "context", "International Relations", "People & Culture"),
-            ]
-
-            for domain_key, context_key, domain_label, domain_group in domain_labels:
-                if intelligence_view not in ("All topics", domain_group):
-                    continue
-                section = intelligence.get(domain_key) or {}
-                context = (
-                    section.get(context_key)
-                    if isinstance(section, dict)
-                    else None
-                )
-                value = (
-                    context.get("value")
-                    if isinstance(context, dict)
-                    else None
-                )
-                if value:
-                    with st.expander(domain_label, expanded=False):
-                        blocks = _learning_blocks(value)
-                        if blocks:
-                            for heading, summary in blocks:
-                                st.markdown(f"**{heading}**")
-                                st.write(summary)
+                elif country_section == "Geography":
+                    geo_left, geo_right = st.columns([1.35, 0.65], gap="large")
+                    with geo_left:
+                        if (
+                            profile.latitude is not None
+                            and profile.longitude is not None
+                        ):
+                            geography_deck = _build_geography_deck(
+                                profile.latitude,
+                                profile.longitude,
+                                profile.area_km2,
+                            )
+                            st.pydeck_chart(
+                                geography_deck,
+                                use_container_width=True,
+                                height=500,
+                            )
                         else:
+                            st.info("Geographic coordinates are not available.")
+
+                    with geo_right:
+                        for label, value in (
+                            ("Continent", profile.continent),
+                            (
+                                "Largest cities",
+                                getattr(profile, "largest_cities", "Not available"),
+                            ),
+                            (
+                                "Borders",
+                                getattr(profile, "borders", "Not available"),
+                            ),
+                            (
+                                "Highest point",
+                                getattr(profile, "highest_point", "Not available"),
+                            ),
+                            (
+                                "Lowest point",
+                                getattr(profile, "lowest_point", "Not available"),
+                            ),
+                        ):
+                            st.markdown(f"**{label}**")
                             st.write(value)
-                        source = context.get("source")
-                        retrieved = context.get("retrieved_at")
-                        source_url = context.get("source_url")
-                        source_note = " · ".join(
-                            part
-                            for part in (
-                                source,
-                                f"retrieved {retrieved}" if retrieved else None,
-                            )
-                            if part
+
+                    geography_domains = (
+                        ("geography", "rivers_lakes", "Rivers, Lakes & Waterways"),
+                        ("geography", "mountains_relief", "Mountains & Relief"),
+                        ("environment", "climate_seasons", "Climate & Seasons"),
+                        (
+                            "environment",
+                            "natural_resources",
+                            "Natural Resources & Raw Materials",
+                        ),
+                        (
+                            "environment",
+                            "context",
+                            "Environment & Biodiversity",
+                        ),
+                    )
+                    for domain_key, context_key, domain_label in geography_domains:
+                        section = intelligence.get(domain_key) or {}
+                        context = (
+                            section.get(context_key)
+                            if isinstance(section, dict)
+                            else None
                         )
-                        if source_url:
-                            st.markdown(
-                                f"[{source_note or 'Source'}]({source_url})"
-                            )
-                        elif source_note:
-                            st.caption(source_note)
+                        value = (
+                            context.get("value")
+                            if isinstance(context, dict)
+                            else None
+                        )
+                        if value:
+                            st.markdown(f"#### {domain_label}")
+                            blocks = _learning_blocks(value)
+                            if blocks:
+                                for block_heading, summary in blocks:
+                                    st.markdown(f"**{block_heading}**")
+                                    st.write(summary)
+                            else:
+                                st.write(value)
 
-            validation = knowledge.get("validation") or []
-            if validation:
-                with st.expander("Coverage & validation notes", expanded=False):
-                    for issue in validation:
-                        st.write(f"• {issue}")
-
-            st.markdown("### Ask Flag Intelligence")
-            question = st.text_input(
-                "Ask a question about this country",
-                placeholder=(
-                    "Example: What is the capital? What happened in 1960? "
-                    "What does the flag mean?"
-                ),
-                key=f"country-question-{decision_code}",
-            )
-            if question:
-                answers = answer_country_question(
-                    question,
-                    intelligence,
-                    max_results=3,
-                )
-                if answers:
-                    for answer in answers:
-                        st.markdown(f"**{answer['label']}**")
-                        st.write(answer["value"])
-                        source_note = answer.get("source") or "Source unavailable"
-                        if answer.get("reference_year"):
-                            source_note += f" · {answer['reference_year']}"
-                        if answer.get("source_url"):
-                            st.markdown(
-                                f"[{source_note}]({answer['source_url']})"
+                elif country_section == "Government & Society":
+                    st.markdown("#### Government & institutions")
+                    gov_left, gov_right = st.columns(2, gap="large")
+                    with gov_left:
+                        st.markdown("**Government form**")
+                        st.write(profile.government_form)
+                        st.markdown("**Head of State**")
+                        st.write(profile.head_of_state)
+                        if profile.head_of_state_office != "Not available":
+                            st.caption(profile.head_of_state_office)
+                        st.markdown("**Head of Government**")
+                        st.write(profile.head_of_government)
+                        if profile.head_of_government_office != "Not available":
+                            st.caption(profile.head_of_government_office)
+                    with gov_right:
+                        st.markdown("**International organizations**")
+                        st.write(
+                            getattr(
+                                profile,
+                                "international_organizations",
+                                "Not available",
                             )
-                        else:
-                            st.caption(source_note)
+                        )
+                        st.markdown("**Emergency number(s)**")
+                        st.write(
+                            resolve_emergency_numbers(
+                                decision_code,
+                                getattr(profile, "emergency_numbers", None),
+                            )
+                        )
+                        st.markdown("**Driving side**")
+                        st.write(profile.driving_side)
+
+                    society_domains = (
+                        ("government", "administrative_divisions", "Administrative Divisions"),
+                        ("people_society", "context", "People & Society"),
+                        ("people_society", "languages_religion", "Languages & Religion"),
+                        ("people_society", "health_system", "Health System & Public Health"),
+                        ("culture", "context", "Culture, Cuisine, Music & Sport"),
+                        ("culture", "festivals_holidays", "Festivals, Holidays & Traditions"),
+                        ("culture", "heritage_landmarks", "Heritage, UNESCO & Major Landmarks"),
+                        ("culture", "notable_people", "Notable Public Figures"),
+                        ("education_science", "context", "Education, Science & Innovation"),
+                        ("international_relations", "context", "International Relations"),
+                    )
+                    for domain_key, context_key, domain_label in society_domains:
+                        section = intelligence.get(domain_key) or {}
+                        context = section.get(context_key) if isinstance(section, dict) else None
+                        value = context.get("value") if isinstance(context, dict) else None
+                        if value:
+                            with st.expander(domain_label, expanded=False):
+                                blocks = _learning_blocks(value)
+                                if blocks:
+                                    for block_heading, summary in blocks:
+                                        st.markdown(f"**{block_heading}**")
+                                        st.write(summary)
+                                else:
+                                    st.write(value)
+
+                elif country_section == "Economy & Infrastructure":
+                    economy_domains = (
+                        ("economy", "context", "Economic Structure & Trade"),
+                        (
+                            "economy",
+                            "economic_drivers",
+                            "Economic Drivers, Industries & Exports",
+                        ),
+                        ("infrastructure", "context", "Infrastructure Overview"),
+                        (
+                            "infrastructure",
+                            "transport_network",
+                            "Transport Network, Ports & Airports",
+                        ),
+                        (
+                            "infrastructure",
+                            "energy_connectivity",
+                            "Energy & Connectivity",
+                        ),
+                    )
+                    for domain_key, context_key, domain_label in economy_domains:
+                        section = intelligence.get(domain_key) or {}
+                        context = section.get(context_key) if isinstance(section, dict) else None
+                        value = context.get("value") if isinstance(context, dict) else None
+                        if value:
+                            st.markdown(f"#### {domain_label}")
+                            blocks = _learning_blocks(value)
+                            if blocks:
+                                for block_heading, summary in blocks:
+                                    st.markdown(f"**{block_heading}**")
+                                    st.write(summary)
+                            else:
+                                st.write(value)
+
+                    profile_gdp = getattr(profile, "gdp", None)
+                    if (
+                        profile_gdp is not None
+                        and getattr(profile_gdp, "value_usd", None) is not None
+                    ):
+                        st.metric(
+                            "GDP",
+                            f"$ {profile_gdp.value_usd / 1_000_000_000:,.1f}B",
+                        )
+                        gdp_note = getattr(profile_gdp, "source", "World Bank")
+                        if getattr(profile_gdp, "year", None):
+                            gdp_note += f" · {profile_gdp.year}"
+                        st.caption(gdp_note)
+
                 else:
-                    st.info(
-                        "The current verified country record does not contain "
-                        "enough information to answer that question."
+                    st.markdown("#### Ask Flag Intelligence")
+                    question = st.text_input(
+                        "Ask a question about this country",
+                        placeholder=(
+                            "Example: What is the capital? What happened in 1960? "
+                            "What does the flag mean?"
+                        ),
+                        key=f"country-question-{decision_code}",
+                    )
+                    if question:
+                        answers = answer_country_question(
+                            question,
+                            intelligence,
+                            max_results=3,
+                        )
+                        if answers:
+                            for answer in answers:
+                                st.markdown(f"**{answer['label']}**")
+                                st.write(answer["value"])
+                                source_note = (
+                                    answer.get("source") or "Source unavailable"
+                                )
+                                if answer.get("reference_year"):
+                                    source_note += f" · {answer['reference_year']}"
+                                if answer.get("source_url"):
+                                    st.markdown(
+                                        f"[{source_note}]({answer['source_url']})"
+                                    )
+                                else:
+                                    st.caption(source_note)
+                        else:
+                            st.info(
+                                "The current verified country record does not "
+                                "contain enough information to answer that question."
+                            )
+
+                    st.markdown("#### Export")
+                    st.caption(
+                        "JSON preserves the structured record. PDF produces a "
+                        "reader-friendly country report."
                     )
 
             st.caption(
                 "Structured facts: Wikidata / World Bank / REST Countries · "
-                "Educational context: Wikipedia where a matching section exists."
+                "Educational context: Wikipedia/MediaWiki where supported."
             )
 
         except (requests.RequestException, LookupError, ValueError) as error:
