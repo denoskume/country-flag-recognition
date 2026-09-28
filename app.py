@@ -330,15 +330,15 @@ def _load_natural_earth_countries() -> dict[str, object]:
     return response.json()
 
 
-def _build_pdf_location_map(
+def _build_location_map_image(
     latitude: float | None,
     longitude: float | None,
     area_km2: float | None = None,
     country_name: str = "Country",
     capital: str = "Not available",
     country_code: str = "",
-) -> PDFImage | None:
-    """Render an English-only locator map from Natural Earth boundaries."""
+) -> Image.Image | None:
+    """Render the single locator map used by both the app and the PDF."""
     if latitude is None or longitude is None:
         return None
 
@@ -350,51 +350,60 @@ def _build_pdf_location_map(
     ):
         return None
 
-    width = 900
-    height = 420
-
-    canvas = Image.new(
-        "RGB",
-        (width, height),
-        "#F8FAFC",
-    )
+    width = 1000
+    height = 520
+    canvas = Image.new("RGB", (width, height), "#F8FAFC")
     draw = ImageDraw.Draw(canvas)
 
-    # World map projection bounds.
-    lon_min = -180.0
-    lon_max = 180.0
-    lat_min = -60.0
-    lat_max = 85.0
+    lat = float(latitude)
+    lon = float(longitude)
 
-    def project(
-        lon: float,
-        lat: float,
-    ) -> tuple[int, int]:
-        x = int(
-            (lon - lon_min)
-            / (lon_max - lon_min)
-            * width
-        )
-        y = int(
-            (lat_max - lat)
-            / (lat_max - lat_min)
-            * height
-        )
+    if area_km2 is None:
+        lon_span, lat_span = 55.0, 32.0
+    elif area_km2 < 2_000:
+        lon_span, lat_span = 18.0, 12.0
+    elif area_km2 < 50_000:
+        lon_span, lat_span = 26.0, 18.0
+    elif area_km2 < 500_000:
+        lon_span, lat_span = 38.0, 24.0
+    elif area_km2 < 2_000_000:
+        lon_span, lat_span = 55.0, 34.0
+    else:
+        lon_span, lat_span = 75.0, 46.0
+
+    lon_min = max(-180.0, lon - lon_span / 2)
+    lon_max = min(180.0, lon + lon_span / 2)
+    lat_min = max(-60.0, lat - lat_span / 2)
+    lat_max = min(85.0, lat + lat_span / 2)
+
+    def project(point_lon: float, point_lat: float) -> tuple[int, int]:
+        x = int((point_lon - lon_min) / max(lon_max - lon_min, 1e-9) * width)
+        y = int((lat_max - point_lat) / max(lat_max - lat_min, 1e-9) * height)
         return x, y
 
     target_code = str(country_code).upper().strip()
     target_found = False
 
     def feature_iso2(properties: dict[str, object]) -> str:
-        for key in (
-            "ISO_A2",
-            "ISO_A2_EH",
-            "POSTAL",
-        ):
+        for key in ("ISO_A2", "ISO_A2_EH", "POSTAL"):
             value = str(properties.get(key) or "").upper()
             if value and value != "-99":
                 return value
         return ""
+
+    def ring_is_visible(ring: list[list[float]]) -> bool:
+        if not ring:
+            return False
+        ring_lons = [float(p[0]) for p in ring if len(p) >= 2]
+        ring_lats = [float(p[1]) for p in ring if len(p) >= 2]
+        if not ring_lons or not ring_lats:
+            return False
+        return not (
+            max(ring_lons) < lon_min
+            or min(ring_lons) > lon_max
+            or max(ring_lats) < lat_min
+            or min(ring_lats) > lat_max
+        )
 
     def draw_ring(
         ring: list[list[float]],
@@ -403,17 +412,15 @@ def _build_pdf_location_map(
         outline: str,
         line_width: int,
     ) -> None:
+        if not ring_is_visible(ring):
+            return
         points = [
             project(float(point[0]), float(point[1]))
             for point in ring
             if len(point) >= 2
         ]
         if len(points) >= 3:
-            draw.polygon(
-                points,
-                fill=fill,
-                outline=outline,
-            )
+            draw.polygon(points, fill=fill, outline=outline)
             if line_width > 1:
                 draw.line(
                     points + [points[0]],
@@ -430,25 +437,13 @@ def _build_pdf_location_map(
         coordinates_data = geometry.get("coordinates") or []
 
         iso2 = feature_iso2(properties)
-        is_target = bool(
-            target_code
-            and iso2 == target_code
-        )
-
+        is_target = bool(target_code and iso2 == target_code)
         if is_target:
             target_found = True
 
-        fill = (
-            "#E11D2E"
-            if is_target
-            else "#E5E7EB"
-        )
-        outline = (
-            "#991B1B"
-            if is_target
-            else "#9CA3AF"
-        )
-        line_width = 2 if is_target else 1
+        fill = "#E11D2E" if is_target else "#E5E7EB"
+        outline = "#991B1B" if is_target else "#9CA3AF"
+        line_width = 3 if is_target else 1
 
         if geometry_type == "Polygon":
             polygons = [coordinates_data]
@@ -458,68 +453,38 @@ def _build_pdf_location_map(
             continue
 
         for polygon in polygons:
-            if not polygon:
-                continue
+            if polygon:
+                draw_ring(
+                    polygon[0],
+                    fill=fill,
+                    outline=outline,
+                    line_width=line_width,
+                )
 
-            # Exterior ring only keeps the locator map clean and robust.
-            exterior = polygon[0]
-            draw_ring(
-                exterior,
-                fill=fill,
-                outline=outline,
-                line_width=line_width,
-            )
-
-    # Accurate coordinate marker even when Natural Earth has no polygon
-    # for a very small territory.
-    marker_x, marker_y = project(
-        float(longitude),
-        float(latitude),
-    )
+    marker_x, marker_y = project(lon, lat)
     draw.ellipse(
-        (
-            marker_x - 9,
-            marker_y - 9,
-            marker_x + 9,
-            marker_y + 9,
-        ),
+        (marker_x - 10, marker_y - 10, marker_x + 10, marker_y + 10),
         fill="#FFFFFF",
         outline="#FFFFFF",
         width=3,
     )
     draw.ellipse(
-        (
-            marker_x - 6,
-            marker_y - 6,
-            marker_x + 6,
-            marker_y + 6,
-        ),
+        (marker_x - 7, marker_y - 7, marker_x + 7, marker_y + 7),
         fill="#E11D2E",
         outline="#991B1B",
         width=2,
     )
 
-    # English-only information panel.
-    box_left = 18
-    box_top = 16
-    box_right = 355
-    box_bottom = 86
-
     draw.rounded_rectangle(
-        (box_left, box_top, box_right, box_bottom),
+        (18, 16, 375, 92),
         radius=10,
         fill="#FFFFFF",
         outline="#CBD5E1",
         width=1,
     )
-
+    draw.text((32, 28), str(country_name), fill="#111827")
     draw.text(
-        (32, 27),
-        str(country_name),
-        fill="#111827",
-    )
-    draw.text(
-        (32, 47),
+        (32, 50),
         (
             f"Capital: {capital}"
             if capital not in ("", "Not available", None)
@@ -528,41 +493,54 @@ def _build_pdf_location_map(
         fill="#374151",
     )
     draw.text(
-        (32, 65),
-        f"Coordinates: {float(latitude):.3f}, {float(longitude):.3f}",
+        (32, 70),
+        f"Coordinates: {lat:.3f}, {lon:.3f}",
         fill="#374151",
     )
 
-    # Small legend, also English-only.
-    legend_y = height - 33
+    legend_y = height - 37
     draw.rectangle(
-        (18, legend_y, 285, height - 10),
+        (18, legend_y, 290, height - 10),
         fill="#FFFFFF",
         outline="#E5E7EB",
         width=1,
     )
     draw.rectangle(
-        (28, legend_y + 7, 42, legend_y + 19),
+        (28, legend_y + 8, 44, legend_y + 21),
         fill="#E11D2E",
         outline="#991B1B",
     )
     draw.text(
-        (50, legend_y + 6),
-        (
-            "Recognized country"
-            if target_found
-            else "Recognized location"
-        ),
+        (52, legend_y + 7),
+        "Recognized country" if target_found else "Recognized location",
         fill="#374151",
     )
 
-    map_buffer = BytesIO()
-    canvas.save(
-        map_buffer,
-        format="JPEG",
-        quality=92,
-        optimize=False,
+    return canvas
+
+
+def _build_pdf_location_map(
+    latitude: float | None,
+    longitude: float | None,
+    area_km2: float | None = None,
+    country_name: str = "Country",
+    capital: str = "Not available",
+    country_code: str = "",
+) -> PDFImage | None:
+    """Convert the shared app geography map into a ReportLab image."""
+    map_image = _build_location_map_image(
+        latitude,
+        longitude,
+        area_km2,
+        country_name=country_name,
+        capital=capital,
+        country_code=country_code,
     )
+    if map_image is None:
+        return None
+
+    map_buffer = BytesIO()
+    map_image.save(map_buffer, format="JPEG", quality=92, optimize=False)
     map_buffer.seek(0)
 
     pdf_map = PDFImage(map_buffer)
@@ -1887,18 +1865,23 @@ def show_result(image: Image.Image):
                         profile.latitude is not None
                         and profile.longitude is not None
                     ):
-                        st.map(
-                            pd.DataFrame(
-                                [{
-                                    "lat": profile.latitude,
-                                    "lon": profile.longitude,
-                                }]
-                            ),
-                            latitude="lat",
-                            longitude="lon",
-                            zoom=3,
-                            use_container_width=True,
+                        geography_map = _build_location_map_image(
+                            profile.latitude,
+                            profile.longitude,
+                            profile.area_km2,
+                            country_name=country,
+                            capital=profile.capital,
+                            country_code=decision_code,
                         )
+                        if geography_map is not None:
+                            st.image(
+                                geography_map,
+                                use_container_width=True,
+                            )
+                        else:
+                            st.info(
+                                "Geographic map is temporarily unavailable."
+                            )
                     else:
                         st.info("Geographic coordinates are not available.")
 
