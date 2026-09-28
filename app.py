@@ -308,214 +308,269 @@ def _report_filename_country(country_name: str) -> str:
     return normalized or "country"
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def _load_natural_earth_countries() -> dict[str, object]:
+    """Load Natural Earth country boundaries for PDF locator maps."""
+    url = (
+        "https://raw.githubusercontent.com/"
+        "nvkelso/natural-earth-vector/master/geojson/"
+        "ne_110m_admin_0_countries.geojson"
+    )
+    response = requests.get(
+        url,
+        headers={
+            "User-Agent": (
+                "Flag-Intelligence/1.0 "
+                "(educational country knowledge report)"
+            ),
+        },
+        timeout=20,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
 def _build_pdf_location_map(
     latitude: float | None,
     longitude: float | None,
     area_km2: float | None = None,
     country_name: str = "Country",
     capital: str = "Not available",
+    country_code: str = "",
 ) -> PDFImage | None:
-    """Build a locator map directly from OpenStreetMap tiles."""
+    """Render an English-only locator map from Natural Earth boundaries."""
     if latitude is None or longitude is None:
         return None
 
-    if area_km2 is None:
-        zoom = 4
-    elif area_km2 < 2_000:
-        zoom = 7
-    elif area_km2 < 50_000:
-        zoom = 6
-    elif area_km2 < 500_000:
-        zoom = 5
-    elif area_km2 < 2_000_000:
-        zoom = 4
-    else:
-        zoom = 3
-
-    tile_size = 256
-    output_width = 900
-    output_height = 420
-    max_lat = 85.05112878
-    latitude = max(-max_lat, min(max_lat, float(latitude)))
-    longitude = float(longitude)
-
-    scale = tile_size * (2 ** zoom)
-    center_x = (longitude + 180.0) / 360.0 * scale
-
-    lat_rad = math.radians(latitude)
-    center_y = (
-        1.0
-        - math.log(
-            math.tan(lat_rad)
-            + (1.0 / math.cos(lat_rad))
-        )
-        / math.pi
-    ) / 2.0 * scale
-
-    left_px = center_x - output_width / 2
-    top_px = center_y - output_height / 2
-    right_px = center_x + output_width / 2
-    bottom_px = center_y + output_height / 2
-
-    min_tile_x = math.floor(left_px / tile_size)
-    max_tile_x = math.floor((right_px - 1) / tile_size)
-    min_tile_y = math.floor(top_px / tile_size)
-    max_tile_y = math.floor((bottom_px - 1) / tile_size)
-
-    tile_count = 2 ** zoom
-    canvas = Image.new(
-        "RGB",
-        (output_width, output_height),
-        "#E9EEF3",
-    )
-
-    loaded_tiles = 0
-
     try:
-        for tile_y in range(min_tile_y, max_tile_y + 1):
-            if tile_y < 0 or tile_y >= tile_count:
-                continue
-
-            for tile_x in range(min_tile_x, max_tile_x + 1):
-                wrapped_x = tile_x % tile_count
-                tile_url = (
-                    "https://basemaps.cartocdn.com/"
-                    f"light_nolabels/{zoom}/{wrapped_x}/{tile_y}.png"
-                )
-
-                response = requests.get(
-                    tile_url,
-                    headers={
-                        "User-Agent": (
-                            "Flag-Intelligence/1.0 "
-                            "(educational country knowledge report; "
-                            "github.com/denoskume/country-flag-recognition)"
-                        ),
-                    },
-                    timeout=12,
-                )
-                response.raise_for_status()
-
-                with Image.open(BytesIO(response.content)) as tile_source:
-                    tile_source.load()
-                    tile = tile_source.convert("RGB").copy()
-
-                paste_x = int(
-                    tile_x * tile_size - left_px
-                )
-                paste_y = int(
-                    tile_y * tile_size - top_px
-                )
-                canvas.paste(
-                    tile,
-                    (paste_x, paste_y),
-                )
-                loaded_tiles += 1
-
-        if loaded_tiles == 0:
-            return None
-
-        # Central location marker.
-        draw = ImageDraw.Draw(canvas)
-        marker_x = output_width // 2
-        marker_y = output_height // 2
-
-        draw.ellipse(
-            (
-                marker_x - 12,
-                marker_y - 12,
-                marker_x + 12,
-                marker_y + 12,
-            ),
-            fill="#FFFFFF",
-            outline="#FFFFFF",
-            width=3,
-        )
-        draw.ellipse(
-            (
-                marker_x - 8,
-                marker_y - 8,
-                marker_x + 8,
-                marker_y + 8,
-            ),
-            fill="#E11D2E",
-            outline="#B91C1C",
-            width=2,
-        )
-
-        # English-only map annotation.
-        annotation_lines = [
-            str(country_name),
-            (
-                f"Capital: {capital}"
-                if capital not in ("", "Not available", None)
-                else "Capital: Not available"
-            ),
-            f"Coordinates: {latitude:.3f}, {longitude:.3f}",
-        ]
-
-        box_left = 10
-        box_top = 10
-        box_right = 330
-        box_bottom = 72
-
-        draw.rounded_rectangle(
-            (box_left, box_top, box_right, box_bottom),
-            radius=8,
-            fill="#FFFFFF",
-            outline="#D1D5DB",
-            width=1,
-        )
-
-        draw.text(
-            (20, 18),
-            annotation_lines[0],
-            fill="#111111",
-        )
-        draw.text(
-            (20, 36),
-            annotation_lines[1],
-            fill="#333333",
-        )
-        draw.text(
-            (20, 52),
-            annotation_lines[2],
-            fill="#333333",
-        )
-
-        # English attribution only.
-        draw.rectangle(
-            (6, output_height - 24, 250, output_height - 6),
-            fill="#FFFFFF",
-        )
-        draw.text(
-            (10, output_height - 21),
-            "Map data © OpenStreetMap contributors · CARTO",
-            fill="#333333",
-        )
-
-        map_buffer = BytesIO()
-        canvas.save(
-            map_buffer,
-            format="JPEG",
-            quality=90,
-            optimize=False,
-        )
-        map_buffer.seek(0)
-
-        pdf_map = PDFImage(map_buffer)
-        pdf_map._restrictSize(
-            (PDF_CONTENT_WIDTH_MM - 10.0) * mm,
-            66 * mm,
-        )
-        return pdf_map
-
+        geojson = _load_natural_earth_countries()
     except (
         requests.RequestException,
-        OSError,
         ValueError,
     ):
         return None
+
+    width = 900
+    height = 420
+
+    canvas = Image.new(
+        "RGB",
+        (width, height),
+        "#F8FAFC",
+    )
+    draw = ImageDraw.Draw(canvas)
+
+    # World map projection bounds.
+    lon_min = -180.0
+    lon_max = 180.0
+    lat_min = -60.0
+    lat_max = 85.0
+
+    def project(
+        lon: float,
+        lat: float,
+    ) -> tuple[int, int]:
+        x = int(
+            (lon - lon_min)
+            / (lon_max - lon_min)
+            * width
+        )
+        y = int(
+            (lat_max - lat)
+            / (lat_max - lat_min)
+            * height
+        )
+        return x, y
+
+    target_code = str(country_code).upper().strip()
+    target_found = False
+
+    def feature_iso2(properties: dict[str, object]) -> str:
+        for key in (
+            "ISO_A2",
+            "ISO_A2_EH",
+            "POSTAL",
+        ):
+            value = str(properties.get(key) or "").upper()
+            if value and value != "-99":
+                return value
+        return ""
+
+    def draw_ring(
+        ring: list[list[float]],
+        *,
+        fill: str,
+        outline: str,
+        line_width: int,
+    ) -> None:
+        points = [
+            project(float(point[0]), float(point[1]))
+            for point in ring
+            if len(point) >= 2
+        ]
+        if len(points) >= 3:
+            draw.polygon(
+                points,
+                fill=fill,
+                outline=outline,
+            )
+            if line_width > 1:
+                draw.line(
+                    points + [points[0]],
+                    fill=outline,
+                    width=line_width,
+                    joint="curve",
+                )
+
+    features = geojson.get("features", [])
+    for feature in features:
+        geometry = feature.get("geometry") or {}
+        properties = feature.get("properties") or {}
+        geometry_type = geometry.get("type")
+        coordinates_data = geometry.get("coordinates") or []
+
+        iso2 = feature_iso2(properties)
+        is_target = bool(
+            target_code
+            and iso2 == target_code
+        )
+
+        if is_target:
+            target_found = True
+
+        fill = (
+            "#E11D2E"
+            if is_target
+            else "#E5E7EB"
+        )
+        outline = (
+            "#991B1B"
+            if is_target
+            else "#9CA3AF"
+        )
+        line_width = 2 if is_target else 1
+
+        if geometry_type == "Polygon":
+            polygons = [coordinates_data]
+        elif geometry_type == "MultiPolygon":
+            polygons = coordinates_data
+        else:
+            continue
+
+        for polygon in polygons:
+            if not polygon:
+                continue
+
+            # Exterior ring only keeps the locator map clean and robust.
+            exterior = polygon[0]
+            draw_ring(
+                exterior,
+                fill=fill,
+                outline=outline,
+                line_width=line_width,
+            )
+
+    # Accurate coordinate marker even when Natural Earth has no polygon
+    # for a very small territory.
+    marker_x, marker_y = project(
+        float(longitude),
+        float(latitude),
+    )
+    draw.ellipse(
+        (
+            marker_x - 9,
+            marker_y - 9,
+            marker_x + 9,
+            marker_y + 9,
+        ),
+        fill="#FFFFFF",
+        outline="#FFFFFF",
+        width=3,
+    )
+    draw.ellipse(
+        (
+            marker_x - 6,
+            marker_y - 6,
+            marker_x + 6,
+            marker_y + 6,
+        ),
+        fill="#E11D2E",
+        outline="#991B1B",
+        width=2,
+    )
+
+    # English-only information panel.
+    box_left = 18
+    box_top = 16
+    box_right = 355
+    box_bottom = 86
+
+    draw.rounded_rectangle(
+        (box_left, box_top, box_right, box_bottom),
+        radius=10,
+        fill="#FFFFFF",
+        outline="#CBD5E1",
+        width=1,
+    )
+
+    draw.text(
+        (32, 27),
+        str(country_name),
+        fill="#111827",
+    )
+    draw.text(
+        (32, 47),
+        (
+            f"Capital: {capital}"
+            if capital not in ("", "Not available", None)
+            else "Capital: Not available"
+        ),
+        fill="#374151",
+    )
+    draw.text(
+        (32, 65),
+        f"Coordinates: {float(latitude):.3f}, {float(longitude):.3f}",
+        fill="#374151",
+    )
+
+    # Small legend, also English-only.
+    legend_y = height - 33
+    draw.rectangle(
+        (18, legend_y, 285, height - 10),
+        fill="#FFFFFF",
+        outline="#E5E7EB",
+        width=1,
+    )
+    draw.rectangle(
+        (28, legend_y + 7, 42, legend_y + 19),
+        fill="#E11D2E",
+        outline="#991B1B",
+    )
+    draw.text(
+        (50, legend_y + 6),
+        (
+            "Recognized country"
+            if target_found
+            else "Recognized location"
+        ),
+        fill="#374151",
+    )
+
+    map_buffer = BytesIO()
+    canvas.save(
+        map_buffer,
+        format="JPEG",
+        quality=92,
+        optimize=False,
+    )
+    map_buffer.seek(0)
+
+    pdf_map = PDFImage(map_buffer)
+    pdf_map._restrictSize(
+        (PDF_CONTENT_WIDTH_MM - 10.0) * mm,
+        66 * mm,
+    )
+    return pdf_map
 
 
 def build_pdf_report(
@@ -912,6 +967,7 @@ def build_pdf_report(
             profile.get("area_km2"),
             country_name=decision,
             capital=clean(profile.get("capital")),
+            country_code=country_code,
         )
 
         if location_map is not None:
