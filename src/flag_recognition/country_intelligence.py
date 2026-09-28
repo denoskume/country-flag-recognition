@@ -233,8 +233,18 @@ def build_from_legacy_profile(
     _add(item.geography, "timezones", profile.get("timezones"), "REST Countries")
     _add(item.geography, "highest_point", profile.get("highest_point"), "Wikidata")
     _add(item.geography, "lowest_point", profile.get("lowest_point"), "Wikidata")
-    _add(item.geography, "latitude", profile.get("latitude"), "Wikidata")
-    _add(item.geography, "longitude", profile.get("longitude"), "Wikidata")
+    _add(
+        item.geography,
+        "latitude",
+        profile.get("latitude"),
+        "REST Countries / country reference point",
+    )
+    _add(
+        item.geography,
+        "longitude",
+        profile.get("longitude"),
+        "REST Countries / country reference point",
+    )
 
     _add(
         item.sovereignty,
