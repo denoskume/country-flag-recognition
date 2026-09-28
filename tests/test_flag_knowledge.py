@@ -5,6 +5,7 @@ from flag_recognition.flag_knowledge import (
     _extract_proportion,
     _fetch_flag_wikitext,
     _infobox_value,
+    _flag_metadata_from_rest_summary,
     FLAG_SECTION_ALIASES,
 )
 
@@ -117,3 +118,39 @@ def test_flag_wikitext_uses_mediawiki_parse_api(monkeypatch):
     assert title == "Flag of Ivory Coast"
     assert "| proportion = 2:3" in text
     assert "| adoption = 3 December 1959" in text
+
+
+class _RestSummaryResponse:
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return {
+            "title": "Flag of Ivory Coast",
+            "extract": (
+                "The national flag of Ivory Coast is a vertical tricolour "
+                "of orange, white, and green, with a 2:3 width-to-length "
+                "ratio. It was adopted on 3 December 1959."
+            ),
+        }
+
+
+def test_flag_rest_summary_fallback_extracts_core_metadata(monkeypatch):
+    import flag_recognition.flag_knowledge as module
+
+    monkeypatch.setattr(
+        module.requests,
+        "get",
+        lambda *args, **kwargs: _RestSummaryResponse(),
+    )
+
+    adoption, proportion, design = _flag_metadata_from_rest_summary(
+        "Ivory Coast"
+    )
+
+    assert adoption is not None
+    assert adoption.value == "3 December 1959"
+    assert proportion is not None
+    assert proportion.value == "2:3"
+    assert design is not None
+    assert "vertical tricolour" in design.value
