@@ -67,15 +67,19 @@ def _has_flag(record: dict[str, Any]) -> bool:
     flag = record.get("flag")
     if not isinstance(flag, dict):
         return False
-    return any(
-        flag.get(key)
-        for key in (
-            "adoption_date",
-            "proportion",
-            "symbolism",
-            "design_origin",
-            "historical_flags",
-        )
+    scalar_signals = (
+        flag.get("adoption_date"),
+        flag.get("proportion"),
+    )
+    collection_signals = (
+        flag.get("symbolism"),
+        flag.get("design_origin"),
+        flag.get("historical_flags"),
+    )
+
+    return any(bool(value) for value in scalar_signals) or any(
+        isinstance(value, (list, tuple)) and bool(value)
+        for value in collection_signals
     )
 
 
@@ -103,8 +107,8 @@ def build_report_manifest(
         "relief": bool(_value(intelligence, "geography", "mountains_relief")),
         "resources": bool(_value(intelligence, "environment", "natural_resources")),
         "flag": _has_flag(intelligence),
-        "origins": isinstance(origins, list) and bool(origins),
-        "history": isinstance(timeline, list) and bool(timeline),
+        "origins": isinstance(origins, (list, tuple)) and bool(origins),
+        "history": isinstance(timeline, (list, tuple)) and bool(timeline),
         "sovereignty": bool(intelligence.get("sovereignty")),
         "identity": bool(intelligence.get("national_identity")),
         "government": bool(intelligence.get("government")),
