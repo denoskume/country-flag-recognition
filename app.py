@@ -710,6 +710,8 @@ def build_pdf_report(
     country_code = clean(report.get("country_code")).upper()
     confidence = float(report.get("confidence", 0.0))
     threshold = float(report.get("deployment_threshold", 0.0))
+    decision_margin = float(report.get("decision_margin", 0.0))
+    decision_reason = clean(report.get("decision_reason"))
     accepted = bool(report.get("accepted"))
     status = "Accepted" if accepted else "Rejected"
 
@@ -1029,7 +1031,8 @@ def build_pdf_report(
             [
                 ("Recognition status", status),
                 ("Confidence", f"{confidence:.2%}"),
-                ("Decision threshold", f"{threshold:.2%}"),
+                ("Top-1 margin", f"{decision_margin:.2%}"),
+                ("Decision mode", decision_reason.replace("_", " ").title()),
                 ("Top candidates", candidate_summary),
             ],
             two_pairs=False,
@@ -1047,7 +1050,8 @@ def build_pdf_report(
                 ("Top candidate", decision),
                 ("Country code", country_code),
                 ("Confidence", f"{confidence:.2%}"),
-                ("Decision threshold", f"{threshold:.2%}"),
+                ("Top-1 margin", f"{decision_margin:.2%}"),
+                ("Decision mode", decision_reason.replace("_", " ").title()),
             ],
             two_pairs=False,
         )
@@ -1891,6 +1895,8 @@ def show_result(image: Image.Image):
         "country_code": decision_code,
         "confidence": decision_confidence,
         "deployment_threshold": deployment_threshold,
+        "decision_margin": decision_margin,
+        "decision_reason": decision_reason,
         "visual_equivalence_applied": (
             decision_code
             in VISUAL_EQUIVALENCE_GROUPS
