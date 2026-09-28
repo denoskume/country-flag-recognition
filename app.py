@@ -423,9 +423,13 @@ def _render_geography_deck_png(
                     wait_until="domcontentloaded",
                 )
                 page.wait_for_timeout(4500)
-                page.screenshot(
+
+                map_element = page.locator(".deckgl-wrapper").first
+                if map_element.count() == 0:
+                    map_element = page.locator("canvas").first
+
+                map_element.screenshot(
                     path=str(png_path),
-                    full_page=False,
                 )
                 browser.close()
 
@@ -453,10 +457,8 @@ def _build_pdf_location_map(
         return None
 
     pdf_map = PDFImage(BytesIO(map_bytes))
-    pdf_map._restrictSize(
-        (PDF_CONTENT_WIDTH_MM - 10.0) * mm,
-        72 * mm,
-    )
+    pdf_map.drawWidth = (PDF_CONTENT_WIDTH_MM - 4.0) * mm
+    pdf_map.drawHeight = 82 * mm
     return pdf_map
 
 
