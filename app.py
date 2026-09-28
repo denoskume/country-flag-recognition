@@ -1523,6 +1523,38 @@ def render_fixed_result_preview(
     )
 
 
+def evaluate_production_decision(
+    candidates: list[tuple[str, float]],
+    hard_threshold: float,
+) -> tuple[bool, float, str]:
+    """Adaptive open-set decision using confidence and class separation."""
+    if not candidates:
+        return False, 0.0, "no_candidates"
+
+    top1 = float(candidates[0][1])
+    top2 = (
+        float(candidates[1][1])
+        if len(candidates) > 1
+        else 0.0
+    )
+    margin = top1 - top2
+
+    # High-confidence path preserves the calibrated open-set behavior.
+    if top1 >= hard_threshold:
+        return True, margin, "high_confidence"
+
+    # Strong class separation: useful for real-world flags whose confidence
+    # is depressed by folds, perspective, lighting or compression.
+    if top1 >= 0.55 and margin >= 0.30:
+        return True, margin, "dominant_candidate"
+
+    # Slightly higher confidence permits a smaller but still clear margin.
+    if top1 >= 0.72 and margin >= 0.18:
+        return True, margin, "strong_candidate"
+
+    return False, margin, "ambiguous"
+
+
 if not MODEL_PATH.is_file():
     st.error(f"Model checkpoint not found: {MODEL_PATH}")
     st.stop()
@@ -1577,7 +1609,12 @@ def show_result(image: Image.Image):
     decision_code, decision_confidence = grouped_candidates[0]
     display_candidates = grouped_candidates[:5]
 
-    accepted = decision_confidence >= deployment_threshold
+    accepted, decision_margin, decision_reason = (
+        evaluate_production_decision(
+            grouped_candidates,
+            deployment_threshold,
+        )
+    )
     country = display_country_name(decision_code)
 
     preview_col, result_col = st.columns([.9, 1.1], gap="large")
@@ -1599,7 +1636,7 @@ def show_result(image: Image.Image):
         with m1:
             st.metric("Confidence", f"{decision_confidence:.1%}")
         with m2:
-            st.metric("Threshold", f"{deployment_threshold:.1%}")
+            st.metric("Top-1 margin", f"{decision_margin:.1%}")
 
         if accepted:
             st.markdown(
@@ -1619,7 +1656,7 @@ def show_result(image: Image.Image):
                 )
         else:
             st.markdown(
-                '<div class="decision-no">Prediction rejected by confidence threshold</div>',
+                '<div class="decision-no">Prediction remains ambiguous</div>',
                 unsafe_allow_html=True,
             )
 
