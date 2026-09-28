@@ -1,4 +1,5 @@
 from flag_recognition.country_knowledge import (
+    canonical_overview_text,
     collect_domain_text,
     collect_domain_text_detailed,
     collect_origins,
@@ -285,3 +286,19 @@ def test_extended_country_domains_are_extractable():
     assert "districts" in collect_domain_text_detailed(
         sections, "administrative_divisions"
     )
+
+
+def test_canonical_overview_removes_competing_live_population():
+    overview = (
+        "Exampleland is a country on the coast. "
+        "Its capital is Example City. "
+        "With 33.2 million inhabitants in 2026, it is densely populated. "
+        "French is an official language."
+    )
+
+    cleaned = canonical_overview_text(overview)
+
+    assert "33.2 million" not in cleaned
+    assert "2026" not in cleaned
+    assert "Exampleland is a country on the coast." in cleaned
+    assert "French is an official language." in cleaned
