@@ -392,6 +392,7 @@ def build_pdf_report(
         rows: list[tuple[str, object]],
         *,
         two_pairs: bool = True,
+        width_mm: float = 170.0,
     ) -> Table:
         filtered = [
             (label, clean(value))
@@ -417,13 +418,18 @@ def build_pdf_report(
 
                 data.append(cells)
 
+            label_width_mm = 28.0
+            value_width_mm = (
+                width_mm - (2 * label_width_mm)
+            ) / 2
+
             table = Table(
                 data,
                 colWidths=[
-                    28 * mm,
-                    34 * mm,
-                    28 * mm,
-                    34 * mm,
+                    label_width_mm * mm,
+                    value_width_mm * mm,
+                    label_width_mm * mm,
+                    value_width_mm * mm,
                 ],
                 hAlign="LEFT",
             )
@@ -436,9 +442,13 @@ def build_pdf_report(
                 ]
                 for label, value in filtered
             ]
+            label_width_mm = 43.0
             table = Table(
                 data,
-                colWidths=[43 * mm, 127 * mm],
+                colWidths=[
+                    label_width_mm * mm,
+                    (width_mm - label_width_mm) * mm,
+                ],
                 hAlign="LEFT",
             )
             label_columns = [(0, 0)]
@@ -621,7 +631,8 @@ def build_pdf_report(
                 ("Currency", profile.get("currency")),
                 ("Demonym", profile.get("demonym")),
                 ("Calling code", profile.get("calling_code")),
-            ]
+            ],
+            width_mm=124.0,
         )
 
         identity_content = Table(
