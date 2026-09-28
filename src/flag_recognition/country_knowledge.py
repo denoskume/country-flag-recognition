@@ -56,12 +56,28 @@ SECTION_ALIASES: dict[str, tuple[str, ...]] = {
         "petroleum", "oil and gas", "fisheries",
     ),
     "people_society": (
-        "demographics", "population", "ethnic groups", "languages",
-        "religion", "society", "health",
+        "demographics", "population", "ethnic groups", "society",
+    ),
+    "languages_religion": (
+        "languages", "language", "religion", "religions",
+    ),
+    "health_system": (
+        "health", "healthcare", "health care", "public health",
     ),
     "culture": (
         "culture", "arts", "music", "literature", "cuisine",
-        "sport", "sports", "media", "festivals",
+        "sport", "sports", "media",
+    ),
+    "festivals_holidays": (
+        "festivals", "holidays", "public holidays", "celebrations",
+        "traditions",
+    ),
+    "heritage_landmarks": (
+        "world heritage", "unesco", "heritage", "architecture",
+        "landmarks", "tourist attractions", "monuments",
+    ),
+    "notable_people": (
+        "notable people", "notable persons", "people",
     ),
     "economy": (
         "economy", "agriculture", "industry", "trade", "tourism",
@@ -72,15 +88,26 @@ SECTION_ALIASES: dict[str, tuple[str, ...]] = {
         "exports", "trade", "shipping", "finance",
     ),
     "infrastructure": (
-        "infrastructure", "transport", "transportation", "energy",
-        "communications", "telecommunications", "roads", "rail",
+        "infrastructure", "transport", "transportation", "roads", "rail",
+    ),
+    "transport_network": (
+        "transport", "transportation", "roads", "rail", "railways",
+        "air transport", "aviation", "airports", "ports", "shipping",
+    ),
+    "energy_connectivity": (
+        "energy", "electricity", "power", "telecommunications",
+        "communications", "internet", "mobile", "broadband",
     ),
     "education_science": (
         "education", "science and technology", "science", "technology",
         "research", "innovation",
     ),
     "government": (
-        "government", "politics", "law", "administrative divisions",
+        "government", "politics", "law",
+    ),
+    "administrative_divisions": (
+        "administrative divisions", "regions", "districts", "provinces",
+        "departments", "counties", "municipalities",
     ),
     "international_relations": (
         "foreign relations", "international relations",
@@ -148,10 +175,16 @@ def fetch_topic_article(
     country_name: str,
     topic: str,
     *,
-    timeout: float = 15.0,
+    timeout: float = 10.0,
 ) -> tuple[str, str] | None:
-    """Fetch a dedicated topic article such as Geography/Economy of a country."""
+    """Fetch a dedicated topic article with exact-title then search fallback."""
     query = f"{topic} of {country_name}"
+
+    try:
+        return fetch_country_article(query, timeout=timeout)
+    except (requests.RequestException, LookupError, ValueError):
+        pass
+
     try:
         response = requests.get(
             WIKIPEDIA_API,
@@ -500,6 +533,53 @@ def _domain_evidence(value: str, source_url: str) -> Evidence | None:
     )
 
 
+def _set_context(
+    target: dict[str, Evidence],
+    key: str,
+    sections: list[ArticleSection],
+    domain: str,
+    source_url: str,
+    *,
+    max_chars: int = 1800,
+    max_blocks: int = 5,
+) -> None:
+    text = collect_domain_text_detailed(
+        sections,
+        domain,
+        max_chars=max_chars,
+        max_blocks=max_blocks,
+    )
+    item = _domain_evidence(text, source_url)
+    if item is not None:
+        target.setdefault(key, item)
+
+
+def _topic_sections(
+    country_name: str,
+    topic: str,
+    fallback_sections: list[ArticleSection],
+    fallback_url: str,
+    *,
+    timeout: float,
+) -> tuple[list[ArticleSection], str]:
+    article = fetch_topic_article(
+        country_name,
+        topic,
+        timeout=timeout,
+    )
+    if article is None:
+        return fallback_sections, fallback_url
+
+    text, title = article
+    return (
+        split_article_sections_detailed(text),
+        WIKIPEDIA_PAGE + quote(
+            title.replace(" ", "_"),
+            safe="()_-",
+        ),
+    )
+
+
 def enrich_from_encyclopedia(
     record: CountryIntelligence,
     *,
@@ -553,6 +633,97 @@ def enrich_from_encyclopedia(
         item = _domain_evidence(domain_text, source_url)
         if item is not None:
             target.setdefault("context", item)
+
+    # Social detail: use a dedicated Demographics article when available.
+    demographics_sections, demographics_url = _topic_sections(
+        record.name,
+        "Demographics",
+        detailed,
+        source_url,
+        timeout=timeout,
+    )
+    _set_context(
+        record.people_society,
+        "languages_religion",
+        demographics_sections,
+        "languages_religion",
+        demographics_url,
+    )
+    _set_context(
+        record.people_society,
+        "health_system",
+        demographics_sections,
+        "health_system",
+        demographics_url,
+    )
+
+    # Culture detail: cuisine/music stay in the main culture context, while
+    # festivals and heritage get their own learning blocks.
+    culture_sections, culture_url = _topic_sections(
+        record.name,
+        "Culture",
+        detailed,
+        source_url,
+        timeout=timeout,
+    )
+    _set_context(
+        record.culture,
+        "festivals_holidays",
+        culture_sections,
+        "festivals_holidays",
+        culture_url,
+    )
+    _set_context(
+        record.culture,
+        "heritage_landmarks",
+        culture_sections,
+        "heritage_landmarks",
+        culture_url,
+    )
+    _set_context(
+        record.culture,
+        "notable_people",
+        culture_sections,
+        "notable_people",
+        culture_url,
+        max_chars=1400,
+        max_blocks=4,
+    )
+
+    # Government/territorial organization is normally present in the country
+    # article and should remain distinct from institutions.
+    _set_context(
+        record.government,
+        "administrative_divisions",
+        detailed,
+        "administrative_divisions",
+        source_url,
+    )
+
+    # Transport article improves ports, airports, road/rail information.
+    transport_sections, transport_url = _topic_sections(
+        record.name,
+        "Transport",
+        detailed,
+        source_url,
+        timeout=timeout,
+    )
+    _set_context(
+        record.infrastructure,
+        "transport_network",
+        transport_sections,
+        "transport_network",
+        transport_url,
+        max_chars=2200,
+        max_blocks=6,
+    )
+    _set_context(
+        record.infrastructure,
+        "energy_connectivity",
+        transport_sections,
+        "energy_connectivity",
+        transport_url,
+    )
 
     # Dedicated geography/economy articles usually contain the physical
     # details absent from the general country article.
