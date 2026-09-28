@@ -110,3 +110,33 @@ def test_manifest_accepts_tuple_backed_history_and_flag_collections():
     assert manifest["flag"] is True
     assert manifest["history"] is True
     assert manifest["origins"] is True
+
+
+def test_history_tuple_is_publishable_and_should_render():
+    intelligence = {
+        "flag": {},
+        "historical_timeline": (
+            {
+                "period": "1960",
+                "label": "Independence",
+                "summary": "The country became independent.",
+            },
+        ),
+        "origins": (),
+        "sovereignty": {"independence": _fact("1960")},
+        "national_identity": {"national_day": _fact("August 7")},
+        "government": {"government_form": _fact("republic")},
+        "people_society": {"context": _fact("society")},
+        "culture": {"context": _fact("culture")},
+        "economy": {"context": _fact("economy")},
+    }
+    profile = {
+        "overview": "Overview",
+        "largest_cities": "Abidjan",
+        "calling_code": "+225",
+    }
+
+    manifest = build_report_manifest(intelligence, profile)
+
+    assert manifest["history"] is True
+    assert "Historical Journey" not in missing_required_sections(manifest)
