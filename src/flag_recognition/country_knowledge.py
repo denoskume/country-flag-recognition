@@ -175,13 +175,23 @@ def fetch_topic_article(
             for item in results
             if str(item.get("title") or "").strip()
         ]
+        country_token = country_name.lower()
+        topic_token = topic.lower()
         title = next(
             (
                 candidate
                 for candidate in candidates
                 if candidate.lower() == preferred
             ),
-            candidates[0] if candidates else None,
+            next(
+                (
+                    candidate
+                    for candidate in candidates
+                    if country_token in candidate.lower()
+                    and topic_token in candidate.lower()
+                ),
+                None,
+            ),
         )
         if not title:
             return None
