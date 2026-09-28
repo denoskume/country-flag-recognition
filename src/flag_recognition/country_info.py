@@ -48,6 +48,11 @@ COUNTRY_PROFILE_OVERRIDES = {
         "national_day": "No single official national day",
         "independence_day": "Not applicable",
     },
+    "ci": {
+        "emergency_numbers": (
+            "Police: 100 | Fire: 180 | Ambulance (SAMU): 185"
+        ),
+    },
 }
 
 
@@ -1452,6 +1457,18 @@ def fetch_country_profile(
             emergency_numbers = (
                 "No national emergency number documented"
             )
+
+    emergency_override = str(
+        COUNTRY_PROFILE_OVERRIDES.get(
+            code.lower().strip(),
+            {},
+        ).get(
+            "emergency_numbers",
+            "",
+        )
+    ).strip()
+    if emergency_override:
+        emergency_numbers = emergency_override
 
     try:
         overview = (
