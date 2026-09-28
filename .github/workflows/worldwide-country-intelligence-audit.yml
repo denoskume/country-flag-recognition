@@ -1,0 +1,178 @@
+name: Worldwide Country Intelligence Audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - "scripts/audit_country_intelligence_world.py"
+      - ".github/workflows/worldwide-country-intelligence-audit.yml"
+      - "src/flag_recognition/country_info.py"
+      - "src/flag_recognition/country_intelligence.py"
+      - "src/flag_recognition/country_knowledge.py"
+      - "src/flag_recognition/flag_knowledge.py"
+      - "src/flag_recognition/report_manifest.py"
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Audit shard ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install audit dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . --no-deps
+          python -m pip install requests pycountry
+
+      - name: Audit 25 worldwide classes
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          python scripts/audit_country_intelligence_world.py \
+            --shard-index ${{ matrix.shard }} \
+            --shard-count 10 \
+            --timeout 8 \
+            --output-dir artifacts/world_audit
+
+      - name: Upload shard
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-audit-${{ matrix.shard }}
+          path: artifacts/world_audit/
+          retention-days: 30
+
+  merge:
+    name: Merge worldwide audit
+    needs: audit
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install merge dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . --no-deps
+          python -m pip install requests pycountry
+
+      - name: Download all audit shards
+        uses: actions/download-artifact@v4
+        with:
+          pattern: world-audit-*
+          path: audit-parts
+          merge-multiple: true
+
+      - name: Merge 250-country audit
+        run: |
+          python scripts/audit_country_intelligence_world.py \
+            --merge-root audit-parts \
+            --output-dir artifacts/world_audit
+
+      - name: Publish GitHub summary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("artifacts/world_audit/country_intelligence_world_audit.json")
+          data = json.loads(path.read_text(encoding="utf-8"))
+          coverage = data.get("section_coverage", {})
+          status = data.get("status_counts", {})
+
+          lines = [
+              "# Worldwide Country Intelligence Audit",
+              "",
+              f"- Expected classes: **{data.get('expected_classes')}**",
+              f"- Audited classes: **{data.get('audited_classes')}**",
+              f"- Missing codes: **{len(data.get('missing_codes', []))}**",
+              f"- Critical/error countries: **{len(data.get('critical_countries', []))}**",
+              "",
+              "## Status",
+          ]
+          for key, value in sorted(status.items()):
+              lines.append(f"- {key}: **{value}**")
+
+          lines.extend(["", "## Report section coverage"])
+          for key, value in coverage.items():
+              lines.append(
+                  f"- {key}: **{value['count']}/{data.get('audited_classes')}** "
+                  f"({value['rate']:.1%})"
+              )
+
+          critical = data.get("critical_countries", [])
+          if critical:
+              lines.extend([
+                  "",
+                  "## Countries needing correction",
+                  ", ".join(critical),
+              ])
+
+          Path("audit-summary.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          cat audit-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload worldwide audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: country-intelligence-world-audit
+          path: artifacts/world_audit/
+          retention-days: 30
+
+      - name: Enforce structural gate
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          data = json.loads(
+              Path(
+                  "artifacts/world_audit/country_intelligence_world_audit.json"
+              ).read_text(encoding="utf-8")
+          )
+
+          missing = data.get("missing_codes", [])
+          critical = data.get("critical_countries", [])
+
+          if missing:
+              raise SystemExit(
+                  f"Worldwide audit incomplete: {len(missing)} class(es) missing."
+              )
+          if critical:
+              raise SystemExit(
+                  f"Worldwide audit found {len(critical)} critical/error country report(s)."
+              )
+
+          print("Worldwide structural gate passed for all 250 classes.")
+          PY
