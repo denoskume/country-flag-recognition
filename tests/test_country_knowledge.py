@@ -657,3 +657,93 @@ Republic.
     assert "economic_drivers" in enriched.economy
     assert "transport_network" in enriched.infrastructure
     assert "energy_connectivity" in enriched.infrastructure
+
+
+def test_geography_failure_does_not_abort_economy_or_transport(monkeypatch):
+    import flag_recognition.country_knowledge as module
+
+    record = CountryIntelligence(code="FR", name="France")
+
+    monkeypatch.setattr(
+        module,
+        "fetch_country_article",
+        lambda *args, **kwargs: (
+            "Country overview.\n\n== Economy ==\nDiversified economy.",
+            "France",
+        ),
+    )
+    monkeypatch.setattr(
+        module,
+        "fetch_topic_article",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        module,
+        "_heritage_sites_from_wikitext",
+        lambda *args, **kwargs: ("", ""),
+    )
+
+    def dedicated(country, topic, timeout=10.0):
+        if topic == "Geography":
+            raise requests.RequestException("geography unavailable")
+        if topic == "Economy":
+            return (
+                [
+                    module.ArticleSection(
+                        "Industry",
+                        2,
+                        "Manufacturing, aerospace, luxury goods and services are major sectors.",
+                    ),
+                    module.ArticleSection(
+                        "Exports",
+                        2,
+                        "Aircraft, machinery and pharmaceuticals are important exports.",
+                    ),
+                ],
+                "https://example.test/economy",
+            )
+        if topic == "Transport":
+            return (
+                [
+                    module.ArticleSection(
+                        "Railways",
+                        2,
+                        "France has an extensive rail network including high-speed TGV services.",
+                    ),
+                ],
+                "https://example.test/transport",
+            )
+        if topic == "Energy":
+            return (
+                [
+                    module.ArticleSection(
+                        "Electricity",
+                        2,
+                        "Electricity generation relies heavily on nuclear power.",
+                    ),
+                ],
+                "https://example.test/energy",
+            )
+        return ([], "")
+
+    monkeypatch.setattr(
+        module,
+        "_dedicated_topic_sections",
+        dedicated,
+    )
+    monkeypatch.setattr(
+        module,
+        "_structured_economy_context",
+        lambda *args, **kwargs: ("", ""),
+    )
+    monkeypatch.setattr(
+        module,
+        "_structured_geography_resources",
+        lambda *args, **kwargs: ("", ""),
+    )
+
+    enriched = module.enrich_from_encyclopedia(record, title="France")
+
+    assert "economic_drivers" in enriched.economy
+    assert "transport_network" in enriched.infrastructure
+    assert "energy_connectivity" in enriched.infrastructure
