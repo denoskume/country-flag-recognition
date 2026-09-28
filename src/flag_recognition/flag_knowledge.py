@@ -174,14 +174,6 @@ def _infobox_value(wikitext: str, field: str) -> str:
             break
 
     value = "\n".join(line for line in lines if line).strip()
-    value = re.sub(
-        r"\{\{\s*(?:plainlist|ubl|unbulleted list)\s*\|",
-        "",
-        value,
-        flags=re.IGNORECASE,
-    )
-    value = value.replace("\n*", "; ").replace("\n", " ")
-    value = re.sub(r"\}\}\s*$", "", value).strip()
 
     start_date = re.fullmatch(
         r"\{\{Start date(?: and age)?\|(\d{4})\|(\d{1,2})\|(\d{1,2})(?:\|[^{}]*)?\}\}",
@@ -196,6 +188,15 @@ def _infobox_value(wikitext: str, field: str) -> str:
         )
         if 1 <= month <= 12:
             return f"{day} {month_names[month - 1]} {year}"
+
+    value = re.sub(
+        r"\{\{\s*(?:plainlist|ubl|unbulleted list)\s*\|",
+        "",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = value.replace("\n*", "; ").replace("\n", " ")
+    value = re.sub(r"\}\}\s*$", "", value).strip()
 
     # Remove common wiki markup while preserving the factual text.
     value = re.sub(r"<ref[^>]*>.*?</ref>", "", value, flags=re.DOTALL)
