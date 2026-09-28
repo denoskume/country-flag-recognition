@@ -1,3 +1,6 @@
+import requests
+
+from flag_recognition.country_intelligence import CountryIntelligence
 from flag_recognition.country_knowledge import (
     canonical_overview_text,
     collect_domain_text,
@@ -529,3 +532,128 @@ def test_heritage_extractor_returns_concrete_country_sites(monkeypatch):
     assert "Comoé National Park" in value
     assert "Historic Town of Grand-Bassam" in value
     assert "Sudanese style mosques" in value
+
+
+def test_heritage_failure_does_not_abort_downstream_enrichment(monkeypatch):
+    import flag_recognition.country_knowledge as module
+
+    record = CountryIntelligence(code="CI", name="Côte d'Ivoire")
+
+    monkeypatch.setattr(
+        module,
+        "fetch_country_article",
+        lambda *args, **kwargs: (
+            """
+Country overview.
+
+== Culture ==
+General culture.
+
+== Government ==
+Republic.
+""",
+            "Ivory Coast",
+        ),
+    )
+    monkeypatch.setattr(
+        module,
+        "fetch_topic_article",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        module,
+        "_heritage_sites_from_wikitext",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            requests.RequestException("heritage unavailable")
+        ),
+    )
+
+    def dedicated(country, topic, timeout=10.0):
+        if topic == "Geography":
+            return (
+                [
+                    module.ArticleSection(
+                        "Climate",
+                        2,
+                        "The climate is tropical with rainy and dry seasons.",
+                    ),
+                    module.ArticleSection(
+                        "Rivers",
+                        2,
+                        "The Bandama is a major river.",
+                    ),
+                    module.ArticleSection(
+                        "Terrain and topography",
+                        2,
+                        "The country is mainly a plateau with western mountains.",
+                    ),
+                ],
+                "https://example.test/geography",
+            )
+        if topic == "Economy":
+            return (
+                [
+                    module.ArticleSection(
+                        "Agriculture",
+                        2,
+                        "Cocoa and cashew are major export crops.",
+                    ),
+                    module.ArticleSection(
+                        "Industry",
+                        2,
+                        "Food processing and oil refining are important industries.",
+                    ),
+                ],
+                "https://example.test/economy",
+            )
+        if topic == "Transport":
+            return (
+                [
+                    module.ArticleSection(
+                        "Ports",
+                        2,
+                        "Abidjan is the principal commercial port.",
+                    ),
+                ],
+                "https://example.test/transport",
+            )
+        if topic == "Energy":
+            return (
+                [
+                    module.ArticleSection(
+                        "Electricity",
+                        2,
+                        "Electricity is generated from thermal and hydroelectric sources.",
+                    ),
+                ],
+                "https://example.test/energy",
+            )
+        return ([], "")
+
+    monkeypatch.setattr(
+        module,
+        "_dedicated_topic_sections",
+        dedicated,
+    )
+    monkeypatch.setattr(
+        module,
+        "_structured_economy_context",
+        lambda *args, **kwargs: ("", ""),
+    )
+    monkeypatch.setattr(
+        module,
+        "_structured_geography_resources",
+        lambda *args, **kwargs: ("", ""),
+    )
+
+    enriched = module.enrich_from_encyclopedia(
+        record,
+        title="Côte d'Ivoire",
+    )
+
+    assert "climate_seasons" in enriched.environment
+    assert "rivers_lakes" in enriched.geography
+    assert "mountains_relief" in enriched.geography
+    assert "economic_drivers" in enriched.economy
+    assert "transport_network" in enriched.infrastructure
+    assert "energy_connectivity" in enriched.infrastructure
