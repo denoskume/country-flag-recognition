@@ -75,3 +75,38 @@ def test_optional_missing_sections_do_not_count_as_required():
     assert "Heritage, UNESCO & Major Landmarks" not in missing
     assert "Notable Public Figures" not in missing
     assert "Energy & Connectivity" not in missing
+
+
+def test_manifest_accepts_tuple_backed_history_and_flag_collections():
+    intelligence = {
+        "flag": {
+            "symbolism": ({"value": "National symbolism", "source": "test"},),
+            "design_origin": (),
+            "historical_flags": (),
+            "adoption_date": None,
+            "proportion": None,
+        },
+        "historical_timeline": (
+            {"period": "1960", "summary": "Independence"},
+        ),
+        "origins": (
+            {"period": "Early history", "summary": "Early settlement"},
+        ),
+        "sovereignty": {"independence": _fact("1960")},
+        "national_identity": {"national_day": _fact("August 7")},
+        "government": {"government_form": _fact("republic")},
+        "people_society": {"context": _fact("society")},
+        "culture": {"context": _fact("culture")},
+        "economy": {"context": _fact("economy")},
+    }
+    profile = {
+        "overview": "Overview",
+        "largest_cities": "Abidjan",
+        "calling_code": "+225",
+    }
+
+    manifest = build_report_manifest(intelligence, profile)
+
+    assert manifest["flag"] is True
+    assert manifest["history"] is True
+    assert manifest["origins"] is True
