@@ -1385,29 +1385,6 @@ def build_pdf_report(
                 )
                 story.append(Spacer(1, 3 * mm))
 
-        # 10. Technical appendix
-        candidates = report.get("top_candidates", [])
-        candidate_summary = " | ".join(
-            f"{index}. {clean(candidate.get('country'))} "
-            f"({float(candidate.get('confidence', 0.0)):.2%})"
-            for index, candidate in enumerate(candidates[:5], start=1)
-        )
-
-        technical = info_grid(
-            [
-                ("Recognition status", status),
-                ("Confidence", f"{confidence:.2%}"),
-                ("Top-1 margin", f"{decision_margin:.2%}"),
-                ("Decision mode", decision_reason.replace("_", " ").title()),
-                ("Top candidates", candidate_summary),
-            ],
-            two_pairs=False,
-        )
-        story.append(PageBreak())
-        story.extend([
-            section_box("Technical Recognition Appendix", technical),
-            Spacer(1, 2.5 * mm),
-        ])
 
     else:
         rejection = info_grid(
