@@ -95,8 +95,9 @@ SECTION_ALIASES: dict[str, tuple[str, ...]] = {
         "air transport", "aviation", "airports", "ports", "shipping",
     ),
     "energy_connectivity": (
-        "energy", "electricity", "power", "telecommunications",
-        "communications", "internet", "mobile", "broadband",
+        "energy", "electricity", "power", "renewable energy", "solar energy",
+        "hydropower", "generation", "telecommunications", "communications",
+        "internet", "mobile", "broadband",
     ),
     "education_science": (
         "education", "science and technology", "science", "technology",
@@ -675,6 +676,42 @@ def enrich_from_encyclopedia(
         history_sections,
         history_source_url,
     )
+    if not origins and history_sections:
+        lead = next(
+            (
+                section
+                for section in history_sections
+                if section.heading == "overview" and section.body
+            ),
+            None,
+        )
+        if lead is not None:
+            lower_lead = lead.body.lower()
+            if any(
+                token in lower_lead
+                for token in (
+                    "earliest", "prehistory", "prehistoric",
+                    "paleolithic", "neolithic", "ancient",
+                    "first inhabitants", "human arrival",
+                )
+            ):
+                summary = _compact_body(
+                    "Early history & origins",
+                    lead.body,
+                    max_sentences=3,
+                    max_chars=1200,
+                )
+                if summary:
+                    origins = (
+                        TimelineEvent(
+                            label="Early history & origins",
+                            period="Early history",
+                            summary=summary,
+                            sources=("Wikipedia",),
+                            source_urls=(history_source_url,),
+                            confidence=0.75,
+                        ),
+                    )
     timeline = record.historical_timeline
     extracted_timeline = extract_timeline(
         history_text,
@@ -751,6 +788,23 @@ def enrich_from_encyclopedia(
         "heritage_landmarks",
         culture_url,
     )
+    if "heritage_landmarks" not in record.culture:
+        heritage_sections, heritage_url = _topic_sections(
+            canonical_title,
+            "World Heritage Sites",
+            detailed,
+            source_url,
+            timeout=timeout,
+        )
+        _set_context(
+            record.culture,
+            "heritage_landmarks",
+            heritage_sections,
+            "heritage_landmarks",
+            heritage_url,
+            max_chars=1800,
+            max_blocks=6,
+        )
     _set_context(
         record.culture,
         "notable_people",
@@ -910,7 +964,10 @@ def enrich_from_encyclopedia(
             event.summary
             for event in extracted_timeline[:8]
         )
-        history_item = _domain_evidence(compact_history[:2600], source_url)
+        history_item = _domain_evidence(
+            compact_history[:2600],
+            history_source_url,
+        )
         if history_item is not None:
             record.sovereignty.setdefault("historical_context", history_item)
 
