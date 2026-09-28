@@ -162,19 +162,19 @@ def main():
         },
         "comparison": {
             "top1_accuracy_delta": (
-                v2["closed_set"]["top1_accuracy"]
+                candidate["closed_set"]["top1_accuracy"]
                 - v1["closed_set"]["top1_accuracy"]
             ),
             "top5_accuracy_delta": (
-                v2["closed_set"]["top5_accuracy"]
+                candidate["closed_set"]["top5_accuracy"]
                 - v1["closed_set"]["top5_accuracy"]
             ),
             "macro_f1_delta": (
-                v2["closed_set"]["macro_f1"]
+                candidate["closed_set"]["macro_f1"]
                 - v1["closed_set"]["macro_f1"]
             ),
-            "fixed_by_v2": fixed,
-            "regressed_in_v2": regressed,
+            "fixed_by_candidate": fixed,
+            "regressed_in_candidate": regressed,
             "unchanged_correct": len(unchanged_correct),
             "unchanged_wrong": len(unchanged_wrong),
         },
