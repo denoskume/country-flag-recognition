@@ -1224,7 +1224,7 @@ def get_deployment_threshold() -> float:
     return float(get_model().unknown_threshold)
 
 
-COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-28-v4"
+COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-28-v5"
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_country_profile_v2(
