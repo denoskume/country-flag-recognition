@@ -3,6 +3,7 @@ from flag_recognition.country_knowledge import (
     collect_domain_text,
     collect_keyword_context,
     collect_strict_domain_text,
+    fetch_topic_article,
     _infobox_field,
     collect_domain_text_detailed,
     collect_origins,
@@ -424,3 +425,29 @@ def test_country_infobox_fields_extract_economic_goods_and_resources():
         wikitext,
         ("natural_resources",),
     )
+
+
+def test_topic_article_resolver_supports_in_title(monkeypatch):
+    import flag_recognition.country_knowledge as module
+
+    calls = []
+
+    def fake_fetch(title, timeout=10.0):
+        calls.append(title)
+        if title == "Energy in Ivory Coast":
+            return ("Energy article text", title)
+        raise LookupError(title)
+
+    monkeypatch.setattr(module, "fetch_country_article", fake_fetch)
+
+    result = fetch_topic_article(
+        "Ivory Coast",
+        "Energy",
+        timeout=3.0,
+    )
+
+    assert result == ("Energy article text", "Energy in Ivory Coast")
+    assert calls[:2] == [
+        "Energy of Ivory Coast",
+        "Energy in Ivory Coast",
+    ]
