@@ -747,3 +747,53 @@ def test_geography_failure_does_not_abort_economy_or_transport(monkeypatch):
     assert "economic_drivers" in enriched.economy
     assert "transport_network" in enriched.infrastructure
     assert "energy_connectivity" in enriched.infrastructure
+
+
+def test_reference_sections_do_not_feed_historical_timeline():
+    sections = [
+        ArticleSection(
+            "Modern era",
+            2,
+            "In 1975 the country began a democratic transition.",
+        ),
+        ArticleSection(
+            "References",
+            2,
+            "Smith, John (2019). History and memory. University Press.",
+        ),
+        ArticleSection(
+            "Bibliography",
+            2,
+            "Doe, Jane (1991). Narrating the past. Academic Journal.",
+        ),
+    ]
+
+    reference_headings = {
+        "references",
+        "bibliography",
+        "further reading",
+        "notes",
+        "sources",
+        "citations",
+        "works cited",
+        "external links",
+        "see also",
+    }
+    filtered = [
+        section
+        for section in sections
+        if _clean_heading(section.heading) not in reference_headings
+    ]
+    history_text = " ".join(
+        f"{section.heading}. {section.body}"
+        for section in filtered
+    )
+    timeline = extract_timeline(
+        history_text,
+        "https://example.test/history",
+    )
+
+    periods = [event.period for event in timeline]
+    assert "1975" in periods
+    assert "1991" not in periods
+    assert "2019" not in periods
