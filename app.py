@@ -59,6 +59,7 @@ from flag_recognition.country_info import (
     fetch_country_profile,
     fetch_emergency_numbers,
     fetch_emergency_numbers_fallback,
+    format_emergency_numbers,
 )
 from flag_recognition.inference import (
     load_inference_bundle,
@@ -1238,7 +1239,15 @@ def resolve_emergency_numbers(
     """Return emergency numbers even if a stale profile/cache is incomplete."""
     current = str(profile_value or "").strip()
     if current and current != "Not available":
-        return current
+        try:
+            profile = get_country_profile_v2(country_code)
+            calling_code = profile.calling_code
+        except Exception:
+            calling_code = ""
+        return format_emergency_numbers(
+            current,
+            calling_code,
+        )
 
     try:
         value = fetch_emergency_numbers(country_code)
@@ -1246,17 +1255,34 @@ def resolve_emergency_numbers(
         value = "Not available"
 
     if value != "Not available":
-        return value
+        try:
+            profile = get_country_profile_v2(country_code)
+            calling_code = profile.calling_code
+        except Exception:
+            calling_code = ""
+        return format_emergency_numbers(
+            value,
+            calling_code,
+        )
 
     try:
         value = fetch_emergency_numbers_fallback(country_code)
     except Exception:
         value = "No national emergency number documented"
 
-    return value
+    try:
+        profile = get_country_profile_v2(country_code)
+        calling_code = profile.calling_code
+    except Exception:
+        calling_code = ""
+
+    return format_emergency_numbers(
+        value,
+        calling_code,
+    )
 
 
-COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-28-v7"
+COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-28-v8"
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_country_profile_v2(
