@@ -1,4 +1,4 @@
-"""Compare V1 and scene-aware V2 on the same approved real-world challenge set."""
+"""Compare the production baseline with any candidate checkpoint on the same real-world set."""
 
 from __future__ import annotations
 
@@ -30,13 +30,15 @@ def parse_args():
     )
     parser.add_argument(
         "--v2",
+        "--candidate",
+        dest="candidate",
         type=Path,
         default=Path("artifacts/models/worldwide_scene_aware_mobilenet_v3_small.pt"),
     )
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("artifacts/metrics/real_world_v1_vs_v2.json"),
+        default=Path("artifacts/metrics/real_world_model_comparison.json"),
     )
     return parser.parse_args()
 
@@ -114,10 +116,10 @@ def main():
         raise RuntimeError("No approved real-world challenge images found.")
 
     v1 = evaluate_checkpoint(args.v1, approved)
-    v2 = evaluate_checkpoint(args.v2, approved)
+    candidate = evaluate_checkpoint(args.candidate, approved)
 
     v1_by_path = {item["path"]: item for item in v1["details"]}
-    v2_by_path = {item["path"]: item for item in v2["details"]}
+    candidate_by_path = {item["path"]: item for item in candidate["details"]}
 
     fixed = []
     regressed = []
@@ -126,15 +128,15 @@ def main():
 
     for path in sorted(v1_by_path):
         a = v1_by_path[path]
-        b = v2_by_path[path]
+        b = candidate_by_path[path]
 
         record = {
             "path": path,
             "target": a["target"],
             "v1_prediction": a["prediction"],
             "v1_confidence": a["confidence"],
-            "v2_prediction": b["prediction"],
-            "v2_confidence": b["confidence"],
+            "candidate_prediction": b["prediction"],
+            "candidate_confidence": b["confidence"],
         }
 
         if (not a["correct_top1"]) and b["correct_top1"]:
@@ -153,9 +155,9 @@ def main():
             for key, value in v1.items()
             if key != "details"
         },
-        "v2": {
+        "candidate": {
             key: value
-            for key, value in v2.items()
+            for key, value in candidate.items()
             if key != "details"
         },
         "comparison": {
