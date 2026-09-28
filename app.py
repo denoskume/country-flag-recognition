@@ -2982,23 +2982,34 @@ def show_result(
                 gap="large",
             )
 
+            section_key = _query_value("section", "overview").lower()
+            section_map = {
+                "overview": "Overview",
+                "history": "Flag & History",
+                "geography": "Geography",
+                "society": "Government & Society",
+                "economy": "Economy & Infrastructure",
+                "ask": "Ask & Export",
+            }
+            country_section = section_map.get(section_key, "Overview")
+
             with country_rail:
                 st.markdown(
                     '<div class="section-rail-title">Country sections</div>',
                     unsafe_allow_html=True,
                 )
-                country_section = st.radio(
-                    "Country sections",
-                    (
-                        "Overview",
-                        "Flag & History",
-                        "Geography",
-                        "Government & Society",
-                        "Economy & Infrastructure",
-                        "Ask & Export",
-                    ),
-                    label_visibility="collapsed",
-                    key=f"country-section-{decision_code}",
+                st.markdown(
+                    f"""
+                    <nav class="local-nav">
+                      <a class="{_active_class(section_key, 'overview')}" href="{_nav_href('country', code=decision_code, country=country, section='overview')}">Overview</a>
+                      <a class="{_active_class(section_key, 'history')}" href="{_nav_href('country', code=decision_code, country=country, section='history')}">Flag & History</a>
+                      <a class="{_active_class(section_key, 'geography')}" href="{_nav_href('country', code=decision_code, country=country, section='geography')}">Geography</a>
+                      <a class="{_active_class(section_key, 'society')}" href="{_nav_href('country', code=decision_code, country=country, section='society')}">Government & Society</a>
+                      <a class="{_active_class(section_key, 'economy')}" href="{_nav_href('country', code=decision_code, country=country, section='economy')}">Economy & Infrastructure</a>
+                      <a class="{_active_class(section_key, 'ask')}" href="{_nav_href('country', code=decision_code, country=country, section='ask')}">Ask & Export</a>
+                    </nav>
+                    """,
+                    unsafe_allow_html=True,
                 )
 
                 complete_count = sum(bool(value) for value in completion.values())
@@ -3532,4 +3543,19 @@ if text_process:
             "a valid country name / ISO alpha-2 / ISO alpha-3 code."
         )
     else:
-        show_result(direct_code=resolved_code)
+        resolved_name = display_country_name(resolved_code)
+        st.query_params.clear()
+        st.query_params.update({
+            "page": "country",
+            "code": resolved_code,
+            "country": resolved_name,
+            "section": "overview",
+        })
+        st.rerun()
+
+if active_page == "country":
+    route_code = _query_value("code", "").lower()
+    if route_code:
+        show_result(direct_code=route_code)
+    else:
+        st.error("Country route is missing a country code.")
