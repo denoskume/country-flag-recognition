@@ -18,6 +18,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: worldwide-country-intelligence-audit
+  cancel-in-progress: true
+
 jobs:
   audit:
     name: Audit shard ${{ matrix.shard }}
