@@ -639,6 +639,95 @@ def _set_context_with_keywords(
         target.setdefault(key, item)
 
 
+STRICT_DOMAIN_HEADINGS: dict[str, tuple[str, ...]] = {
+    "climate_seasons": ("climate", "climate and weather", "seasons"),
+    "rivers_lakes": ("rivers", "hydrography", "drainage", "lakes"),
+    "mountains_relief": (
+        "terrain and topography", "topography", "terrain", "relief",
+        "mountains", "mountain ranges",
+    ),
+    "natural_resources": (
+        "natural resources", "mineral resources", "minerals", "mining",
+        "cropland",
+    ),
+    "economic_drivers": (
+        "agriculture", "industry", "industries", "trade", "exports",
+        "tourism", "services", "economic sectors", "production",
+    ),
+    "energy_connectivity": (
+        "energy", "electricity", "power", "solar energy", "hydroelectric",
+        "renewable energy", "telecommunications", "internet",
+    ),
+    "transport_network": (
+        "roads", "rail", "railways", "ports", "airports", "aviation",
+        "shipping", "transport",
+    ),
+}
+
+
+def collect_strict_domain_text(
+    sections: list[ArticleSection],
+    domain: str,
+    *,
+    max_chars: int = 2200,
+    max_blocks: int = 6,
+) -> str:
+    """Extract only explicitly compatible headings for high-risk domains."""
+    allowed = {
+        _clean_heading(value)
+        for value in STRICT_DOMAIN_HEADINGS.get(domain, ())
+    }
+    if not allowed:
+        return ""
+
+    blocks: list[str] = []
+    for section in sections:
+        heading = _clean_heading(section.heading)
+        if not any(
+            heading == candidate
+            or heading.startswith(candidate + " ")
+            for candidate in allowed
+        ):
+            continue
+
+        summary = _compact_body(
+            section.heading,
+            section.body,
+            max_sentences=3,
+            max_chars=900,
+        )
+        if summary:
+            blocks.append(f"{section.heading}: {summary}")
+        if len(blocks) >= max_blocks:
+            break
+
+    combined = "\n\n".join(blocks)
+    if len(combined) <= max_chars:
+        return combined
+    return combined[:max_chars].rsplit(" ", 1)[0].rstrip() + "…"
+
+
+def _set_strict_context(
+    target: dict[str, Evidence],
+    key: str,
+    sections: list[ArticleSection],
+    domain: str,
+    source_url: str,
+    *,
+    max_chars: int = 2200,
+    max_blocks: int = 6,
+) -> None:
+    text = collect_strict_domain_text(
+        sections,
+        domain,
+        max_chars=max_chars,
+        max_blocks=max_blocks,
+    )
+    item = _domain_evidence(text, source_url)
+    if item is not None:
+        target[key] = item
+
+
 def _set_context(
     target: dict[str, Evidence],
     key: str,
@@ -903,7 +992,7 @@ def enrich_from_encyclopedia(
         source_url,
         timeout=timeout,
     )
-    _set_context(
+    _set_strict_context(
         record.infrastructure,
         "transport_network",
         transport_sections,
@@ -912,14 +1001,6 @@ def enrich_from_encyclopedia(
         max_chars=2200,
         max_blocks=6,
     )
-    _set_context(
-        record.infrastructure,
-        "energy_connectivity",
-        transport_sections,
-        "energy_connectivity",
-        transport_url,
-    )
-
     energy_sections, energy_url = _topic_sections(
         canonical_title,
         "Energy",
@@ -927,20 +1008,30 @@ def enrich_from_encyclopedia(
         source_url,
         timeout=timeout,
     )
-    _set_context_with_keywords(
-        record.infrastructure,
-        "energy_connectivity",
+    energy_text = collect_strict_domain_text(
         energy_sections,
         "energy_connectivity",
-        energy_url,
-        keywords=(
-            "electricity", "power", "energy", "hydropower", "solar",
-            "thermal", "gas-fired", "renewable", "generation",
-            "internet", "mobile", "broadband", "telecommunications",
-        ),
         max_chars=2200,
         max_blocks=6,
     )
+    if not energy_text:
+        energy_lead = next(
+            (
+                section.body
+                for section in energy_sections
+                if section.heading == "overview" and section.body
+            ),
+            "",
+        )
+        energy_text = _compact_body(
+            "Energy",
+            energy_lead,
+            max_sentences=3,
+            max_chars=1200,
+        )
+    energy_item = _domain_evidence(energy_text, energy_url)
+    if energy_item is not None:
+        record.infrastructure["energy_connectivity"] = energy_item
 
     # Dedicated geography/economy articles usually contain the physical
     # details absent from the general country article.
@@ -960,51 +1051,22 @@ def enrich_from_encyclopedia(
         )
 
     physical_domains = {
-        "climate_seasons": (
-            "climate_seasons",
-            record.environment,
-            (
-                "climate", "rainy season", "dry season", "rainfall",
-                "temperature", "monsoon", "savanna",
-            ),
-        ),
-        "rivers_lakes": (
-            "rivers_lakes",
-            record.geography,
-            (
-                "river", "lake", "lagoon", "waterway", "basin",
-                "drainage", "reservoir",
-            ),
-        ),
-        "mountains_relief": (
-            "mountains_relief",
-            record.geography,
-            (
-                "mountain", "mount", "plateau", "relief", "terrain",
-                "elevation", "highland",
-            ),
-        ),
-        "natural_resources": (
-            "natural_resources",
-            record.environment,
-            (
-                "natural resources", "petroleum", "oil", "natural gas",
-                "gold", "manganese", "bauxite", "diamond", "forest",
-                "timber", "mineral", "fisheries",
-            ),
-        ),
+        "climate_seasons": ("climate_seasons", record.environment),
+        "rivers_lakes": ("rivers_lakes", record.geography),
+        "mountains_relief": ("mountains_relief", record.geography),
+        "natural_resources": ("natural_resources", record.environment),
     }
-    for domain, (key, target, keywords) in physical_domains.items():
-        _set_context_with_keywords(
+    for domain, (key, target) in physical_domains.items():
+        _set_strict_context(
             target,
             key,
             geography_sections,
             domain,
             geography_source_url,
-            keywords=keywords,
-            max_chars=1800,
-            max_blocks=5,
+            max_chars=2200,
+            max_blocks=6,
         )
+
 
     # Keep a concise general physical-geography context as a fallback.
     environment_text = collect_domain_text_detailed(
@@ -1032,38 +1094,30 @@ def enrich_from_encyclopedia(
             economy_title.replace(" ", "_"),
             safe="()_-",
         )
-        _set_context_with_keywords(
+        _set_strict_context(
             record.economy,
             "economic_drivers",
             economy_sections,
             "economic_drivers",
             economy_source_url,
-            keywords=(
-                "cocoa", "coffee", "cashew", "oil", "petroleum", "gas",
-                "gold", "agriculture", "industry", "services", "exports",
-                "manufacturing", "tourism", "port", "trade",
-            ),
-            max_chars=2200,
-            max_blocks=6,
+            max_chars=2400,
+            max_blocks=7,
         )
+
 
         # Some countries describe mineral/agricultural resources primarily in
         # the Economy article rather than in Geography.
         if "natural_resources" not in record.environment:
-            _set_context_with_keywords(
+            _set_strict_context(
                 record.environment,
                 "natural_resources",
                 economy_sections,
                 "natural_resources",
                 economy_source_url,
-                keywords=(
-                    "petroleum", "oil", "natural gas", "gold", "manganese",
-                    "bauxite", "diamond", "forest", "timber", "mineral",
-                    "cocoa", "cashew", "rubber",
-                ),
                 max_chars=1800,
                 max_blocks=5,
             )
+
 
     if history_text:
         compact_history = " ".join(
