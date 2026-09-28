@@ -452,7 +452,7 @@ def _build_pdf_location_map(
         map_buffer.seek(0)
 
         pdf_map = PDFImage(map_buffer)
-        pdf_map._restrictSize(160 * mm, 66 * mm)
+        pdf_map._restrictSize(172 * mm, 66 * mm)
         return pdf_map
 
     except (
@@ -480,6 +480,8 @@ def build_pdf_report(
         author="Denos Kume",
         subject="Country knowledge report generated from flag recognition",
     )
+
+    REPORT_WIDTH_MM = 182.0
 
     styles = getSampleStyleSheet()
 
@@ -574,7 +576,7 @@ def build_pdf_report(
         rows: list[tuple[str, object]],
         *,
         two_pairs: bool = True,
-        width_mm: float = 170.0,
+        width_mm: float = REPORT_WIDTH_MM,
     ) -> Table:
         filtered = [
             (label, clean(value))
@@ -671,7 +673,7 @@ def build_pdf_report(
     ) -> Table:
         title_bar = Table(
             [[Paragraph(title, section_title_style)]],
-            colWidths=[170 * mm],
+            colWidths=[REPORT_WIDTH_MM * mm],
         )
         title_bar.setStyle(
             TableStyle([
@@ -686,7 +688,7 @@ def build_pdf_report(
 
         wrapper = Table(
             [[title_bar], [content]],
-            colWidths=[170 * mm],
+            colWidths=[REPORT_WIDTH_MM * mm],
             hAlign="LEFT",
         )
         wrapper.setStyle(
@@ -820,12 +822,12 @@ def build_pdf_report(
                 ("Demonym", profile.get("demonym")),
                 ("Calling code", profile.get("calling_code")),
             ],
-            width_mm=124.0,
+            width_mm=136.0,
         )
 
         identity_content = Table(
             [[preview, identity_table]],
-            colWidths=[46 * mm, 124 * mm],
+            colWidths=[46 * mm, 136 * mm],
         )
         identity_content.setStyle(
             TableStyle([
@@ -851,7 +853,7 @@ def build_pdf_report(
         if location_map is not None:
             location_content = Table(
                 [[location_map]],
-                colWidths=[170 * mm],
+                colWidths=[REPORT_WIDTH_MM * mm],
                 hAlign="CENTER",
             )
             location_content.setStyle(
@@ -870,7 +872,7 @@ def build_pdf_report(
                     "Geographic map temporarily unavailable.",
                     value_style,
                 )]],
-                colWidths=[170 * mm],
+                colWidths=[REPORT_WIDTH_MM * mm],
             )
             location_content.setStyle(
                 TableStyle([
@@ -981,7 +983,7 @@ def build_pdf_report(
 
             overview_table = Table(
                 [[Paragraph(overview, body_style)]],
-                colWidths=[170 * mm],
+                colWidths=[REPORT_WIDTH_MM * mm],
             )
             overview_table.setStyle(
                 TableStyle([
@@ -1045,7 +1047,7 @@ def build_pdf_report(
                 small_style,
             )
         ]],
-        colWidths=[170 * mm],
+        colWidths=[REPORT_WIDTH_MM * mm],
     )
     source_note.setStyle(
         TableStyle([
