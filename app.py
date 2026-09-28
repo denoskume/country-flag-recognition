@@ -707,6 +707,7 @@ def build_pdf_report(
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 4.5),
             ])
         )
+        title_bar.keepWithNext = True
         return title_bar
 
     def split_section(
@@ -1159,10 +1160,36 @@ def build_pdf_report(
             section_box("Government & Institutions", government),
             Spacer(1, 3 * mm),
         ])
+        add_learning_section(
+            "Administrative Divisions",
+            context_value("government", "administrative_divisions"),
+        )
 
-        # 6. Learning domains
-        add_learning_section("People & Society", context_value("people_society"))
-        add_learning_section("Culture", context_value("culture"))
+        # 6. People, society and culture
+        add_learning_section(
+            "People & Society",
+            context_value("people_society"),
+        )
+        add_learning_section(
+            "Languages & Religion",
+            context_value("people_society", "languages_religion"),
+        )
+        add_learning_section(
+            "Health System & Public Health",
+            context_value("people_society", "health_system"),
+        )
+        add_learning_section(
+            "Culture, Cuisine, Music & Sport",
+            context_value("culture"),
+        )
+        add_learning_section(
+            "Festivals, Holidays & Traditions",
+            context_value("culture", "festivals_holidays"),
+        )
+        add_learning_section(
+            "Heritage, UNESCO & Major Landmarks",
+            context_value("culture", "heritage_landmarks"),
+        )
 
         economy_summary = info_grid(
             [
@@ -1183,12 +1210,24 @@ def build_pdf_report(
             context_value("economy", "economic_drivers"),
         )
         add_learning_section(
-            "Infrastructure & Transport",
+            "Infrastructure Overview",
             context_value("infrastructure"),
+        )
+        add_learning_section(
+            "Transport Network, Ports & Airports",
+            context_value("infrastructure", "transport_network"),
+        )
+        add_learning_section(
+            "Energy & Connectivity",
+            context_value("infrastructure", "energy_connectivity"),
         )
         add_learning_section(
             "Education, Science & Innovation",
             context_value("education_science"),
+        )
+        add_learning_section(
+            "Environment & Biodiversity",
+            context_value("environment"),
         )
 
         practical_rows: list[tuple[str, object]] = [
@@ -1209,6 +1248,10 @@ def build_pdf_report(
         add_learning_section(
             "International Relations",
             context_value("international_relations"),
+        )
+        add_learning_section(
+            "Notable Public Figures",
+            context_value("culture", "notable_people"),
         )
 
         # 7. Did You Know? — only from already sourced profile facts
@@ -1479,7 +1522,7 @@ def resolve_emergency_numbers(
     )
 
 
-COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-28-v14"
+COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-28-v15"
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_country_profile_v2(
@@ -1506,7 +1549,7 @@ def _canonical_overview_text(value: object, max_chars: int = 900) -> str:
 
     sentences = [
         sentence.strip()
-        for sentence in re.split(r"(?<=[.!?])\\s+", " ".join(text.split()))
+        for sentence in re.split(r"(?<=[.!?])\s+", " ".join(text.split()))
         if sentence.strip()
     ]
     dynamic_terms = (
@@ -1533,7 +1576,7 @@ def _learning_blocks(value: object) -> list[tuple[str, str]]:
         return []
 
     blocks: list[tuple[str, str]] = []
-    for raw in re.split(r"\\n\\s*\\n", text):
+    for raw in re.split(r"\n\s*\n", text):
         raw = raw.strip()
         if not raw:
             continue
@@ -2491,13 +2534,22 @@ def show_result(image: Image.Image):
                 ("geography", "mountains_relief", "Mountains & Relief"),
                 ("environment", "climate_seasons", "Climate & Seasons"),
                 ("environment", "natural_resources", "Natural Resources & Raw Materials"),
+                ("environment", "context", "Environment & Biodiversity"),
+                ("government", "administrative_divisions", "Administrative Divisions"),
                 ("people_society", "context", "People & Society"),
-                ("culture", "context", "Culture"),
+                ("people_society", "languages_religion", "Languages & Religion"),
+                ("people_society", "health_system", "Health System & Public Health"),
+                ("culture", "context", "Culture, Cuisine, Music & Sport"),
+                ("culture", "festivals_holidays", "Festivals, Holidays & Traditions"),
+                ("culture", "heritage_landmarks", "Heritage, UNESCO & Major Landmarks"),
                 ("economy", "context", "Economic Structure & Trade"),
                 ("economy", "economic_drivers", "Economic Drivers, Industries & Exports"),
-                ("infrastructure", "context", "Infrastructure & Transport"),
+                ("infrastructure", "context", "Infrastructure Overview"),
+                ("infrastructure", "transport_network", "Transport Network, Ports & Airports"),
+                ("infrastructure", "energy_connectivity", "Energy & Connectivity"),
                 ("education_science", "context", "Education, Science & Innovation"),
                 ("international_relations", "context", "International Relations"),
+                ("culture", "notable_people", "Notable Public Figures"),
             ]
 
             for domain_key, context_key, domain_label in domain_labels:
