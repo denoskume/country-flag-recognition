@@ -2426,7 +2426,13 @@ def show_result(image: Image.Image):
                     else:
                         st.write("Not available")
 
-            knowledge = get_country_intelligence_v2(decision_code)
+            knowledge = get_country_intelligence_v2(
+                decision_code,
+                tuple(
+                display_country_name(code)
+                for code, _ in display_candidates[1:5]
+            ),
+            )
             intelligence = knowledge["intelligence"]
             completion = knowledge["completion"]
 
@@ -2628,7 +2634,13 @@ def show_result(image: Image.Image):
             except Exception:
                 historical_profile = profile
 
-            knowledge = get_country_intelligence_v2(decision_code)
+            knowledge = get_country_intelligence_v2(
+                decision_code,
+                tuple(
+                display_country_name(code)
+                for code, _ in display_candidates[1:5]
+            ),
+            )
             report["country_profile"] = knowledge["profile"]
             report["country_intelligence_v2"] = knowledge["intelligence"]
             report["country_intelligence_completion"] = knowledge["completion"]
