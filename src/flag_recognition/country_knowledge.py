@@ -11,10 +11,50 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import re
+import time
 from typing import Iterable
 from urllib.parse import quote
 
 import requests
+
+def _get_with_retry(
+    url: str,
+    *,
+    attempts: int = 4,
+    backoff: float = 0.75,
+    **kwargs,
+):
+    """HTTP GET with bounded retries for transient network/rate-limit failures."""
+    last_error = None
+    for attempt in range(attempts):
+        try:
+            response = requests.get(url, **kwargs)
+            if response.status_code not in (429, 500, 502, 503, 504):
+                return response
+
+            if attempt >= attempts - 1:
+                return response
+
+            retry_after = response.headers.get("Retry-After")
+            try:
+                delay = float(retry_after) if retry_after else backoff * (2 ** attempt)
+            except (TypeError, ValueError):
+                delay = backoff * (2 ** attempt)
+            time.sleep(min(max(delay, 0.0), 12.0))
+        except (
+            requests.Timeout,
+            requests.ConnectionError,
+        ) as exc:
+            last_error = exc
+            if attempt >= attempts - 1:
+                raise
+            time.sleep(min(backoff * (2 ** attempt), 12.0))
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("HTTP retry loop exited unexpectedly")
+
+
 
 from .country_intelligence import (
     CountryIntelligence,
@@ -181,7 +221,7 @@ def fetch_country_article(
     timeout: float = 15.0,
 ) -> tuple[str, str]:
     """Fetch a full plaintext encyclopedia article and canonical title."""
-    response = requests.get(
+    response = _get_with_retry(
         WIKIPEDIA_API,
         params={
             "action": "query",
@@ -230,7 +270,7 @@ def fetch_topic_article(
 
     for query in candidate_titles[:2]:
         try:
-            response = requests.get(
+            response = _get_with_retry(
                 WIKIPEDIA_API,
                 params={
                     "action": "query",
@@ -288,7 +328,7 @@ def _fetch_topic_wikitext(
     timeout: float = 10.0,
 ) -> str:
     """Fetch structured wikitext for a known Wikipedia topic page."""
-    response = requests.get(
+    response = _get_with_retry(
         WIKIPEDIA_API,
         params={
             "action": "parse",
