@@ -415,6 +415,13 @@ def build_pdf_report(
             if clean(value) != "Not available"
         ]
 
+        # ReportLab cannot build an empty Table. Keep the section valid
+        # even when an external source provides no usable values.
+        if not filtered:
+            filtered = [
+                ("Information", "Not available"),
+            ]
+
         data: list[list[object]] = []
 
         if two_pairs:
