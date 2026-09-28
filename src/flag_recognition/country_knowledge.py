@@ -213,61 +213,72 @@ def fetch_topic_article(
     *,
     timeout: float = 10.0,
 ) -> tuple[str, str] | None:
-    """Fetch a dedicated topic article with exact-title then search fallback."""
-    query = f"{topic} of {country_name}"
+    """Resolve common Wikipedia topic-title conventions deterministically."""
+    candidate_titles = (
+        f"{topic} of {country_name}",
+        f"{topic} in {country_name}",
+        f"List of {topic} in {country_name}",
+        f"List of {topic} of {country_name}",
+    )
 
-    try:
-        return fetch_country_article(query, timeout=timeout)
-    except (requests.RequestException, LookupError, ValueError):
-        pass
+    for title in candidate_titles:
+        try:
+            return fetch_country_article(title, timeout=timeout)
+        except (requests.RequestException, LookupError, ValueError):
+            continue
 
-    try:
-        response = requests.get(
-            WIKIPEDIA_API,
-            params={
-                "action": "query",
-                "list": "search",
-                "srsearch": query,
-                "srlimit": 5,
-                "format": "json",
-                "formatversion": 2,
-            },
-            headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
-            timeout=timeout,
-        )
-        response.raise_for_status()
-        results = response.json().get("query", {}).get("search", [])
+    for query in candidate_titles[:2]:
+        try:
+            response = requests.get(
+                WIKIPEDIA_API,
+                params={
+                    "action": "query",
+                    "list": "search",
+                    "srsearch": query,
+                    "srlimit": 8,
+                    "format": "json",
+                    "formatversion": 2,
+                },
+                headers={
+                    "User-Agent": USER_AGENT,
+                    "Accept": "application/json",
+                },
+                timeout=timeout,
+            )
+            response.raise_for_status()
+            results = response.json().get("query", {}).get("search", [])
 
-        preferred = query.lower()
-        candidates = [
-            str(item.get("title") or "").strip()
-            for item in results
-            if str(item.get("title") or "").strip()
-        ]
-        country_token = country_name.lower()
-        topic_token = topic.lower()
-        title = next(
-            (
-                candidate
-                for candidate in candidates
-                if candidate.lower() == preferred
-            ),
-            next(
+            country_token = country_name.lower()
+            topic_words = {
+                word
+                for word in re.findall(r"[a-z0-9]+", topic.lower())
+                if len(word) >= 4
+            }
+
+            candidates = [
+                str(item.get("title") or "").strip()
+                for item in results
+                if str(item.get("title") or "").strip()
+            ]
+
+            title = next(
                 (
                     candidate
                     for candidate in candidates
                     if country_token in candidate.lower()
-                    and topic_token in candidate.lower()
+                    and all(
+                        word in candidate.lower()
+                        for word in topic_words
+                    )
                 ),
                 None,
-            ),
-        )
-        if not title:
-            return None
+            )
+            if title:
+                return fetch_country_article(title, timeout=timeout)
+        except (requests.RequestException, LookupError, ValueError):
+            continue
 
-        return fetch_country_article(title, timeout=timeout)
-    except (requests.RequestException, LookupError, ValueError):
-        return None
+    return None
 
 
 def _fetch_topic_wikitext(
