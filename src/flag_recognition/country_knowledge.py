@@ -595,6 +595,72 @@ def _heritage_sites_from_wikitext(
     return "World Heritage Sites: " + "; ".join(sites), source_url
 
 
+def _structured_geography_facts(
+    country_name: str,
+    *,
+    timeout: float = 10.0,
+) -> tuple[dict[str, str], str]:
+    """Read stable physical-geography facts from a dedicated Geography infobox."""
+    article = fetch_topic_article(
+        country_name,
+        "Geography",
+        timeout=timeout,
+    )
+    if article is None:
+        return {}, ""
+
+    _, title = article
+    try:
+        wikitext = _fetch_topic_wikitext(title, timeout=timeout)
+    except (requests.RequestException, ValueError, LookupError):
+        return {}, ""
+
+    fields: dict[str, str] = {}
+
+    climate = _infobox_field(wikitext, ("climate",))
+    terrain = _infobox_field(
+        wikitext,
+        ("terrain", "topography", "relief"),
+    )
+    resources = _infobox_field(
+        wikitext,
+        (
+            "natural_resources",
+            "natural resources",
+            "resources",
+        ),
+    )
+    longest_river = _infobox_field(
+        wikitext,
+        ("longest river", "longest_river"),
+    )
+    largest_lake = _infobox_field(
+        wikitext,
+        ("largest lake", "largest_lake"),
+    )
+
+    if climate:
+        fields["climate_seasons"] = climate
+    if terrain:
+        fields["mountains_relief"] = terrain
+    if resources:
+        fields["natural_resources"] = resources
+
+    waterways: list[str] = []
+    if longest_river:
+        waterways.append(f"Longest river: {longest_river}")
+    if largest_lake:
+        waterways.append(f"Largest lake: {largest_lake}")
+    if waterways:
+        fields["rivers_lakes"] = "; ".join(waterways)
+
+    source_url = WIKIPEDIA_PAGE + quote(
+        title.replace(" ", "_"),
+        safe="()_-",
+    )
+    return fields, source_url
+
+
 def _structured_geography_resources(
     country_name: str,
     *,
@@ -1475,6 +1541,16 @@ def enrich_from_encyclopedia(
             max_chars=2200,
             max_blocks=6,
         )
+        if "transport_network" not in record.infrastructure:
+            _set_strict_context(
+                record.infrastructure,
+                "transport_network",
+                detailed,
+                "transport_network",
+                source_url,
+                max_chars=2200,
+                max_blocks=6,
+            )
     except (requests.RequestException, LookupError, ValueError):
         pass
 
@@ -1508,6 +1584,17 @@ def enrich_from_encyclopedia(
         energy_item = _domain_evidence(energy_text, energy_url)
         if energy_item is not None:
             record.infrastructure["energy_connectivity"] = energy_item
+
+        if "energy_connectivity" not in record.infrastructure:
+            _set_strict_context(
+                record.infrastructure,
+                "energy_connectivity",
+                detailed,
+                "energy_connectivity",
+                source_url,
+                max_chars=2200,
+                max_blocks=6,
+            )
     except (requests.RequestException, LookupError, ValueError):
         pass
 
@@ -1536,6 +1623,26 @@ def enrich_from_encyclopedia(
                 max_chars=2200,
                 max_blocks=6,
             )
+
+        structured_geo, structured_geo_url = _structured_geography_facts(
+            canonical_title,
+            timeout=timeout,
+        )
+        if structured_geo:
+            structured_targets = {
+                "climate_seasons": record.environment,
+                "rivers_lakes": record.geography,
+                "mountains_relief": record.geography,
+                "natural_resources": record.environment,
+            }
+            for key, value in structured_geo.items():
+                target = structured_targets[key]
+                item = _domain_evidence(
+                    value,
+                    structured_geo_url or geography_source_url,
+                )
+                if item is not None:
+                    target.setdefault(key, item)
 
         if geography_sections and geography_source_url:
             environment_text = collect_domain_text_detailed(
