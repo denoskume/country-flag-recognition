@@ -1196,6 +1196,85 @@ def build_pdf_report(
                     Spacer(1, 3 * mm),
                 ])
 
+        intelligence = report.get("country_intelligence_v2")
+        if isinstance(intelligence, dict):
+            source_rows: list[tuple[str, str]] = []
+            seen_sources: set[tuple[str, str]] = set()
+
+            def _collect_sources(node: object, path: str = "") -> None:
+                if isinstance(node, dict):
+                    source = node.get("source")
+                    source_url = node.get("source_url")
+                    reference_year = node.get("reference_year")
+                    retrieved_at = node.get("retrieved_at")
+
+                    if source:
+                        detail_parts = [str(source)]
+                        if reference_year:
+                            detail_parts.append(f"reference {reference_year}")
+                        if retrieved_at:
+                            detail_parts.append(f"retrieved {retrieved_at}")
+                        if source_url:
+                            detail_parts.append(str(source_url))
+
+                        key = (path or "Fact", " · ".join(detail_parts))
+                        if key not in seen_sources:
+                            seen_sources.add(key)
+                            source_rows.append(key)
+
+                    sources = node.get("sources")
+                    urls = node.get("source_urls")
+                    if isinstance(sources, list):
+                        for index, source_name in enumerate(sources):
+                            url = (
+                                urls[index]
+                                if isinstance(urls, list) and index < len(urls)
+                                else ""
+                            )
+                            detail = str(source_name)
+                            if url:
+                                detail += f" · {url}"
+                            key = (path or "Historical event", detail)
+                            if key not in seen_sources:
+                                seen_sources.add(key)
+                                source_rows.append(key)
+
+                    for child_key, child_value in node.items():
+                        if child_key in {
+                            "source", "source_url", "reference_year",
+                            "retrieved_at", "sources", "source_urls",
+                        }:
+                            continue
+                        child_path = (
+                            f"{path}.{child_key}" if path else str(child_key)
+                        )
+                        _collect_sources(child_value, child_path)
+
+                elif isinstance(node, list):
+                    for index, child in enumerate(node):
+                        _collect_sources(child, f"{path}[{index}]")
+
+            _collect_sources(intelligence)
+
+            if source_rows:
+                compact_sources = source_rows[:45]
+                if len(source_rows) > len(compact_sources):
+                    compact_sources.append(
+                        (
+                            "Additional sourced fields",
+                            f"{len(source_rows) - len(compact_sources)} more "
+                            "provenance records available in the JSON export.",
+                        )
+                    )
+
+                story.extend([
+                    section_box(
+                        "Sources & Data Freshness",
+                        info_grid(compact_sources, two_pairs=False),
+                    ),
+                    Spacer(1, 3 * mm),
+                ])
+
         # Recognition is intentionally compact and secondary.
         candidates = report.get("top_candidates", [])
         candidate_summary = " | ".join(
