@@ -366,3 +366,36 @@ def test_strict_domain_extraction_does_not_cross_contaminate_sections():
 
     assert "petroleum" in resources
     assert "colonial administration" not in resources
+
+
+def test_strict_geography_sections_match_realistic_ivory_coast_headings():
+    article = """
+== Terrain and topography ==
+Ivory Coast is a plateau rising gradually from the coast, with mountains in the northwest.
+
+== Rivers ==
+The Bandama is the longest river and Lake Kossou is the largest lake.
+
+== Climate ==
+The climate is hot and humid, with distinct dry and rainy seasons.
+"""
+    sections = split_article_sections_detailed(article)
+
+    relief = collect_strict_domain_text(sections, "mountains_relief")
+    rivers = collect_strict_domain_text(sections, "rivers_lakes")
+    climate = collect_strict_domain_text(sections, "climate_seasons")
+
+    assert "plateau" in relief
+    assert "Bandama" in rivers
+    assert "rainy seasons" in climate
+
+
+def test_energy_domain_rejects_generic_country_overview():
+    generic = """
+Country overview text about borders, capital, and neighboring states.
+"""
+    sections = split_article_sections_detailed(generic)
+
+    energy = collect_strict_domain_text(sections, "energy_connectivity")
+
+    assert energy == ""
