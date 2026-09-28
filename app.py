@@ -20,7 +20,6 @@ from PIL import Image, ImageDraw
 import requests
 import streamlit as st
 import yaml
-from playwright.sync_api import sync_playwright
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
@@ -407,6 +406,11 @@ def _render_geography_deck_png(
 ) -> bytes | None:
     """Render the exact app CARTO/PyDeck map to PNG for the PDF."""
     if latitude is None or longitude is None:
+        return None
+
+    try:
+        from playwright.sync_api import sync_playwright
+    except Exception:
         return None
 
     chromium = (
