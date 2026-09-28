@@ -1941,7 +1941,7 @@ def fetch_country_profile(
         )
     )
 
-    if independence_day == "Not applicable":
+    if independence_day in ("Not available", "Not applicable"):
         former_colonial_powers = str(
             overrides.get("former_colonial_powers", "Not applicable")
         )
