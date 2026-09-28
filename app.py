@@ -80,6 +80,7 @@ from flag_recognition.country_intelligence import (
     validate_country_intelligence,
 )
 from flag_recognition.country_knowledge import enrich_from_encyclopedia
+from flag_recognition.flag_knowledge import enrich_flag_profile
 
 
 DISPLAY_NAME_OVERRIDES = {
@@ -1084,6 +1085,44 @@ def build_pdf_report(
                     Spacer(1, 3 * mm),
                 ])
 
+            flag_info = intelligence.get("flag")
+            if isinstance(flag_info, dict):
+                flag_rows = []
+                for label, field in (
+                    ("Design & construction", "design_origin"),
+                    ("Meaning & symbolism", "symbolism"),
+                ):
+                    items = flag_info.get(field)
+                    if isinstance(items, list):
+                        values = [
+                            clean(item.get("value"))
+                            for item in items
+                            if isinstance(item, dict)
+                            and clean(item.get("value")) != "Not available"
+                        ]
+                        if values:
+                            flag_rows.append((label, "\n\n".join(values)))
+
+                history_items = flag_info.get("historical_flags")
+                if isinstance(history_items, list) and history_items:
+                    history_text = "\n".join(
+                        f"{clean(item.get('period'))}: {clean(item.get('summary'))}"
+                        for item in history_items[:10]
+                        if isinstance(item, dict)
+                    )
+                    if history_text:
+                        flag_rows.append(("Flag history", history_text))
+
+                if flag_rows:
+                    story.append(PageBreak())
+                    story.extend([
+                        section_box(
+                            "Flag Intelligence",
+                            info_grid(flag_rows, two_pairs=False),
+                        ),
+                        Spacer(1, 3 * mm),
+                    ])
+
             origins = intelligence.get("origins")
             if isinstance(origins, list) and origins:
                 origin_rows = [
@@ -1543,6 +1582,15 @@ def get_country_intelligence_v2(country_code: str):
         )
     except (requests.RequestException, LookupError, ValueError):
         # Structured facts remain available even if narrative enrichment fails.
+        pass
+
+    try:
+        intelligence.flag = enrich_flag_profile(
+            intelligence.flag,
+            profile.name,
+        )
+    except (requests.RequestException, LookupError, ValueError):
+        # A missing dedicated flag article must never hide country knowledge.
         pass
 
     return {
@@ -2257,6 +2305,39 @@ def show_result(image: Image.Image):
                 f"{complete_count}/{total_count} knowledge domains currently "
                 "supported by sourced data. Missing domains are never fabricated."
             )
+
+            flag_info = intelligence.get("flag") or {}
+            with st.expander("Flag Intelligence", expanded=True):
+                symbolism = flag_info.get("symbolism") or []
+                design_origin = flag_info.get("design_origin") or []
+                flag_history = flag_info.get("historical_flags") or []
+
+                if design_origin:
+                    st.markdown("**Design & construction**")
+                    for item in design_origin:
+                        if isinstance(item, dict):
+                            st.write(item.get("value") or "Not available")
+
+                if symbolism:
+                    st.markdown("**Meaning & symbolism**")
+                    for item in symbolism:
+                        if isinstance(item, dict):
+                            st.write(item.get("value") or "Not available")
+
+                if flag_history:
+                    st.markdown("**Flag history**")
+                    for event in flag_history:
+                        if isinstance(event, dict):
+                            st.markdown(
+                                f"**{event.get('period', 'Historical period')}**"
+                            )
+                            st.write(event.get("summary") or "Not available")
+
+                if not (design_origin or symbolism or flag_history):
+                    st.info(
+                        "A dedicated sourced flag-history article was not "
+                        "available for this country."
+                    )
 
             timeline = intelligence.get("historical_timeline") or []
             with st.expander("Historical Journey", expanded=True):
