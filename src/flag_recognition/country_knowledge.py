@@ -569,6 +569,76 @@ def _domain_evidence(value: str, source_url: str) -> Evidence | None:
     )
 
 
+def collect_keyword_context(
+    sections: list[ArticleSection],
+    keywords: tuple[str, ...],
+    *,
+    max_sentences: int = 4,
+    max_chars: int = 1800,
+) -> str:
+    """Fallback extractor when article headings do not match our taxonomy.
+
+    It only reuses source sentences containing explicit domain keywords.
+    No generated facts are introduced.
+    """
+    matches: list[str] = []
+    seen: set[str] = set()
+
+    normalized_keywords = tuple(keyword.lower() for keyword in keywords)
+
+    for section in sections:
+        for sentence in _sentences(section.body):
+            lowered = sentence.lower()
+            if not any(keyword in lowered for keyword in normalized_keywords):
+                continue
+            compact = sentence.strip()
+            if compact and compact not in seen:
+                seen.add(compact)
+                matches.append(compact)
+            if len(matches) >= max_sentences:
+                break
+        if len(matches) >= max_sentences:
+            break
+
+    text = " ".join(matches)
+    if len(text) > max_chars:
+        text = text[:max_chars].rsplit(" ", 1)[0].rstrip() + "…"
+    return text
+
+
+def _set_context_with_keywords(
+    target: dict[str, Evidence],
+    key: str,
+    sections: list[ArticleSection],
+    domain: str,
+    source_url: str,
+    *,
+    keywords: tuple[str, ...],
+    max_chars: int = 1800,
+    max_blocks: int = 5,
+) -> None:
+    """Populate a domain from headings first, then sentence-level keywords."""
+    if key in target:
+        return
+
+    text = collect_domain_text_detailed(
+        sections,
+        domain,
+        max_chars=max_chars,
+        max_blocks=max_blocks,
+    )
+    if not text:
+        text = collect_keyword_context(
+            sections,
+            keywords,
+            max_chars=max_chars,
+        )
+
+    item = _domain_evidence(text, source_url)
+    if item is not None:
+        target.setdefault(key, item)
+
+
 def _set_context(
     target: dict[str, Evidence],
     key: str,
@@ -857,12 +927,17 @@ def enrich_from_encyclopedia(
         source_url,
         timeout=timeout,
     )
-    _set_context(
+    _set_context_with_keywords(
         record.infrastructure,
         "energy_connectivity",
         energy_sections,
         "energy_connectivity",
         energy_url,
+        keywords=(
+            "electricity", "power", "energy", "hydropower", "solar",
+            "thermal", "gas-fired", "renewable", "generation",
+            "internet", "mobile", "broadband", "telecommunications",
+        ),
         max_chars=2200,
         max_blocks=6,
     )
@@ -885,21 +960,51 @@ def enrich_from_encyclopedia(
         )
 
     physical_domains = {
-        "climate_seasons": ("climate_seasons", record.environment),
-        "rivers_lakes": ("rivers_lakes", record.geography),
-        "mountains_relief": ("mountains_relief", record.geography),
-        "natural_resources": ("natural_resources", record.environment),
+        "climate_seasons": (
+            "climate_seasons",
+            record.environment,
+            (
+                "climate", "rainy season", "dry season", "rainfall",
+                "temperature", "monsoon", "savanna",
+            ),
+        ),
+        "rivers_lakes": (
+            "rivers_lakes",
+            record.geography,
+            (
+                "river", "lake", "lagoon", "waterway", "basin",
+                "drainage", "reservoir",
+            ),
+        ),
+        "mountains_relief": (
+            "mountains_relief",
+            record.geography,
+            (
+                "mountain", "mount", "plateau", "relief", "terrain",
+                "elevation", "highland",
+            ),
+        ),
+        "natural_resources": (
+            "natural_resources",
+            record.environment,
+            (
+                "natural resources", "petroleum", "oil", "natural gas",
+                "gold", "manganese", "bauxite", "diamond", "forest",
+                "timber", "mineral", "fisheries",
+            ),
+        ),
     }
-    for domain, (key, target) in physical_domains.items():
-        text = collect_domain_text_detailed(
+    for domain, (key, target, keywords) in physical_domains.items():
+        _set_context_with_keywords(
+            target,
+            key,
             geography_sections,
             domain,
+            geography_source_url,
+            keywords=keywords,
             max_chars=1800,
             max_blocks=5,
         )
-        item = _domain_evidence(text, geography_source_url)
-        if item is not None:
-            target.setdefault(key, item)
 
     # Keep a concise general physical-geography context as a fallback.
     environment_text = collect_domain_text_detailed(
@@ -927,37 +1032,38 @@ def enrich_from_encyclopedia(
             economy_title.replace(" ", "_"),
             safe="()_-",
         )
-        drivers_text = collect_domain_text_detailed(
+        _set_context_with_keywords(
+            record.economy,
+            "economic_drivers",
             economy_sections,
             "economic_drivers",
+            economy_source_url,
+            keywords=(
+                "cocoa", "coffee", "cashew", "oil", "petroleum", "gas",
+                "gold", "agriculture", "industry", "services", "exports",
+                "manufacturing", "tourism", "port", "trade",
+            ),
             max_chars=2200,
             max_blocks=6,
         )
-        drivers_item = _domain_evidence(
-            drivers_text,
-            economy_source_url,
-        )
-        if drivers_item is not None:
-            record.economy.setdefault("economic_drivers", drivers_item)
 
         # Some countries describe mineral/agricultural resources primarily in
         # the Economy article rather than in Geography.
         if "natural_resources" not in record.environment:
-            resource_text = collect_domain_text_detailed(
+            _set_context_with_keywords(
+                record.environment,
+                "natural_resources",
                 economy_sections,
                 "natural_resources",
+                economy_source_url,
+                keywords=(
+                    "petroleum", "oil", "natural gas", "gold", "manganese",
+                    "bauxite", "diamond", "forest", "timber", "mineral",
+                    "cocoa", "cashew", "rubber",
+                ),
                 max_chars=1800,
                 max_blocks=5,
             )
-            resource_item = _domain_evidence(
-                resource_text,
-                economy_source_url,
-            )
-            if resource_item is not None:
-                record.environment.setdefault(
-                    "natural_resources",
-                    resource_item,
-                )
 
     if history_text:
         compact_history = " ".join(
