@@ -1,6 +1,7 @@
 from flag_recognition.country_knowledge import (
     canonical_overview_text,
     collect_domain_text,
+    collect_keyword_context,
     collect_domain_text_detailed,
     collect_origins,
     extract_timeline,
@@ -302,3 +303,26 @@ def test_canonical_overview_removes_competing_live_population():
     assert "2026" not in cleaned
     assert "Exampleland is a country on the coast." in cleaned
     assert "French is an official language." in cleaned
+
+
+def test_keyword_fallback_extracts_domain_without_matching_heading():
+    text = """
+== Production ==
+The country exports cocoa, petroleum products and gold.
+Electricity generation relies on gas-fired plants and hydropower.
+"""
+    sections = split_article_sections_detailed(text)
+
+    economy = collect_keyword_context(
+        sections,
+        ("cocoa", "petroleum", "exports"),
+    )
+    energy = collect_keyword_context(
+        sections,
+        ("electricity", "hydropower", "gas-fired"),
+    )
+
+    assert "cocoa" in economy.lower()
+    assert "petroleum" in economy.lower()
+    assert "electricity" in energy.lower()
+    assert "hydropower" in energy.lower()
