@@ -10,6 +10,8 @@ import re
 from typing import Any
 
 
+GENERIC_TOKENS = {"country", "national", "information", "general"}
+
 STOP_WORDS = {
     "a", "an", "and", "are", "as", "at", "be", "by", "de", "des", "du",
     "est", "et", "for", "from", "how", "in", "is", "la", "le", "les",
@@ -163,10 +165,11 @@ def answer_country_question(
         )
         fact_tokens = _tokens(haystack)
         overlap = query_tokens & fact_tokens
-        if not overlap:
+        meaningful_overlap = overlap - GENERIC_TOKENS
+        if not meaningful_overlap:
             continue
 
-        score = len(overlap) / max(len(query_tokens), 1)
+        score = len(meaningful_overlap) / max(len(query_tokens), 1)
         label_tokens = _tokens(row["label"])
         score += 0.5 * len(query_tokens & label_tokens)
 
