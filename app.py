@@ -73,7 +73,7 @@ from flag_recognition.inference import (
     predict_image,
     predict_robust,
 )
-from flag_recognition.taxonomy import country_name_from_code
+from flag_recognition.taxonomy import country_code_from_text, country_name_from_code
 from flag_recognition.country_intelligence import (
     build_from_legacy_profile,
     section_completion,
@@ -495,7 +495,7 @@ def _build_pdf_location_map(
 
 def build_pdf_report(
     report: dict[str, object],
-    image: Image.Image,
+    image: Image.Image | None,
 ) -> bytes:
     """Build a compact institutional country knowledge report."""
     buffer = BytesIO()
@@ -907,33 +907,39 @@ def build_pdf_report(
                 story.extend(split_section(title, table))
 
         # 1. Country at a Glance
-        image_buffer = BytesIO()
-        preview_image = image.copy().convert("RGB")
-        preview_image.thumbnail((1000, 700))
-        preview_image.save(image_buffer, format="JPEG", quality=90)
-        image_buffer.seek(0)
+        glance_rows = [
+            ("Capital", profile.get("capital")),
+            ("Country code", country_code),
+            ("ISO alpha-3", profile.get("iso_alpha3")),
+            ("Region", profile.get("subregion") or profile.get("region")),
+            ("Population", population_value),
+            ("Area", area_value),
+            ("Language(s)", profile.get("official_languages")),
+            ("Currency", profile.get("currency")),
+        ]
 
-        preview = PDFImage(image_buffer)
-        preview._restrictSize(40 * mm, 28 * mm)
+        if image is not None:
+            image_buffer = BytesIO()
+            preview_image = image.copy().convert("RGB")
+            preview_image.thumbnail((1000, 700))
+            preview_image.save(image_buffer, format="JPEG", quality=90)
+            image_buffer.seek(0)
 
-        identity_table = info_grid(
-            [
-                ("Capital", profile.get("capital")),
-                ("Country code", country_code),
-                ("ISO alpha-3", profile.get("iso_alpha3")),
-                ("Region", profile.get("subregion") or profile.get("region")),
-                ("Population", population_value),
-                ("Area", area_value),
-                ("Language(s)", profile.get("official_languages")),
-                ("Currency", profile.get("currency")),
-            ],
-            width_mm=REPORT_WIDTH_MM - 46.0,
-        )
-
-        identity_content = Table(
-            [[preview, identity_table]],
-            colWidths=[46 * mm, (REPORT_WIDTH_MM - 46.0) * mm],
-        )
+            preview = PDFImage(image_buffer)
+            preview._restrictSize(40 * mm, 28 * mm)
+            identity_table = info_grid(
+                glance_rows,
+                width_mm=REPORT_WIDTH_MM - 46.0,
+            )
+            identity_content = Table(
+                [[preview, identity_table]],
+                colWidths=[46 * mm, (REPORT_WIDTH_MM - 46.0) * mm],
+            )
+        else:
+            identity_content = info_grid(
+                glance_rows,
+                width_mm=REPORT_WIDTH_MM,
+            )
         identity_content.setStyle(
             TableStyle([
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -2118,76 +2124,132 @@ st.markdown(
 )
 
 with st.container(border=True):
-    upload_col, preview_col = st.columns([1.35, 0.65], gap="medium")
-
-    with upload_col:
-        uploaded_file = st.file_uploader(
-            "Select image",
-            type=["jpg", "jpeg", "png", "webp"],
-            label_visibility="collapsed",
-        )
+    input_mode = st.radio(
+        "Choose input",
+        ("Flag image", "Country name"),
+        horizontal=True,
+        label_visibility="collapsed",
+    )
 
     image = None
+    process = False
+    text_process = False
+    typed_country = ""
 
-    with preview_col:
-        if uploaded_file is not None:
-            image = Image.open(uploaded_file).convert("RGB")
+    if input_mode == "Flag image":
+        upload_col, preview_col = st.columns([1.35, 0.65], gap="medium")
 
-        render_fixed_upload_preview(image)
+        with upload_col:
+            uploaded_file = st.file_uploader(
+                "Select image",
+                type=["jpg", "jpeg", "png", "webp"],
+                label_visibility="collapsed",
+            )
 
-    process = st.button(
-        "Process image",
-        type="primary",
-        use_container_width=True,
-        disabled=image is None,
-    )
+        with preview_col:
+            if uploaded_file is not None:
+                image = Image.open(uploaded_file).convert("RGB")
 
+            render_fixed_upload_preview(image)
 
-@st.dialog("Recognition result", width="large")
-def show_result(image: Image.Image):
-    with st.spinner("Processing image..."):
-        prediction = predict_robust(
-            image,
-            bundle,
-            top_k=20,
+        process = st.button(
+            "Process image",
+            type="primary",
+            use_container_width=True,
+            disabled=image is None,
+        )
+    else:
+        typed_country = st.text_input(
+            "Country name",
+            placeholder="Example: France, Côte d’Ivoire, Japan, BRA, XK",
+        ).strip()
+        st.caption(
+            "Enter a country name or ISO alpha-2/alpha-3 code. "
+            "The knowledge report opens directly without image recognition."
+        )
+        text_process = st.button(
+            "Explore country",
+            type="primary",
+            use_container_width=True,
+            disabled=not bool(typed_country),
         )
 
-    grouped_candidates = merge_visually_identical_candidates(
-        prediction.top5
-    )
-    decision_code, decision_confidence = grouped_candidates[0]
-    display_candidates = grouped_candidates[:5]
 
-    accepted, decision_margin, decision_reason = (
-        evaluate_production_decision(
-            grouped_candidates,
-            deployment_threshold,
+@st.dialog("Country result", width="large")
+def show_result(
+    image: Image.Image | None = None,
+    direct_code: str | None = None,
+):
+    if direct_code is None:
+        with st.spinner("Processing image..."):
+            prediction = predict_robust(
+                image,
+                bundle,
+                top_k=20,
+            )
+
+        grouped_candidates = merge_visually_identical_candidates(
+            prediction.top5
         )
-    )
+        decision_code, decision_confidence = grouped_candidates[0]
+        display_candidates = grouped_candidates[:5]
+        accepted, decision_margin, decision_reason = (
+            evaluate_production_decision(
+                grouped_candidates,
+                deployment_threshold,
+            )
+        )
+        input_mode_used = "image"
+    else:
+        decision_code = direct_code.lower()
+        decision_confidence = None
+        display_candidates = [(decision_code, 1.0)]
+        accepted = True
+        decision_margin = None
+        decision_reason = "country_name_input"
+        input_mode_used = "text"
+
     country = display_country_name(decision_code)
 
     preview_col, result_col = st.columns([.9, 1.1], gap="large")
 
     with preview_col:
-        render_fixed_result_preview(image)
+        if image is not None:
+            render_fixed_result_preview(image)
+        else:
+            st.markdown(
+                f"<div class='result-name'>{country}</div>"
+                f"<div class='result-code'>{decision_code.upper()}</div>",
+                unsafe_allow_html=True,
+            )
+            st.caption("Country selected by name")
 
     with result_col:
         st.markdown(
             f'<div class="result-name">{country if accepted else "Unknown"}</div>',
             unsafe_allow_html=True,
         )
-        st.markdown(
-            f'<div class="result-code">Top candidate · {country} ({decision_code.upper()})</div>',
-            unsafe_allow_html=True,
-        )
+        if input_mode_used == "image":
+            st.markdown(
+                f'<div class="result-code">Top candidate · {country} ({decision_code.upper()})</div>',
+                unsafe_allow_html=True,
+            )
+            m1, m2 = st.columns(2)
+            with m1:
+                st.metric("Confidence", f"{decision_confidence:.1%}")
+            with m2:
+                st.metric("Top-1 margin", f"{decision_margin:.1%}")
+        else:
+            st.markdown(
+                f'<div class="result-code">Selected country · {decision_code.upper()}</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                '<div class="decision-ok">Country selected by name</div>',
+                unsafe_allow_html=True,
+            )
 
-        m1, m2 = st.columns(2)
-        with m1:
-            st.metric("Confidence", f"{decision_confidence:.1%}")
-        with m2:
-            st.metric("Top-1 margin", f"{decision_margin:.1%}")
-
-        if accepted:
+        if accepted and input_mode_used == "image":
             st.markdown(
                 '<div class="decision-ok">Accepted prediction</div>',
                 unsafe_allow_html=True,
@@ -2224,12 +2286,13 @@ def show_result(image: Image.Image):
         ]
     )
 
-    with st.expander("Top candidates", expanded=False):
-        st.dataframe(
-            ranking.style.format({"Confidence": "{:.1%}"}),
-            hide_index=True,
-            use_container_width=True,
-        )
+    if input_mode_used == "image":
+        with st.expander("Top candidates", expanded=False):
+            st.dataframe(
+                ranking.style.format({"Confidence": "{:.1%}"}),
+                hide_index=True,
+                use_container_width=True,
+            )
 
     if accepted:
         try:
@@ -2478,9 +2541,9 @@ def show_result(image: Image.Image):
             knowledge = get_country_intelligence_v2(
                 decision_code,
                 tuple(
-                display_country_name(code)
-                for code, _ in display_candidates[1:5]
-            ),
+                    display_country_name(code)
+                    for code, _ in display_candidates[1:5]
+                ),
                 schema_version=COUNTRY_INTELLIGENCE_SCHEMA_VERSION,
             )
             intelligence = knowledge["intelligence"]
@@ -2702,8 +2765,11 @@ def show_result(image: Image.Image):
         "decision": country if accepted else "Unknown",
         "top_candidate": country,
         "country_code": decision_code,
+        "input_mode": input_mode_used,
         "confidence": decision_confidence,
-        "deployment_threshold": deployment_threshold,
+        "deployment_threshold": (
+            deployment_threshold if input_mode_used == "image" else None
+        ),
         "decision_margin": decision_margin,
         "decision_reason": decision_reason,
         "visual_equivalence_applied": (
@@ -2808,4 +2874,14 @@ def show_result(image: Image.Image):
 
 
 if process and image is not None:
-    show_result(image)
+    show_result(image=image)
+
+if text_process:
+    resolved_code = country_code_from_text(typed_country)
+    if resolved_code is None:
+        st.error(
+            "Country not recognized. Enter a valid country name or "
+            "ISO alpha-2/alpha-3 code."
+        )
+    else:
+        show_result(direct_code=resolved_code)
