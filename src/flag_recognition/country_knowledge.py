@@ -270,6 +270,160 @@ def fetch_topic_article(
         return None
 
 
+def _fetch_topic_wikitext(
+    title: str,
+    *,
+    timeout: float = 10.0,
+) -> str:
+    """Fetch structured wikitext for a known Wikipedia topic page."""
+    response = requests.get(
+        WIKIPEDIA_API,
+        params={
+            "action": "parse",
+            "page": title,
+            "prop": "wikitext",
+            "redirects": 1,
+            "format": "json",
+        },
+        headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    parsed = response.json().get("parse") or {}
+    raw = parsed.get("wikitext")
+    if isinstance(raw, dict):
+        return str(raw.get("*") or "").strip()
+    return str(raw or "").strip()
+
+
+def _clean_wikivalue(value: str) -> str:
+    """Remove common wiki markup from compact infobox values."""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+
+    text = re.sub(r"<ref[^>]*>.*?</ref>", "", text, flags=re.DOTALL)
+    text = re.sub(r"<ref[^>]*/>", "", text)
+    text = re.sub(
+        r"\{\{(?:nowrap|small|plainlist)\|([^{}]+)\}\}",
+        r"\1",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(r"\[\[([^\]|]+)\|([^\]]+)\]\]", r"\2", text)
+    text = re.sub(r"\[\[([^\]]+)\]\]", r"\1", text)
+    text = re.sub(r"\{\{[^{}]+\}\}", "", text)
+    text = re.sub(r"''+", "", text)
+    text = re.sub(r"<[^>]+>", "", text)
+    text = text.replace("<br />", "; ").replace("<br/>", "; ")
+    text = text.replace("&nbsp;", " ")
+    return " ".join(text.split()).strip(" ;,")
+
+
+def _infobox_field(
+    wikitext: str,
+    names: tuple[str, ...],
+) -> str:
+    """Extract the first matching single-line infobox parameter."""
+    for name in names:
+        pattern = re.compile(
+            rf"^\|\s*{re.escape(name)}\s*=\s*(.+?)\s*$",
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+        match = pattern.search(wikitext)
+        if match:
+            value = _clean_wikivalue(match.group(1))
+            if value:
+                return value
+    return ""
+
+
+def _structured_economy_context(
+    country_name: str,
+    *,
+    timeout: float = 10.0,
+) -> tuple[str, str]:
+    """Read stable industries/export goods from the Economy page infobox."""
+    article = fetch_topic_article(
+        country_name,
+        "Economy",
+        timeout=timeout,
+    )
+    if article is None:
+        return "", ""
+
+    _, title = article
+    try:
+        wikitext = _fetch_topic_wikitext(title, timeout=timeout)
+    except (requests.RequestException, ValueError, LookupError):
+        return "", ""
+
+    industries = _infobox_field(
+        wikitext,
+        ("industries", "industry"),
+    )
+    export_goods = _infobox_field(
+        wikitext,
+        ("export-goods", "export_goods", "exports goods"),
+    )
+    import_goods = _infobox_field(
+        wikitext,
+        ("import-goods", "import_goods", "imports goods"),
+    )
+
+    blocks: list[str] = []
+    if industries:
+        blocks.append(f"Key industries: {industries}")
+    if export_goods:
+        blocks.append(f"Main export goods: {export_goods}")
+    if import_goods:
+        blocks.append(f"Main import goods: {import_goods}")
+
+    source_url = WIKIPEDIA_PAGE + quote(
+        title.replace(" ", "_"),
+        safe="()_-",
+    )
+    return "\n\n".join(blocks), source_url
+
+
+def _structured_geography_resources(
+    country_name: str,
+    *,
+    timeout: float = 10.0,
+) -> tuple[str, str]:
+    """Read natural-resource fields from a dedicated Geography page."""
+    article = fetch_topic_article(
+        country_name,
+        "Geography",
+        timeout=timeout,
+    )
+    if article is None:
+        return "", ""
+
+    _, title = article
+    try:
+        wikitext = _fetch_topic_wikitext(title, timeout=timeout)
+    except (requests.RequestException, ValueError, LookupError):
+        return "", ""
+
+    resources = _infobox_field(
+        wikitext,
+        (
+            "natural_resources",
+            "natural resources",
+            "resources",
+        ),
+    )
+    if not resources:
+        return "", ""
+
+    source_url = WIKIPEDIA_PAGE + quote(
+        title.replace(" ", "_"),
+        safe="()_-",
+    )
+    return f"Natural resources: {resources}", source_url
+
+
 def split_article_sections_detailed(text: str) -> list[ArticleSection]:
     """Split plaintext while preserving MediaWiki heading depth."""
     heading_re = re.compile(r"^(={2,6})\s*(.+?)\s*\1\s*$", re.MULTILINE)
@@ -1150,6 +1304,23 @@ def enrich_from_encyclopedia(
             max_blocks=7,
         )
 
+        structured_economy, structured_economy_url = (
+            _structured_economy_context(
+                canonical_title,
+                timeout=timeout,
+            )
+        )
+        if structured_economy:
+            existing = record.economy.get("economic_drivers")
+            combined = structured_economy
+            if existing is not None and str(existing.value).strip():
+                combined = (
+                    f"{existing.value}\n\n{structured_economy}"
+                )
+            record.economy["economic_drivers"] = _domain_evidence(
+                combined[:3200],
+                structured_economy_url or economy_source_url,
+            )
 
         # Some countries describe mineral/agricultural resources primarily in
         # the Economy article rather than in Geography.
@@ -1164,6 +1335,20 @@ def enrich_from_encyclopedia(
                 max_blocks=5,
             )
 
+    if "natural_resources" not in record.environment:
+        structured_resources, structured_resources_url = (
+            _structured_geography_resources(
+                canonical_title,
+                timeout=timeout,
+            )
+        )
+        if structured_resources:
+            resource_item = _domain_evidence(
+                structured_resources,
+                structured_resources_url,
+            )
+            if resource_item is not None:
+                record.environment["natural_resources"] = resource_item
 
     if history_text:
         compact_history = " ".join(
