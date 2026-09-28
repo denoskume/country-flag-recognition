@@ -1645,7 +1645,7 @@ def show_result(image: Image.Image):
             "Download PDF",
             data=build_pdf_report(report, image),
             file_name=(
-                f"{_report_filename_country(decision_name)}_report.pdf"
+                f"{_report_filename_country(decision)}_report.pdf"
             ),
             mime="application/pdf",
             use_container_width=True,
