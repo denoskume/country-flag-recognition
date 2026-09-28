@@ -14,6 +14,10 @@ import pycountry
 WIKIDATA_ENDPOINT = "https://query.wikidata.org/sparql"
 WORLD_BANK_BASE = "https://api.worldbank.org/v2"
 REST_COUNTRIES_BASE = "https://restcountries.com/v3.1"
+EMERGENCY_NUMBERS_DATA_URL = (
+    "https://raw.githubusercontent.com/"
+    "EmergencyNumberAPI/data/master/data.json"
+)
 WIKIPEDIA_SUMMARY_BASE = (
     "https://en.wikipedia.org/api/rest_v1/page/summary"
 )
@@ -1199,6 +1203,128 @@ def fetch_emergency_numbers(
     )
 
 
+def _clean_emergency_values(
+    section: object,
+) -> list[str]:
+    """Flatten emergency-number section values while removing empty entries."""
+    if not isinstance(section, dict):
+        return []
+
+    values: list[str] = []
+
+    for raw in section.values():
+        if not isinstance(raw, list):
+            continue
+
+        for item in raw:
+            if item is None:
+                continue
+
+            value = str(item).strip()
+            if not value:
+                continue
+
+            if value not in values:
+                values.append(value)
+
+    return values
+
+
+def fetch_emergency_numbers_fallback(
+    code: str,
+    timeout: float = 12.0,
+) -> str:
+    """Fetch emergency numbers by ISO code from EmergencyNumberAPI data."""
+    normalized = code.upper().strip()
+
+    response = requests.get(
+        EMERGENCY_NUMBERS_DATA_URL,
+        headers={
+            "User-Agent": (
+                "country-flag-recognition/0.1 "
+                "(educational portfolio project)"
+            ),
+        },
+        timeout=timeout,
+    )
+    response.raise_for_status()
+
+    payload = response.json()
+    records = (
+        payload.get("data", [])
+        if isinstance(payload, dict)
+        else []
+    )
+
+    record = next(
+        (
+            item
+            for item in records
+            if str(
+                (item.get("Country") or {}).get("ISOCode", "")
+            ).upper() == normalized
+        ),
+        None,
+    )
+
+    if not isinstance(record, dict):
+        return "No national emergency number documented"
+
+    dispatch = _clean_emergency_values(
+        record.get("Dispatch")
+    )
+    police = _clean_emergency_values(
+        record.get("Police")
+    )
+    ambulance = _clean_emergency_values(
+        record.get("Ambulance")
+    )
+    fire = _clean_emergency_values(
+        record.get("Fire")
+    )
+
+    # 112 membership is meaningful even when category-specific fields
+    # are absent in the source record.
+    if (
+        not dispatch
+        and bool(record.get("Member_112"))
+    ):
+        dispatch = ["112"]
+
+    parts: list[str] = []
+
+    if dispatch:
+        parts.append(
+            "General: " + ", ".join(dispatch)
+        )
+    if police:
+        parts.append(
+            "Police: " + ", ".join(police)
+        )
+    if ambulance:
+        parts.append(
+            "Ambulance: " + ", ".join(ambulance)
+        )
+    if fire:
+        parts.append(
+            "Fire: " + ", ".join(fire)
+        )
+
+    if parts:
+        return " | ".join(parts)
+
+    if bool(record.get("LocalOnly")):
+        return (
+            "Local emergency services only; "
+            "no single national number documented"
+        )
+
+    if bool(record.get("NoData")):
+        return "No national emergency number documented"
+
+    return "No national emergency number documented"
+
+
 def fetch_country_profile(
     code: str,
     timeout: float = 12.0,
@@ -1311,6 +1437,21 @@ def fetch_country_profile(
         LookupError,
     ):
         emergency_numbers = "Not available"
+
+    if emergency_numbers == "Not available":
+        try:
+            emergency_numbers = fetch_emergency_numbers_fallback(
+                code,
+                timeout=timeout,
+            )
+        except (
+            requests.RequestException,
+            ValueError,
+            LookupError,
+        ):
+            emergency_numbers = (
+                "No national emergency number documented"
+            )
 
     try:
         overview = (
