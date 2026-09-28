@@ -95,6 +95,11 @@ SECTION_ALIASES: dict[str, tuple[str, ...]] = {
         "natural resources", "minerals", "mining", "forestry", "energy",
         "petroleum", "oil and gas", "fisheries",
     ),
+    "environment": (
+        "environment", "biodiversity", "ecology", "wildlife",
+        "flora and fauna", "nature", "protected areas",
+        "conservation", "environmental issues",
+    ),
     "people_society": (
         "demographics", "population", "ethnic groups", "society",
     ),
@@ -1437,6 +1442,7 @@ def enrich_from_encyclopedia(
 
     mappings = {
         "geography": record.geography,
+        "environment": record.environment,
         "people_society": record.people_society,
         "culture": record.culture,
         "economy": record.economy,
