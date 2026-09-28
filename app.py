@@ -281,6 +281,19 @@ def _profile_card(
     ])
 
 
+def _report_filename_country(country_name: str) -> str:
+    """Return a filesystem-safe country slug for report downloads."""
+    normalized = (
+        str(country_name)
+        .strip()
+        .lower()
+        .replace("&", "and")
+    )
+    normalized = re.sub(r"[^a-z0-9]+", "_", normalized)
+    normalized = normalized.strip("_")
+    return normalized or "country"
+
+
 def build_pdf_report(
     report: dict[str, object],
     image: Image.Image,
@@ -1631,7 +1644,9 @@ def show_result(image: Image.Image):
         st.download_button(
             "Download PDF",
             data=build_pdf_report(report, image),
-            file_name="flag_recognition_report.pdf",
+            file_name=(
+                f"{_report_filename_country(decision_name)}_report.pdf"
+            ),
             mime="application/pdf",
             use_container_width=True,
         )
