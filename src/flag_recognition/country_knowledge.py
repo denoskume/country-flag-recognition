@@ -1480,6 +1480,24 @@ def enrich_from_encyclopedia(
         "health_system",
         demographics_url,
     )
+    if "health_system" not in record.people_society:
+        try:
+            health_sections, health_url = _dedicated_topic_sections(
+                canonical_title,
+                "Health",
+                timeout=timeout,
+            )
+            _set_context(
+                record.people_society,
+                "health_system",
+                health_sections,
+                "health_system",
+                health_url,
+                max_chars=2200,
+                max_blocks=6,
+            )
+        except (requests.RequestException, LookupError, ValueError):
+            pass
 
     # Culture detail: cuisine/music stay in the main culture context, while
     # festivals and heritage get their own learning blocks.
@@ -1558,6 +1576,43 @@ def enrich_from_encyclopedia(
         "administrative_divisions",
         source_url,
     )
+    if "administrative_divisions" not in record.government:
+        try:
+            admin_sections, admin_url = _dedicated_topic_sections(
+                canonical_title,
+                "Administrative divisions",
+                timeout=timeout,
+            )
+            _set_context(
+                record.government,
+                "administrative_divisions",
+                admin_sections,
+                "administrative_divisions",
+                admin_url,
+                max_chars=2200,
+                max_blocks=6,
+            )
+        except (requests.RequestException, LookupError, ValueError):
+            pass
+
+    if "context" not in record.international_relations:
+        try:
+            relations_sections, relations_url = _dedicated_topic_sections(
+                canonical_title,
+                "Foreign relations",
+                timeout=timeout,
+            )
+            _set_context(
+                record.international_relations,
+                "context",
+                relations_sections,
+                "international_relations",
+                relations_url,
+                max_chars=2200,
+                max_blocks=6,
+            )
+        except (requests.RequestException, LookupError, ValueError):
+            pass
 
     # Transport article improves ports, airports, road/rail information.
     try:
