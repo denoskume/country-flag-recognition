@@ -1483,7 +1483,10 @@ def resolve_emergency_numbers(
     current = str(profile_value or "").strip()
     if current and current != "Not available":
         try:
-            profile = get_country_profile_v2(country_code)
+            profile = get_country_profile_v2(
+                country_code,
+                schema_version=COUNTRY_PROFILE_SCHEMA_VERSION,
+            )
             calling_code = profile.calling_code
         except Exception:
             calling_code = ""
@@ -1499,7 +1502,10 @@ def resolve_emergency_numbers(
 
     if value != "Not available":
         try:
-            profile = get_country_profile_v2(country_code)
+            profile = get_country_profile_v2(
+                country_code,
+                schema_version=COUNTRY_PROFILE_SCHEMA_VERSION,
+            )
             calling_code = profile.calling_code
         except Exception:
             calling_code = ""
@@ -1514,7 +1520,10 @@ def resolve_emergency_numbers(
         value = "No national emergency number documented"
 
     try:
-        profile = get_country_profile_v2(country_code)
+        profile = get_country_profile_v2(
+                country_code,
+                schema_version=COUNTRY_PROFILE_SCHEMA_VERSION,
+            )
         calling_code = profile.calling_code
     except Exception:
         calling_code = ""
@@ -1525,7 +1534,8 @@ def resolve_emergency_numbers(
     )
 
 
-COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-28-v15"
+COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-28-v16"
+COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-28-v4"
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_country_profile_v2(
@@ -1661,9 +1671,14 @@ def _country_profile_payload(
 def get_country_intelligence_v2(
     country_code: str,
     similar_flags: tuple[str, ...] = (),
+    schema_version: str = COUNTRY_INTELLIGENCE_SCHEMA_VERSION,
 ):
     """Build and enrich a reusable source-aware country knowledge payload."""
-    profile = get_country_profile_v2(country_code)
+    _ = schema_version
+    profile = get_country_profile_v2(
+        country_code,
+        schema_version=COUNTRY_PROFILE_SCHEMA_VERSION,
+    )
     try:
         historical_profile = get_fresh_historical_profile(country_code)
     except Exception:
@@ -2156,7 +2171,10 @@ def show_result(image: Image.Image):
 
     if accepted:
         try:
-            profile = get_country_profile_v2(decision_code)
+            profile = get_country_profile_v2(
+                decision_code,
+                schema_version=COUNTRY_PROFILE_SCHEMA_VERSION,
+            )
 
             try:
                 historical_profile = get_fresh_historical_profile(
@@ -2401,6 +2419,7 @@ def show_result(image: Image.Image):
                 display_country_name(code)
                 for code, _ in display_candidates[1:5]
             ),
+                schema_version=COUNTRY_INTELLIGENCE_SCHEMA_VERSION,
             )
             intelligence = knowledge["intelligence"]
             completion = knowledge["completion"]
@@ -2647,7 +2666,10 @@ def show_result(image: Image.Image):
 
     if accepted:
         try:
-            profile = get_country_profile_v2(decision_code)
+            profile = get_country_profile_v2(
+                decision_code,
+                schema_version=COUNTRY_PROFILE_SCHEMA_VERSION,
+            )
             try:
                 historical_profile = get_fresh_historical_profile(
                     decision_code
@@ -2661,6 +2683,7 @@ def show_result(image: Image.Image):
                 display_country_name(code)
                 for code, _ in display_candidates[1:5]
             ),
+                schema_version=COUNTRY_INTELLIGENCE_SCHEMA_VERSION,
             )
             report["country_profile"] = knowledge["profile"]
             report["country_intelligence_v2"] = knowledge["intelligence"]
