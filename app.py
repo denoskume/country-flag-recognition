@@ -1121,6 +1121,8 @@ def build_pdf_report(
                         )
                     )
 
+        story.append(PageBreak())
+
         # 5. State Formation, identity and institutions
         sovereignty = info_grid(
             [
@@ -1168,6 +1170,8 @@ def build_pdf_report(
             context_value("government", "administrative_divisions"),
         )
 
+        story.append(PageBreak())
+
         # 6. People, society and culture
         add_learning_section(
             "People & Society",
@@ -1193,6 +1197,8 @@ def build_pdf_report(
             "Heritage, UNESCO & Major Landmarks",
             context_value("culture", "heritage_landmarks"),
         )
+
+        story.append(PageBreak())
 
         economy_summary = info_grid(
             [
@@ -1232,6 +1238,8 @@ def build_pdf_report(
             "Environment & Biodiversity",
             context_value("environment"),
         )
+
+        story.append(PageBreak())
 
         practical_rows: list[tuple[str, object]] = [
             ("Calling code", profile.get("calling_code")),
@@ -1535,7 +1543,7 @@ def resolve_emergency_numbers(
 
 
 COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-28-v16"
-COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-28-v4"
+COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-28-v5"
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_country_profile_v2(
@@ -1701,9 +1709,17 @@ def get_country_intelligence_v2(
         pass
 
     try:
+        canonical_fact = intelligence.identity.get(
+            "encyclopedia_title"
+        )
+        flag_country_name = (
+            str(canonical_fact.value)
+            if canonical_fact is not None
+            else profile.name
+        )
         intelligence.flag = enrich_flag_profile(
             intelligence.flag,
-            profile.name,
+            flag_country_name,
             similar_flags=similar_flags,
         )
     except (requests.RequestException, LookupError, ValueError):
