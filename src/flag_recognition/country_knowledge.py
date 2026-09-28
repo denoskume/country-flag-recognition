@@ -1451,46 +1451,47 @@ def enrich_from_encyclopedia(
     except (requests.RequestException, LookupError, ValueError):
         pass
 
-    # Dedicated geography/economy articles usually contain the physical
-    # details absent from the general country article.
-    geography_sections, geography_source_url = _dedicated_topic_sections(
-        canonical_title,
-        "Geography",
-        timeout=timeout,
-    )
-
-    physical_domains = {
-        "climate_seasons": ("climate_seasons", record.environment),
-        "rivers_lakes": ("rivers_lakes", record.geography),
-        "mountains_relief": ("mountains_relief", record.geography),
-        "natural_resources": ("natural_resources", record.environment),
-    }
-    for domain, (key, target) in physical_domains.items():
-        _set_strict_context(
-            target,
-            key,
-            geography_sections,
-            domain,
-            geography_source_url,
-            max_chars=2200,
-            max_blocks=6,
+    # Dedicated geography article. Keep this optional so a source failure
+    # cannot abort economy, transport, energy or the final report.
+    try:
+        geography_sections, geography_source_url = _dedicated_topic_sections(
+            canonical_title,
+            "Geography",
+            timeout=timeout,
         )
 
+        physical_domains = {
+            "climate_seasons": ("climate_seasons", record.environment),
+            "rivers_lakes": ("rivers_lakes", record.geography),
+            "mountains_relief": ("mountains_relief", record.geography),
+            "natural_resources": ("natural_resources", record.environment),
+        }
+        for domain, (key, target) in physical_domains.items():
+            _set_strict_context(
+                target,
+                key,
+                geography_sections,
+                domain,
+                geography_source_url,
+                max_chars=2200,
+                max_blocks=6,
+            )
 
-    # Keep a concise general physical-geography context as a fallback.
-    if geography_sections and geography_source_url:
-        environment_text = collect_domain_text_detailed(
-            geography_sections,
-            "geography",
-            max_chars=1600,
-            max_blocks=4,
-        )
-        environment_item = _domain_evidence(
-            environment_text,
-            geography_source_url,
-        )
-        if environment_item is not None:
-            record.environment["context"] = environment_item
+        if geography_sections and geography_source_url:
+            environment_text = collect_domain_text_detailed(
+                geography_sections,
+                "geography",
+                max_chars=1600,
+                max_blocks=4,
+            )
+            environment_item = _domain_evidence(
+                environment_text,
+                geography_source_url,
+            )
+            if environment_item is not None:
+                record.environment["context"] = environment_item
+    except (requests.RequestException, LookupError, ValueError):
+        pass
 
     economy_sections, economy_source_url = _dedicated_topic_sections(
         canonical_title,
