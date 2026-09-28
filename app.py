@@ -2110,13 +2110,8 @@ def evaluate_production_decision(
     return False, margin, "ambiguous"
 
 
-if not MODEL_PATH.is_file():
-    st.error(f"Model checkpoint not found: {MODEL_PATH}")
-    st.stop()
-
-
-bundle = get_model()
-deployment_threshold = get_deployment_threshold()
+bundle = None
+deployment_threshold = None
 
 st.markdown(
     build_flag_banner_html(),
@@ -2137,6 +2132,12 @@ with st.container(border=True):
     typed_country = ""
 
     if input_mode == "Flag image":
+        if not MODEL_PATH.is_file():
+            st.error(f"Model checkpoint not found: {MODEL_PATH}")
+        else:
+            bundle = get_model()
+            deployment_threshold = get_deployment_threshold()
+
         upload_col, preview_col = st.columns([1.35, 0.65], gap="medium")
 
         with upload_col:
@@ -2156,7 +2157,7 @@ with st.container(border=True):
             "Process image",
             type="primary",
             use_container_width=True,
-            disabled=image is None,
+            disabled=(image is None or bundle is None),
         )
     else:
         typed_country = st.text_input(
@@ -2249,27 +2250,28 @@ def show_result(
                 unsafe_allow_html=True,
             )
 
-        if accepted and input_mode_used == "image":
-            st.markdown(
-                '<div class="decision-ok">Accepted prediction</div>',
-                unsafe_allow_html=True,
-            )
-            if decision_code in VISUAL_EQUIVALENCE_GROUPS:
-                equivalents = ", ".join(
-                    code.upper()
-                    for code in sorted(
-                        VISUAL_EQUIVALENCE_GROUPS[decision_code]
+        if input_mode_used == "image":
+            if accepted:
+                st.markdown(
+                    '<div class="decision-ok">Accepted prediction</div>',
+                    unsafe_allow_html=True,
+                )
+                if decision_code in VISUAL_EQUIVALENCE_GROUPS:
+                    equivalents = ", ".join(
+                        code.upper()
+                        for code in sorted(
+                            VISUAL_EQUIVALENCE_GROUPS[decision_code]
+                        )
                     )
+                    st.caption(
+                        "Equivalent official flag labels merged: "
+                        + equivalents
+                    )
+            else:
+                st.markdown(
+                    '<div class="decision-no">Prediction remains ambiguous</div>',
+                    unsafe_allow_html=True,
                 )
-                st.caption(
-                    "Equivalent official flag labels merged: "
-                    + equivalents
-                )
-        else:
-            st.markdown(
-                '<div class="decision-no">Prediction remains ambiguous</div>',
-                unsafe_allow_html=True,
-            )
 
     ranking = pd.DataFrame(
         [
