@@ -3,6 +3,7 @@ from flag_recognition.flag_knowledge import (
     _collect,
     _extract_adoption,
     _extract_proportion,
+    _infobox_value,
     FLAG_SECTION_ALIASES,
 )
 
@@ -60,3 +61,21 @@ It was adopted on 3 December 1959 with a 2:3 width-to-length ratio.
     assert adoption.value == "3 December 1959"
     assert proportion is not None
     assert proportion.value == "2:3"
+
+
+def test_flag_infobox_fields_are_extracted_without_narrative_parser():
+    wikitext = """
+{{Infobox flag
+| Name = Republic of Côte d'Ivoire
+| proportion = 2:3
+| adoption = 3 December 1959
+| design = A vertical tricolour of orange, white, and green
+}}
+"""
+
+    assert _infobox_value(wikitext, "adoption") == "3 December 1959"
+    assert _infobox_value(wikitext, "proportion") == "2:3"
+    assert (
+        _infobox_value(wikitext, "design")
+        == "A vertical tricolour of orange, white, and green"
+    )
