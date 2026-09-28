@@ -121,6 +121,21 @@ def _infobox_value(wikitext: str, field: str) -> str:
         return ""
 
     value = match.group(1).strip()
+
+    start_date = re.fullmatch(
+        r"\{\{Start date(?: and age)?\|(\d{4})\|(\d{1,2})\|(\d{1,2})(?:\|[^{}]*)?\}\}",
+        value,
+        flags=re.IGNORECASE,
+    )
+    if start_date:
+        year, month, day = map(int, start_date.groups())
+        month_names = (
+            "January", "February", "March", "April", "May", "June",
+            "July", "August", "September", "October", "November", "December",
+        )
+        if 1 <= month <= 12:
+            return f"{day} {month_names[month - 1]} {year}"
+
     # Remove common wiki markup while preserving the factual text.
     value = re.sub(r"<ref[^>]*>.*?</ref>", "", value, flags=re.DOTALL)
     value = re.sub(r"<ref[^>]*/>", "", value)
