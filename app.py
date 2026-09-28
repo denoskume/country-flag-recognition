@@ -1137,6 +1137,27 @@ st.markdown(
             display: block;
         }
 
+        .result-preview-fixed {
+            width: 320px;
+            height: 240px;
+            border-radius: 14px;
+            background: #f7f7f8;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            margin: 0 auto;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        .result-preview-fixed img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+
         div[data-testid="stFileUploaderDropzone"]:hover {
             border-color: var(--blue);
             background: #f8fbff;
@@ -1243,6 +1264,26 @@ def render_fixed_upload_preview(
     )
 
 
+def render_fixed_result_preview(
+    image: Image.Image,
+) -> None:
+    """Render the dialog image in a fixed display area."""
+    buffer = BytesIO()
+    preview = image.copy().convert("RGB")
+    preview.save(buffer, format="JPEG", quality=92)
+    encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+
+    st.markdown(
+        (
+            '<div class="result-preview-fixed">'
+            f'<img src="data:image/jpeg;base64,{encoded}" '
+            'alt="Recognition input">'
+            '</div>'
+        ),
+        unsafe_allow_html=True,
+    )
+
+
 if not MODEL_PATH.is_file():
     st.error(f"Model checkpoint not found: {MODEL_PATH}")
     st.stop()
@@ -1303,7 +1344,7 @@ def show_result(image: Image.Image):
     preview_col, result_col = st.columns([.9, 1.1], gap="large")
 
     with preview_col:
-        st.image(image, use_container_width=True)
+        render_fixed_result_preview(image)
 
     with result_col:
         st.markdown(
