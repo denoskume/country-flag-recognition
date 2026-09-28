@@ -250,11 +250,17 @@ def draw_pdf_watermark(canvas, document) -> None:
     # ------------------------------------------------------------------
     # Footer
     # ------------------------------------------------------------------
-    canvas.setFillColor(colors.HexColor("#555555"))
-    canvas.setFont("Helvetica", 7.6)
+    canvas.setFillColor(colors.HexColor("#666666"))
+    canvas.setFont("Helvetica", 6.8)
     canvas.drawCentredString(
         (left + right) / 2,
-        15 * mm,
+        18 * mm,
+        "Sources: World Bank · Wikidata · REST Countries · Wikipedia · EmergencyNumberAPI",
+    )
+    canvas.setFont("Helvetica", 7.2)
+    canvas.drawCentredString(
+        (left + right) / 2,
+        13.5 * mm,
         f"© 2026 Flag Intelligence. All rights reserved. · Page {document.page}",
     )
 
@@ -766,8 +772,7 @@ def build_pdf_report(
                 title_style,
             ),
             Paragraph(
-                f"<b>Status:</b> {status}<br/>"
-                f"<b>Code:</b> {country_code}",
+                f"<b>Country code:</b> {country_code}",
                 ParagraphStyle(
                     "ReportStatusMeta",
                     parent=meta_style,
@@ -837,13 +842,16 @@ def build_pdf_report(
         intelligence = report.get("country_intelligence_v2")
         completion = report.get("country_intelligence_completion")
 
-        def context_value(section_name: str) -> str:
+        def context_value(
+            section_name: str,
+            key: str = "context",
+        ) -> str:
             if not isinstance(intelligence, dict):
                 return "Not available"
             section = intelligence.get(section_name)
             if not isinstance(section, dict):
                 return "Not available"
-            context = section.get("context")
+            context = section.get(key)
             if isinstance(context, dict):
                 return clean(context.get("value"))
             return "Not available"
@@ -904,10 +912,6 @@ def build_pdf_report(
                 ("Area", area_value),
                 ("Language(s)", profile.get("official_languages")),
                 ("Currency", profile.get("currency")),
-                ("National Day", profile.get("national_day")),
-                ("Calling code", profile.get("calling_code")),
-                ("Emergency", profile.get("emergency_numbers")),
-                ("Recognition confidence", f"{confidence:.2%}"),
             ],
             width_mm=REPORT_WIDTH_MM - 46.0,
         )
@@ -987,6 +991,30 @@ def build_pdf_report(
             section_box("Geography — Key Facts", geography),
             Spacer(1, 3 * mm),
         ])
+
+        climate_text = context_value("environment", "climate_seasons")
+        rivers_text = context_value("geography", "rivers_lakes")
+        relief_text = context_value("geography", "mountains_relief")
+        resources_text = context_value("environment", "natural_resources")
+
+        add_learning_section("Climate & Seasons", climate_text)
+        add_learning_section("Rivers, Lakes & Waterways", rivers_text)
+        add_learning_section("Mountains & Relief", relief_text)
+        add_learning_section("Natural Resources & Raw Materials", resources_text)
+
+        if all(
+            value == "Not available"
+            for value in (
+                climate_text,
+                rivers_text,
+                relief_text,
+                resources_text,
+            )
+        ):
+            add_learning_section(
+                "Physical Geography & Environment",
+                context_value("environment"),
+            )
 
         story.append(PageBreak())
 
@@ -1146,7 +1174,14 @@ def build_pdf_report(
             section_box("Economy — Key Metric", economy_summary),
             Spacer(1, 3 * mm),
         ])
-        add_learning_section("Economy & Trade", context_value("economy"))
+        add_learning_section(
+            "Economic Structure & Trade",
+            context_value("economy"),
+        )
+        add_learning_section(
+            "Economic Drivers, Industries & Exports",
+            context_value("economy", "economic_drivers"),
+        )
         add_learning_section(
             "Infrastructure & Transport",
             context_value("infrastructure"),
@@ -1154,10 +1189,6 @@ def build_pdf_report(
         add_learning_section(
             "Education, Science & Innovation",
             context_value("education_science"),
-        )
-        add_learning_section(
-            "Environment & Climate",
-            context_value("environment"),
         )
 
         practical_rows: list[tuple[str, object]] = [
@@ -1212,182 +1243,6 @@ def build_pdf_report(
                 Spacer(1, 3 * mm),
             ])
 
-        # 8. Coverage — strict criteria
-        if isinstance(completion, dict):
-            supported = sum(bool(value) for value in completion.values())
-            missing = [
-                key.replace("_", " ").title()
-                for key, value in completion.items()
-                if not value
-            ]
-            coverage_rows = [
-                ("Complete learning domains", f"{supported}/{len(completion)}"),
-                (
-                    "Still incomplete",
-                    ", ".join(missing) if missing else "None",
-                ),
-                (
-                    "Publication rule",
-                    "Unsupported or insufficient domains are omitted rather than fabricated.",
-                ),
-            ]
-            story.extend([
-                section_box(
-                    "Knowledge Coverage",
-                    info_grid(coverage_rows, two_pairs=False),
-                ),
-                Spacer(1, 3 * mm),
-            ])
-
-        # 9. Human-readable provenance
-        if isinstance(intelligence, dict):
-            source_records: list[tuple[str, str, str, str]] = []
-            seen_sources: set[tuple[str, str, str, str]] = set()
-
-            friendly_sections = {
-                "identity": "Country Identity",
-                "flag": "Flag Intelligence",
-                "geography": "Geography",
-                "origins": "Origins & Early History",
-                "historical_timeline": "Historical Journey",
-                "sovereignty": "State Formation & Sovereignty",
-                "national_identity": "National Identity",
-                "government": "Government & Institutions",
-                "people_society": "People & Society",
-                "culture": "Culture",
-                "economy": "Economy",
-                "infrastructure": "Infrastructure & Transport",
-                "education_science": "Education, Science & Innovation",
-                "environment": "Environment & Climate",
-                "practical": "Practical Information",
-                "emergency": "Emergency Information",
-                "international_relations": "International Relations",
-            }
-
-            def source_label(path: str) -> str:
-                root = re.split(r"[.[]", path, maxsplit=1)[0]
-                remainder = path[len(root):].strip(".")
-                if root in {"origins", "historical_timeline"}:
-                    return friendly_sections[root]
-                if root == "flag":
-                    if "symbolism" in path:
-                        return "Flag Meaning & Symbolism"
-                    if "design_origin" in path:
-                        return "Flag Design & Construction"
-                    if "historical_flags" in path:
-                        return "Flag History"
-                    return "Flag Intelligence"
-                if remainder.endswith("context") or remainder == "context":
-                    return friendly_sections.get(root, root.replace("_", " ").title())
-
-                key = re.sub(r"\[\d+\]", "", remainder.split(".")[-1])
-                special = {
-                    "gdp_current_usd": "GDP (current US$)",
-                    "head_of_state": "Head of State",
-                    "head_of_government": "Head of Government",
-                    "national_day": "National Day",
-                    "national_motto": "National Motto",
-                    "national_anthem": "National Anthem",
-                    "international_organizations": "International Organizations",
-                    "calling_code": "Calling Code",
-                    "internet_domain": "Internet Domain",
-                    "driving_side": "Driving Side",
-                    "area_km2": "Area",
-                }
-                return special.get(key, key.replace("_", " ").title())
-
-            def collect_sources(node: object, path: str = "") -> None:
-                if isinstance(node, dict):
-                    source = node.get("source")
-                    reference = node.get("reference_year")
-                    verified = node.get("retrieved_at")
-
-                    if source:
-                        record = (
-                            source_label(path or "source"),
-                            str(source),
-                            str(reference or "—"),
-                            str(verified or "—"),
-                        )
-                        if record not in seen_sources:
-                            seen_sources.add(record)
-                            source_records.append(record)
-
-                    sources = node.get("sources")
-                    if isinstance(sources, list) and sources:
-                        for source_name in sources:
-                            record = (
-                                source_label(path or "history"),
-                                str(source_name),
-                                str(node.get("period") or "—"),
-                                "—",
-                            )
-                            if record not in seen_sources:
-                                seen_sources.add(record)
-                                source_records.append(record)
-
-                    for child_key, child_value in node.items():
-                        if child_key in {
-                            "source", "source_url", "reference_year",
-                            "retrieved_at", "sources", "source_urls",
-                            "confidence", "status",
-                        }:
-                            continue
-                        child_path = f"{path}.{child_key}" if path else str(child_key)
-                        collect_sources(child_value, child_path)
-
-                elif isinstance(node, list):
-                    for index, child in enumerate(node):
-                        collect_sources(child, f"{path}[{index}]")
-
-            collect_sources(intelligence)
-
-            if source_records:
-                provenance_data: list[list[object]] = [[
-                    Paragraph("Field / domain", label_style),
-                    Paragraph("Source", label_style),
-                    Paragraph("Reference", label_style),
-                    Paragraph("Last verified", label_style),
-                ]]
-                for label, source, reference, verified in source_records[:38]:
-                    provenance_data.append([
-                        Paragraph(label, value_style),
-                        Paragraph(source, value_style),
-                        Paragraph(reference, value_style),
-                        Paragraph(verified, value_style),
-                    ])
-
-                provenance = Table(
-                    provenance_data,
-                    colWidths=[
-                        58 * mm,
-                        46 * mm,
-                        28 * mm,
-                        (REPORT_WIDTH_MM - 132.0) * mm,
-                    ],
-                    repeatRows=1,
-                )
-                provenance.setStyle(
-                    TableStyle([
-                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F0F1F3")),
-                        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#777777")),
-                        ("INNERGRID", (0, 0), (-1, -1), 0.2, colors.HexColor("#DDDDDD")),
-                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                        ("LEFTPADDING", (0, 0), (-1, -1), 4),
-                        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-                        ("TOPPADDING", (0, 0), (-1, -1), 3),
-                        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-                    ])
-                )
-                story.extend(split_section("Sources & Data Freshness", provenance))
-                story.append(
-                    Paragraph(
-                        "Source links and full field-level provenance are available "
-                        "in the JSON export.",
-                        small_style,
-                    )
-                )
-                story.append(Spacer(1, 3 * mm))
 
 
     else:
