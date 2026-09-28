@@ -1493,67 +1493,70 @@ def enrich_from_encyclopedia(
     except (requests.RequestException, LookupError, ValueError):
         pass
 
-    economy_sections, economy_source_url = _dedicated_topic_sections(
-        canonical_title,
-        "Economy",
-        timeout=timeout,
-    )
-    if economy_sections and economy_source_url:
-        _set_strict_context(
-            record.economy,
-            "economic_drivers",
-            economy_sections,
-            "economic_drivers",
-            economy_source_url,
-            max_chars=2400,
-            max_blocks=7,
+    try:
+        economy_sections, economy_source_url = _dedicated_topic_sections(
+            canonical_title,
+            "Economy",
+            timeout=timeout,
         )
-
-        structured_economy, structured_economy_url = (
-            _structured_economy_context(
-                canonical_title,
-                timeout=timeout,
-            )
-        )
-        if structured_economy:
-            existing = record.economy.get("economic_drivers")
-            combined = structured_economy
-            if existing is not None and str(existing.value).strip():
-                combined = (
-                    f"{existing.value}\n\n{structured_economy}"
-                )
-            record.economy["economic_drivers"] = _domain_evidence(
-                combined[:3200],
-                structured_economy_url or economy_source_url,
-            )
-
-        # Some countries describe mineral/agricultural resources primarily in
-        # the Economy article rather than in Geography.
-        if "natural_resources" not in record.environment:
+        if economy_sections and economy_source_url:
             _set_strict_context(
-                record.environment,
-                "natural_resources",
+                record.economy,
+                "economic_drivers",
                 economy_sections,
-                "natural_resources",
+                "economic_drivers",
                 economy_source_url,
-                max_chars=1800,
-                max_blocks=5,
+                max_chars=2400,
+                max_blocks=7,
             )
 
-    if "natural_resources" not in record.environment:
-        structured_resources, structured_resources_url = (
-            _structured_geography_resources(
-                canonical_title,
-                timeout=timeout,
+            structured_economy, structured_economy_url = (
+                _structured_economy_context(
+                    canonical_title,
+                    timeout=timeout,
+                )
             )
-        )
-        if structured_resources:
-            resource_item = _domain_evidence(
-                structured_resources,
-                structured_resources_url,
+            if structured_economy:
+                existing = record.economy.get("economic_drivers")
+                combined = structured_economy
+                if existing is not None and str(existing.value).strip():
+                    combined = (
+                        f"{existing.value}\n\n{structured_economy}"
+                    )
+                record.economy["economic_drivers"] = _domain_evidence(
+                    combined[:3200],
+                    structured_economy_url or economy_source_url,
+                )
+
+            # Some countries describe mineral/agricultural resources primarily in
+            # the Economy article rather than in Geography.
+            if "natural_resources" not in record.environment:
+                _set_strict_context(
+                    record.environment,
+                    "natural_resources",
+                    economy_sections,
+                    "natural_resources",
+                    economy_source_url,
+                    max_chars=1800,
+                    max_blocks=5,
+                )
+
+        if "natural_resources" not in record.environment:
+            structured_resources, structured_resources_url = (
+                _structured_geography_resources(
+                    canonical_title,
+                    timeout=timeout,
+                )
             )
-            if resource_item is not None:
-                record.environment["natural_resources"] = resource_item
+            if structured_resources:
+                resource_item = _domain_evidence(
+                    structured_resources,
+                    structured_resources_url,
+                )
+                if resource_item is not None:
+                    record.environment["natural_resources"] = resource_item
+    except (requests.RequestException, LookupError, ValueError):
+        pass
 
     if history_text:
         compact_history = " ".join(
