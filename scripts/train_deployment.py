@@ -23,6 +23,7 @@ from flag_recognition.model import build_classifier
 from flag_recognition.splits import is_canonical_variant
 from flag_recognition.transforms import (
     build_eval_transform,
+    build_generalization_train_transform,
     build_train_transform,
 )
 
@@ -137,7 +138,14 @@ def evaluate(
 ) -> tuple[float, np.ndarray, np.ndarray]:
     model.eval()
 
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(
+        label_smoothing=float(
+            training_cfg.get(
+                "label_smoothing",
+                0.0,
+            )
+        )
+    )
 
     losses: list[float] = []
     probabilities: list[np.ndarray] = []
@@ -228,12 +236,26 @@ def main() -> None:
         for index, country in enumerate(classes)
     }
 
+    augmentation_profile = str(
+        config.get("training", {}).get(
+            "augmentation_profile",
+            "standard",
+        )
+    ).lower()
+
+    if augmentation_profile == "generalization":
+        train_transform = build_generalization_train_transform(
+            image_size
+        )
+    else:
+        train_transform = build_train_transform(
+            image_size
+        )
+
     train_dataset = FlagManifestDataset(
         train_manifest,
         class_to_index=class_to_index,
-        transform=build_train_transform(
-            image_size
-        ),
+        transform=train_transform,
     )
     validation_dataset = FlagManifestDataset(
         validation_manifest,
@@ -307,6 +329,20 @@ def main() -> None:
         ),
         weight_decay=float(
             training_cfg["weight_decay"]
+        ),
+    )
+
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer,
+        T_max=max(
+            1,
+            int(training_cfg["epochs"]),
+        ),
+        eta_min=float(
+            training_cfg.get(
+                "minimum_learning_rate",
+                1e-6,
+            )
         ),
     )
 
@@ -406,6 +442,8 @@ def main() -> None:
             f"val_macro_f1={validation_f1:.4f}"
         )
 
+        scheduler.step()
+
         if validation_f1 > best_f1:
             best_f1 = validation_f1
             epochs_without_improvement = 0
@@ -476,6 +514,7 @@ def main() -> None:
             ),
             "validation_macro_f1": best_f1,
             "seed": seed,
+            "augmentation_profile": augmentation_profile,
             "training_scope": (
                 "worldwide_250_class_scene_aware"
                 if scene_to_images
