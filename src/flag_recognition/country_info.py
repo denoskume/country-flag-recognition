@@ -76,6 +76,7 @@ class CountryProfile:
     head_of_government_office: str
     area_km2: float | None
     calling_code: str
+    emergency_numbers: str
     internet_domain: str
     driving_side: str
     latitude: float | None
@@ -1118,6 +1119,86 @@ def _extract_national_day_from_overview(
     return "Not available"
 
 
+def fetch_emergency_numbers(
+    code: str,
+    timeout: float = 12.0,
+) -> str:
+    """Fetch emergency telephone numbers from Wikidata."""
+    selector = _country_selector(code)
+
+    query = f"""
+    SELECT DISTINCT
+      ?emergencyNumber
+      ?emergencyNumberLabel
+      ?telephone
+    WHERE {{
+      {selector}
+      ?country wdt:P2852 ?emergencyNumber.
+      OPTIONAL {{
+        ?emergencyNumber wdt:P1329 ?telephone.
+      }}
+      SERVICE wikibase:label {{
+        bd:serviceParam wikibase:language "en".
+      }}
+    }}
+    ORDER BY ?telephone ?emergencyNumberLabel
+    """
+
+    response = requests.get(
+        WIKIDATA_ENDPOINT,
+        params={"query": query, "format": "json"},
+        headers={
+            "Accept": "application/sparql-results+json",
+            "User-Agent": (
+                "country-flag-recognition/0.1 "
+                "(educational portfolio project)"
+            ),
+        },
+        timeout=timeout,
+    )
+    response.raise_for_status()
+
+    bindings = (
+        response.json()
+        .get("results", {})
+        .get("bindings", [])
+    )
+
+    numbers: list[str] = []
+
+    for row in bindings:
+        telephone = (
+            row.get("telephone", {})
+            .get("value", "")
+            .strip()
+        )
+        label = (
+            row.get("emergencyNumberLabel", {})
+            .get("value", "")
+            .strip()
+        )
+
+        value = telephone or label
+
+        # Avoid exposing raw Wikidata entity identifiers/URLs.
+        if (
+            not value
+            or value.startswith("http://")
+            or value.startswith("https://")
+            or re.fullmatch(r"Q\d+", value)
+        ):
+            continue
+
+        if value not in numbers:
+            numbers.append(value)
+
+    return (
+        ", ".join(numbers)
+        if numbers
+        else "Not available"
+    )
+
+
 def fetch_country_profile(
     code: str,
     timeout: float = 12.0,
@@ -1218,6 +1299,18 @@ def fetch_country_profile(
         LookupError,
     ):
         largest_cities = "Not available"
+
+    try:
+        emergency_numbers = fetch_emergency_numbers(
+            code,
+            timeout=timeout,
+        )
+    except (
+        requests.RequestException,
+        ValueError,
+        LookupError,
+    ):
+        emergency_numbers = "Not available"
 
     try:
         overview = (
@@ -1386,6 +1479,7 @@ def fetch_country_profile(
                 "calling_code"
             ]
         ),
+        emergency_numbers=emergency_numbers,
         internet_domain=internet_domain,
         driving_side=str(
             wikidata[
