@@ -75,6 +75,7 @@ SECTION_ALIASES: dict[str, tuple[str, ...]] = {
     "heritage_landmarks": (
         "world heritage", "unesco", "heritage", "architecture",
         "landmarks", "tourist attractions", "monuments",
+        "list of sites", "location of sites",
     ),
     "notable_people": (
         "notable people", "notable persons", "people",
@@ -329,6 +330,63 @@ def _clean_wikivalue(value: str) -> str:
     text = text.replace("<br />", "; ").replace("<br/>", "; ")
     text = text.replace("&nbsp;", " ")
     return " ".join(text.split()).strip(" ;,")
+
+
+def split_wikitext_sections_detailed(
+    wikitext: str,
+) -> list[ArticleSection]:
+    """Split MediaWiki source into clean section records with stable headings."""
+    heading_re = re.compile(
+        r"^(={2,6})\s*(.+?)\s*\1\s*$",
+        re.MULTILINE,
+    )
+    matches = list(heading_re.finditer(wikitext))
+
+    def clean_body(body: str) -> str:
+        body = re.sub(r"<!--.*?-->", "", body, flags=re.DOTALL)
+        body = re.sub(r"<ref[^>]*>.*?</ref>", "", body, flags=re.DOTALL)
+        body = re.sub(r"<ref[^>]*/>", "", body)
+        body = re.sub(
+            r"\[\[([^\]|]+)\|([^\]]+)\]\]",
+            r"\2",
+            body,
+        )
+        body = re.sub(r"\[\[([^\]]+)\]\]", r"\1", body)
+        body = re.sub(r"\{\{[^{}]*\}\}", "", body)
+        body = re.sub(r"''+", "", body)
+        body = re.sub(r"<[^>]+>", "", body)
+        body = re.sub(r"\{\|.*?\|\}", "", body, flags=re.DOTALL)
+        return " ".join(body.split()).strip()
+
+    if not matches:
+        cleaned = clean_body(wikitext)
+        return (
+            [ArticleSection("overview", 1, cleaned)]
+            if cleaned
+            else []
+        )
+
+    sections: list[ArticleSection] = []
+    lead = clean_body(wikitext[: matches[0].start()])
+    if lead:
+        sections.append(ArticleSection("overview", 1, lead))
+
+    for index, match in enumerate(matches):
+        start = match.end()
+        end = (
+            matches[index + 1].start()
+            if index + 1 < len(matches)
+            else len(wikitext)
+        )
+        body = clean_body(wikitext[start:end])
+        sections.append(
+            ArticleSection(
+                heading=match.group(2).strip(),
+                level=len(match.group(1)),
+                body=body,
+            )
+        )
+    return sections
 
 
 def _infobox_field(
@@ -946,7 +1004,7 @@ def _dedicated_topic_sections(
     *,
     timeout: float,
 ) -> tuple[list[ArticleSection], str]:
-    """Return a dedicated topic article only; never substitute general country text."""
+    """Return a dedicated topic page with headings preserved from wikitext."""
     article = fetch_topic_article(
         country_name,
         topic,
@@ -956,13 +1014,23 @@ def _dedicated_topic_sections(
         return [], ""
 
     text, title = article
-    return (
-        split_article_sections_detailed(text),
-        WIKIPEDIA_PAGE + quote(
-            title.replace(" ", "_"),
-            safe="()_-",
-        ),
+    source_url = WIKIPEDIA_PAGE + quote(
+        title.replace(" ", "_"),
+        safe="()_-",
     )
+
+    try:
+        wikitext = _fetch_topic_wikitext(
+            title,
+            timeout=timeout,
+        )
+        sections = split_wikitext_sections_detailed(wikitext)
+        if sections:
+            return sections, source_url
+    except (requests.RequestException, ValueError, LookupError):
+        pass
+
+    return split_article_sections_detailed(text), source_url
 
 
 def enrich_from_encyclopedia(
@@ -1177,21 +1245,25 @@ def enrich_from_encyclopedia(
         culture_url,
     )
     if "heritage_landmarks" not in record.culture:
-        heritage_sections, heritage_url = _topic_sections(
+        heritage_sections, heritage_url = _dedicated_topic_sections(
             canonical_title,
             "World Heritage Sites",
-            detailed,
-            source_url,
             timeout=timeout,
         )
+        if not heritage_sections and record.name != canonical_title:
+            heritage_sections, heritage_url = _dedicated_topic_sections(
+                record.name,
+                "World Heritage Sites",
+                timeout=timeout,
+            )
         _set_context(
             record.culture,
             "heritage_landmarks",
             heritage_sections,
             "heritage_landmarks",
             heritage_url,
-            max_chars=1800,
-            max_blocks=6,
+            max_chars=2200,
+            max_blocks=8,
         )
     _set_context(
         record.culture,
