@@ -1804,7 +1804,10 @@ def _country_profile_payload(
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def get_country_intelligence_v2(\n    country_code: str,\n    similar_flags: tuple[str, ...] = (),\n):
+def get_country_intelligence_v2(
+    country_code: str,
+    similar_flags: tuple[str, ...] = (),
+):
     """Build and enrich a reusable source-aware country knowledge payload."""
     profile = get_country_profile_v2(country_code)
     try:
