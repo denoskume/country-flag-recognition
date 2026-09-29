@@ -4608,14 +4608,13 @@ def show_result(
                 )
                 if qa_issues:
                     st.warning(
-                        "Official PDF withheld: final factual/editorial "
-                        "verification did not pass. "
+                        "PDF unavailable because a concrete quality issue remains. "
                         + " | ".join(str(item) for item in qa_issues[:5])
                     )
                 else:
                     st.warning(
-                        "The report could not be fully verified for publication. "
-                        "Please try again."
+                        "Report generation is temporarily unavailable. "
+                        "Please retry."
                     )
 
 
