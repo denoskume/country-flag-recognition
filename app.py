@@ -761,6 +761,33 @@ def _build_pdf_report_uncached(
         text = re.sub(r"\s+", " ", text).strip(" ;|")
         return text or "Not available"
 
+    def professional_date(value: object) -> str:
+        """Render full calendar dates in an unambiguous professional English style."""
+        text = clean(value)
+        if text == "Not available":
+            return text
+
+        months = [
+            "January", "February", "March", "April", "May", "June",
+            "July", "August", "September", "October", "November", "December",
+        ]
+
+        def repl(match: re.Match) -> str:
+            day = int(match.group(1))
+            month = int(match.group(2))
+            year = match.group(3)
+            if 1 <= month <= 12:
+                return f"{day} {months[month - 1]} {year}"
+            return match.group(0)
+
+        # Convert numeric D/M/YYYY or DD/MM/YYYY dates.
+        text = re.sub(
+            r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b",
+            repl,
+            text,
+        )
+        return text
+
     def paragraph(value: object, style=body_style) -> Paragraph:
         return Paragraph(xml_escape(clean(value)), style)
 
@@ -1784,7 +1811,11 @@ def _build_pdf_report_uncached(
                 flag_overview_flowables: list[object] = []
                 if flag_rows:
                     adoption_value = next(
-                        (clean(v) for k, v in flag_rows if k == "Adoption"),
+                        (
+                            professional_date(v)
+                            for k, v in flag_rows
+                            if k == "Adoption"
+                        ),
                         None,
                     )
                     proportion_value = next(
@@ -1919,7 +1950,12 @@ def _build_pdf_report_uncached(
 
         colonial_power = fact_value(profile.get("former_colonial_powers"))
         sovereignty_status = fact_value(profile.get("colonial_period"))
-        sovereignty_date = fact_value(profile.get("independence_day"))
+        sovereignty_date_raw = fact_value(profile.get("independence_day"))
+        sovereignty_date = (
+            professional_date(sovereignty_date_raw)
+            if sovereignty_date_raw
+            else None
+        )
         independence_figure = fact_value(profile.get("independence_leader"))
 
         sovereignty_sentences: list[str] = []
