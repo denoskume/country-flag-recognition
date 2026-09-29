@@ -53,6 +53,24 @@ PDF_CONTENT_WIDTH_MM = (
 )
 PDF_CONTENT_LEFT_MM = PDF_MARGIN_MM + PDF_FRAME_PADDING_MM
 
+# ---------------------------------------------------------------------------
+# Global PDF design rules — single source of truth for every country report.
+# ---------------------------------------------------------------------------
+PDF_FRONT_MATTER_PAGES = 2  # Cover + Contents
+PDF_BODY_FONT_SIZE = 10.5
+PDF_BODY_LEADING = 14.0
+PDF_TOC_FONT_SIZE = 10.5
+PDF_TOC_LEADING = 14.5
+PDF_CHAPTER_FONT_SIZE = 14.5
+PDF_CHAPTER_LEADING = 17.5
+PDF_SECTION_FONT_SIZE = 11.2
+PDF_SECTION_LEADING = 13.5
+PDF_SNAPSHOT_LABEL_FONT_SIZE = 8.0
+PDF_SNAPSHOT_LABEL_LEADING = 9.5
+PDF_SNAPSHOT_VALUE_FONT_SIZE = 10.0
+PDF_SNAPSHOT_VALUE_LEADING = 12.0
+PDF_COVER_MAP_HEIGHT_MM = 70.0
+
 ROOT_DIR = Path(__file__).resolve().parent
 SRC_DIR = ROOT_DIR / "src"
 if str(SRC_DIR) not in sys.path:
@@ -434,12 +452,12 @@ def draw_pdf_watermark(canvas, document) -> None:
     )
     canvas.setFont("Helvetica", 7.2)
     physical_page = int(getattr(document, "page", 1))
-    if physical_page <= 2:
+    if physical_page <= PDF_FRONT_MATTER_PAGES:
         footer_text = (
             "© 2026 Flag Intelligence · Version 0.1.0 · All rights reserved."
         )
     else:
-        logical_page = physical_page - 2
+        logical_page = physical_page - PDF_FRONT_MATTER_PAGES
         footer_text = (
             "© 2026 Flag Intelligence · Version 0.1.0 · All rights reserved. "
             f"· Page {logical_page}"
@@ -462,7 +480,10 @@ class FlagIntelligenceDocTemplate(SimpleDocTemplate):
             style_name = getattr(flowable.style, "name", "")
             if style_name == "ChapterTitle":
                 # Front page + Contents are unnumbered front matter.
-                logical_page = max(int(self.page) - 2, 1)
+                logical_page = max(
+                    int(self.page) - PDF_FRONT_MATTER_PAGES,
+                    1,
+                )
                 self.notify(
                     "TOCEntry",
                     (0, flowable.getPlainText(), logical_page),
@@ -744,7 +765,7 @@ def _build_pdf_location_map(
 
     pdf_map = PDFImage(BytesIO(map_bytes))
     pdf_map.drawWidth = (PDF_CONTENT_WIDTH_MM - 4.0) * mm
-    pdf_map.drawHeight = 82 * mm
+    pdf_map.drawHeight = PDF_COVER_MAP_HEIGHT_MM * mm
     return pdf_map
 
 
@@ -1123,6 +1144,27 @@ def _build_pdf_report_uncached(
         text = re.sub(r"\s*\|\s*", " · ", text)
         text = re.sub(r"\s*;\s*", "; ", text)
         return re.sub(r"\s+", " ", text).strip()
+
+    def primary_internet_domain(value: object) -> str:
+        """
+        Keep the cover compact and universally renderable by selecting the
+        primary ASCII country-code domain from any multilingual domain list.
+        """
+        text = clean(value)
+        if text == "Not available":
+            return text
+        candidates = re.findall(r"\.[A-Za-z0-9-]{2,}", text)
+        if candidates:
+            # Prefer a conventional two-letter ccTLD where available.
+            two_letter = [
+                domain
+                for domain in candidates
+                if re.fullmatch(r"\.[A-Za-z]{2}", domain)
+            ]
+            return two_letter[0] if two_letter else candidates[0]
+        # Avoid unsupported native-script glyphs in the compact cover cell.
+        ascii_text = text.encode("ascii", "ignore").decode("ascii").strip(" ,")
+        return ascii_text or "Not available"
 
     def paragraph(value: object, style=body_style) -> Paragraph:
         return Paragraph(xml_escape(clean(value)), style)
@@ -1802,12 +1844,18 @@ def _build_pdf_report_uncached(
             [
                 ("LANGUAGE(S)", profile.get("official_languages")),
                 ("CURRENCY", profile.get("currency")),
-                ("NATIONAL DAY", profile.get("national_day")),
+                (
+                    "NATIONAL DAY",
+                    professional_date(profile.get("national_day")),
+                ),
             ],
             [
                 ("CALLING CODE", profile.get("calling_code")),
                 ("DRIVING SIDE", profile.get("driving_side")),
-                ("INTERNET DOMAIN", profile.get("internet_domain")),
+                (
+                    "INTERNET DOMAIN",
+                    primary_internet_domain(profile.get("internet_domain")),
+                ),
             ],
         ]
 
@@ -1941,7 +1989,7 @@ def _build_pdf_report_uncached(
         )
         if location_map is not None:
             # Use remaining cover space efficiently while keeping the map readable.
-            location_map.drawHeight = 86 * mm
+            location_map.drawHeight = PDF_COVER_MAP_HEIGHT_MM * mm
             location_content = Table(
                 [[location_map]],
                 colWidths=[REPORT_WIDTH_MM * mm],
@@ -2065,7 +2113,7 @@ def _build_pdf_report_uncached(
         geography_narrative: list[str] = []
         if largest_cities:
             geography_narrative.append(
-                f"France's urban geography is centred on {largest_cities}, "
+                f"{decision}'s urban geography is centred on {largest_cities}, "
                 f"which form the principal population and economic centres."
             )
         if highest_point and lowest_point:
@@ -2474,7 +2522,7 @@ def _build_pdf_report_uncached(
                     heritage_sentences.append(
                         _list_to_sentence(
                             cleaned_summary,
-                            "France's major heritage sites include",
+                            f"{decision}'s major heritage sites include",
                         )
                     )
                 else:
@@ -2647,7 +2695,9 @@ def _build_pdf_report_uncached(
             else None
         )
         driving_side = fact_value(profile.get("driving_side"))
-        internet_domain = fact_value(profile.get("internet_domain"))
+        internet_domain = fact_value(
+            primary_internet_domain(profile.get("internet_domain"))
+        )
         time_zones = fact_value(profile.get("timezones"))
 
         practical_sentences: list[str] = []
