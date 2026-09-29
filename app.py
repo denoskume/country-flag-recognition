@@ -733,7 +733,22 @@ def _build_pdf_report_uncached(
             text,
             flags=re.IGNORECASE,
         )
+        # Remove residual MediaWiki templates, including malformed/nested
+        # convert/efn fragments that occasionally survive source extraction.
+        text = re.sub(
+            r"\{\{\s*convert\|([^|{}]+)\|([^|{}]+)[^\n;]*",
+            lambda m: f"{m.group(1)} {m.group(2)}",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(
+            r"\{\{\s*efn\|?[^\n]*",
+            " ",
+            text,
+            flags=re.IGNORECASE,
+        )
         text = re.sub(r"\{\{[^{}]*\}\}", " ", text)
+        text = re.sub(r"\{\{|\}\}", " ", text)
         text = re.sub(
             r"\bthumb\|[^.]*?(?=(?:[A-Z][a-z]+\s|The\s|In\s|France\s|Renewable\s|Climate\s|$))",
             " ",
@@ -1153,26 +1168,108 @@ def _build_pdf_report_uncached(
                 return clean(context.get("value"))
             return "Not available"
 
+        def _normalize_sentence(text: str) -> str:
+            """Normalize scraped prose into report-ready sentence text."""
+            value = clean(text)
+            if value == "Not available":
+                return ""
+            value = re.sub(r"^[*•\-]+\s*", "", value)
+            value = re.sub(r"\s*\|\s*", ", ", value)
+            value = re.sub(r"\s*;\s*", "; ", value)
+            value = re.sub(r"\s+", " ", value).strip(" ;,")
+            if value and value[-1] not in ".!?":
+                value += "."
+            return value
+
         def learning_flowables(text: object) -> list[object]:
+            """
+            Convert source fragments into readable report prose.
+
+            Small source headings such as 'Climate', 'Longest river',
+            'Natural resources', 'Education', etc. are treated as metadata,
+            not as visual subheadings. Their content is merged into prose.
+            Only genuinely multi-topic sections retain internal headings.
+            """
             blocks = _learning_blocks(text)
             if not blocks:
                 return []
 
-            flowables: list[object] = []
-            for heading, summary in blocks[:8]:
-                cleaned_summary = clean(summary)
-                if cleaned_summary == "Not available":
+            generic_headings = {
+                "overview", "climate", "longest river", "largest lake",
+                "natural resources", "design", "symbolism", "prehistory",
+                "demographics", "languages", "religion", "education",
+                "transport", "railways", "roads", "electricity", "economy",
+                "industry", "art", "world heritage sites",
+                "regional customs and traditions", "foreign relations",
+                "administrative divisions",
+            }
+
+            prepared: list[tuple[str, str]] = []
+            for heading, summary in blocks[:12]:
+                cleaned_summary = _normalize_sentence(summary)
+                if not cleaned_summary:
                     continue
-                if heading and heading.lower() != "overview":
+                cleaned_heading = clean(heading) if heading else ""
+                prepared.append((cleaned_heading, cleaned_summary))
+
+            if not prepared:
+                return []
+
+            # If the section is composed of small metadata-like fragments,
+            # merge them into one or two natural paragraphs.
+            informative_headings = [
+                h for h, _ in prepared
+                if h and h.lower() not in generic_headings
+            ]
+
+            if len(informative_headings) <= 1:
+                sentences: list[str] = []
+                for heading, summary in prepared:
+                    h = heading.strip()
+                    if h and h.lower() not in generic_headings:
+                        sentences.append(f"{h}: {summary}")
+                    else:
+                        sentences.append(summary)
+
+                # Keep paragraphs readable instead of producing one giant block.
+                paragraphs: list[object] = []
+                chunk: list[str] = []
+                char_count = 0
+                for sentence in sentences:
+                    chunk.append(sentence)
+                    char_count += len(sentence)
+                    if char_count >= 650:
+                        paragraphs.append(
+                            Paragraph(
+                                xml_escape(" ".join(chunk)),
+                                body_style,
+                            )
+                        )
+                        chunk = []
+                        char_count = 0
+                if chunk:
+                    paragraphs.append(
+                        Paragraph(
+                            xml_escape(" ".join(chunk)),
+                            body_style,
+                        )
+                    )
+                return paragraphs
+
+            # Preserve only meaningful internal structure when the source
+            # genuinely contains several distinct topics.
+            flowables: list[object] = []
+            for heading, summary in prepared:
+                if heading and heading.lower() not in generic_headings:
                     flowables.append(
                         Paragraph(
-                            xml_escape(clean(heading)),
+                            xml_escape(heading),
                             narrative_subheading_style,
                         )
                     )
                 flowables.append(
                     Paragraph(
-                        xml_escape(cleaned_summary),
+                        xml_escape(summary),
                         body_style,
                     )
                 )
@@ -1455,14 +1552,42 @@ def _build_pdf_report_uncached(
         # 2. Geography & Environment
         story.extend(chapter_heading(2, "Geography & Environment"))
 
-        geography_sentences = [
-            sentence_for("Largest cities", profile.get("largest_cities")),
-            sentence_for("Bordering countries", profile.get("borders")),
-            sentence_for("Time zones", profile.get("timezones")),
-            sentence_for("Highest point", profile.get("highest_point")),
-            sentence_for("Lowest point", profile.get("lowest_point")),
-            sentence_for("Country reference coordinates", coordinates),
-        ]
+        largest_cities = fact_value(profile.get("largest_cities"))
+        borders = fact_value(profile.get("borders"))
+        timezones = fact_value(profile.get("timezones"))
+        highest_point = fact_value(profile.get("highest_point"))
+        lowest_point = fact_value(profile.get("lowest_point"))
+
+        geography_sentences: list[str] = []
+        if largest_cities:
+            geography_sentences.append(
+                f"The country's largest cities include {largest_cities}."
+            )
+        if borders:
+            geography_sentences.append(
+                f"It shares land borders with {borders}."
+            )
+        if timezones:
+            geography_sentences.append(
+                f"Its listed time zone information is {timezones}."
+            )
+        if highest_point and lowest_point:
+            geography_sentences.append(
+                f"The highest point is {highest_point}, while the lowest point "
+                f"is {lowest_point}."
+            )
+        elif highest_point:
+            geography_sentences.append(
+                f"The highest point is {highest_point}."
+            )
+        elif lowest_point:
+            geography_sentences.append(
+                f"The lowest point is {lowest_point}."
+            )
+        if coordinates != "Not available":
+            geography_sentences.append(
+                f"The country reference coordinates are {coordinates}."
+            )
         geography_facts = readable_fact_paragraph(
             [sentence for sentence in geography_sentences if sentence]
         )
