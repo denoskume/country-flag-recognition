@@ -3701,7 +3701,7 @@ def _build_pdf_report_uncached(
     return buffer.getvalue()
 
 
-REPORT_WRITER_CACHE_VERSION = "2026-09-29-r28"
+REPORT_WRITER_CACHE_VERSION = "2026-09-29-r29"
 
 def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
     """Build a complete local report when the external writer is unavailable."""
@@ -4865,7 +4865,7 @@ def show_result(
               <div style="font-weight:600;">Writing the full country report</div>
               <div style="font-size:0.92rem;opacity:.78;">
                 Estimated maximum time remaining:
-                <span id="fi-report-countdown-value">04:55</span>
+                <span id="fi-report-countdown-value">05:00</span>
               </div>
             </div>
             <script>
@@ -4873,7 +4873,7 @@ def show_result(
               const value = document.getElementById("fi-report-countdown-value");
               if (!value) return;
               const started = Date.now();
-              const total = 295;
+              const total = 300;
               const tick = () => {
                 const elapsed = Math.floor((Date.now() - started) / 1000);
                 const remaining = Math.max(0, total - elapsed);
