@@ -1280,6 +1280,17 @@ def _build_pdf_report_uncached(
             if flowables:
                 story.extend(narrative_section(title, flowables))
 
+        def add_combined_learning_section(
+            title: str,
+            texts: list[object],
+        ) -> None:
+            """Merge related source blocks into one consistent report section."""
+            merged: list[object] = []
+            for item in texts:
+                merged.extend(learning_flowables(item))
+            if merged:
+                story.extend(narrative_section(title, merged))
+
         # Front page - validated executive layout
         cover_flag = _cover_flag_image(country_code, image)
 
@@ -1591,31 +1602,38 @@ def _build_pdf_report_uncached(
         geography_facts = readable_fact_paragraph(
             [sentence for sentence in geography_sentences if sentence]
         )
-        if geography_facts:
-            story.extend(
-                narrative_section(
-                    "Geography - Key Facts",
-                    geography_facts,
-                )
-            )
 
         climate_text = context_value("environment", "climate_seasons")
         rivers_text = context_value("geography", "rivers_lakes")
         relief_text = context_value("geography", "mountains_relief")
         resources_text = context_value("environment", "natural_resources")
 
-        add_learning_section("Climate & Seasons", climate_text)
-        add_learning_section("Rivers, Lakes & Waterways", rivers_text)
-        add_learning_section("Mountains & Relief", relief_text)
-        add_learning_section("Natural Resources & Raw Materials", resources_text)
+        physical_flowables: list[object] = []
+        physical_flowables.extend(geography_facts)
+        physical_flowables.extend(learning_flowables(relief_text))
+        if physical_flowables:
+            story.extend(
+                narrative_section(
+                    "Physical Geography",
+                    physical_flowables,
+                )
+            )
 
-        if all(
-            value == "Not available"
-            for value in (
-                climate_text,
-                rivers_text,
-                relief_text,
-                resources_text,
+        add_combined_learning_section(
+            "Climate, Water & Natural Resources",
+            [climate_text, rivers_text, resources_text],
+        )
+
+        if (
+            not physical_flowables
+            and all(
+                value == "Not available"
+                for value in (
+                    climate_text,
+                    rivers_text,
+                    relief_text,
+                    resources_text,
+                )
             )
         ):
             add_learning_section(
@@ -1650,24 +1668,19 @@ def _build_pdf_report_uncached(
                         ("Recognition alternatives", ", ".join(similar[:4]))
                     )
 
+                flag_overview_flowables: list[object] = []
                 if flag_rows:
                     flag_sentences = [
                         sentence_for(label, value)
                         for label, value in flag_rows
                     ]
-                    story.extend(
-                        narrative_section(
-                            "Flag Intelligence - Key Facts",
-                            readable_fact_paragraph(
-                                [sentence for sentence in flag_sentences if sentence]
-                            ),
+                    flag_overview_flowables.extend(
+                        readable_fact_paragraph(
+                            [sentence for sentence in flag_sentences if sentence]
                         )
                     )
 
-                for title, field in (
-                    ("Flag Design & Construction", "design_origin"),
-                    ("Flag Meaning & Symbolism", "symbolism"),
-                ):
+                for field in ("design_origin", "symbolism"):
                     items = flag_info.get(field)
                     if isinstance(items, (list, tuple)):
                         values = [
@@ -1677,7 +1690,17 @@ def _build_pdf_report_uncached(
                             and clean(item.get("value")) != "Not available"
                         ]
                         if values:
-                            add_learning_section(title, "\n\n".join(values))
+                            flag_overview_flowables.extend(
+                                learning_flowables("\n\n".join(values))
+                            )
+
+                if flag_overview_flowables:
+                    story.extend(
+                        narrative_section(
+                            "Flag Design, Adoption & Symbolism",
+                            flag_overview_flowables,
+                        )
+                    )
 
                 flag_history = flag_info.get("historical_flags")
                 if isinstance(flag_history, (list, tuple)) and flag_history:
@@ -1719,11 +1742,13 @@ def _build_pdf_report_uncached(
                 if origin_rows:
                     origin_flowables: list[object] = []
                     for label, summary in origin_rows:
-                        origin_flowables.append(
-                            Paragraph(xml_escape(label), narrative_subheading_style)
+                        sentence = (
+                            f"{label}: {summary}"
+                            if label and label.lower() != "overview"
+                            else summary
                         )
                         origin_flowables.append(
-                            Paragraph(xml_escape(summary), body_style)
+                            Paragraph(xml_escape(_normalize_sentence(sentence)), body_style)
                         )
                     story.extend(
                         narrative_section(
@@ -1792,14 +1817,6 @@ def _build_pdf_report_uncached(
                 f"The key independence figure is listed as "
                 f"{independence_figure}."
             )
-        if sovereignty_sentences:
-            story.extend(
-                narrative_section(
-                    "State Formation & Sovereignty",
-                    readable_fact_paragraph(sovereignty_sentences),
-                )
-            )
-
         national_day = fact_value(profile.get("national_day"))
         national_motto = fact_value(profile.get("national_motto"))
         national_anthem = fact_value(profile.get("national_anthem"))
@@ -1822,11 +1839,14 @@ def _build_pdf_report_uncached(
             identity_sentences.append(
                 f"The demonym is {demonym}."
             )
-        if identity_sentences:
+        state_identity_flowables = readable_fact_paragraph(
+            sovereignty_sentences + identity_sentences
+        )
+        if state_identity_flowables:
             story.extend(
                 narrative_section(
-                    "National Identity",
-                    readable_fact_paragraph(identity_sentences),
+                    "State Formation & National Identity",
+                    state_identity_flowables,
                 )
             )
 
@@ -1870,17 +1890,19 @@ def _build_pdf_report_uncached(
                 f"The head of government office is "
                 f"{head_of_government_office}."
             )
-        if government_sentences:
+        government_flowables = readable_fact_paragraph(government_sentences)
+        government_flowables.extend(
+            learning_flowables(
+                context_value("government", "administrative_divisions")
+            )
+        )
+        if government_flowables:
             story.extend(
                 narrative_section(
-                    "Government & Institutions",
-                    readable_fact_paragraph(government_sentences),
+                    "Government & Administrative Structure",
+                    government_flowables,
                 )
             )
-        add_learning_section(
-            "Administrative Divisions",
-            context_value("government", "administrative_divisions"),
-        )
 
         if any(
             report_manifest.get(key, False)
@@ -1940,41 +1962,38 @@ def _build_pdf_report_uncached(
                 economy_sentences.append(
                     f"GDP (current US$) is {gdp_value}."
                 )
-        economy_metric_flowables = readable_fact_paragraph(economy_sentences)
-        if economy_metric_flowables:
+        economy_flowables = readable_fact_paragraph(economy_sentences)
+        economy_flowables.extend(
+            learning_flowables(context_value("economy"))
+        )
+        economy_flowables.extend(
+            learning_flowables(
+                context_value("economy", "economic_drivers")
+            )
+        )
+        if economy_flowables:
             story.extend(
                 narrative_section(
-                    "Economy - Key Metric",
-                    economy_metric_flowables,
+                    "Economy, Trade & Key Industries",
+                    economy_flowables,
                 )
             )
-        add_learning_section(
-            "Economic Structure & Trade",
-            context_value("economy"),
+
+        add_combined_learning_section(
+            "Infrastructure, Transport & Energy",
+            [
+                context_value("infrastructure"),
+                context_value("infrastructure", "transport_network"),
+                context_value("infrastructure", "energy_connectivity"),
+            ],
         )
-        add_learning_section(
-            "Economic Drivers, Industries & Exports",
-            context_value("economy", "economic_drivers"),
-        )
-        add_learning_section(
-            "Infrastructure Overview",
-            context_value("infrastructure"),
-        )
-        add_learning_section(
-            "Transport Network, Ports & Airports",
-            context_value("infrastructure", "transport_network"),
-        )
-        add_learning_section(
-            "Energy & Connectivity",
-            context_value("infrastructure", "energy_connectivity"),
-        )
-        add_learning_section(
-            "Education, Science & Innovation",
-            context_value("education_science"),
-        )
-        add_learning_section(
-            "Environment & Biodiversity",
-            context_value("environment"),
+
+        add_combined_learning_section(
+            "Education, Innovation & Environment",
+            [
+                context_value("education_science"),
+                context_value("environment"),
+            ],
         )
 
         if any(
