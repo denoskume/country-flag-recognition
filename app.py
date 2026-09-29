@@ -3257,6 +3257,11 @@ def _build_pdf_report_uncached(
                 max_paragraphs=4,
             )
 
+        add_authored_section(
+            "Universities & Higher Education",
+            "universities_higher_education",
+        )
+
         science_text = context_value(
             "education_science",
             "science_inventions",
@@ -3623,7 +3628,7 @@ def _build_pdf_report_uncached(
     return buffer.getvalue()
 
 
-REPORT_WRITER_CACHE_VERSION = "2026-09-29-r7"
+REPORT_WRITER_CACHE_VERSION = "2026-09-29-r8"
 
 def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
     """Create a complete no-failure narrative fallback from local country facts."""
@@ -3688,6 +3693,7 @@ def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
         "economy_trade_industries": "",
         "infrastructure_transport_energy": "",
         "education_research": "",
+        "universities_higher_education": "",
         "science_discovery_invention": "",
         "environment_biodiversity": "",
         "cost_of_living": "",
