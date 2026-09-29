@@ -2108,6 +2108,106 @@ def _build_pdf_report_uncached(
             return flowables
 
 
+        def _editorial_compose(
+            text: object,
+            *,
+            max_paragraphs: int = 4,
+            max_sentences_per_paragraph: int = 2,
+        ) -> list[object]:
+            """
+            Write report prose from collected evidence instead of printing
+            source prose verbatim.
+
+            The source text is treated only as evidence. We extract clean,
+            non-duplicated factual sentences, remove catalogue/caption residue,
+            then rebuild short coherent paragraphs.
+            """
+            raw = clean(text)
+            if raw == "Not available":
+                return []
+
+            # Split source evidence into candidate statements.
+            candidates = _sentence_units(raw)
+            if not candidates:
+                return []
+
+            cleaned: list[str] = []
+            seen: set[str] = set()
+
+            for sentence in candidates:
+                value = _normalize_sentence(sentence)
+                if not value:
+                    continue
+
+                # Reject source/caption/navigation residue.
+                if re.search(
+                    r"\b(?:image|pictured|photographed|caption|gallery|"
+                    r"see also|further reading|bibliography|references|"
+                    r"the table below|the chart below|this list|"
+                    r"figure|map shows|displayed for sale|painting by)\b",
+                    value,
+                    flags=re.IGNORECASE,
+                ):
+                    continue
+
+                # Reject visibly incomplete fragments.
+                if re.search(r"\b(?:ca\.|c\.|d\.|r\.)\s*$", value):
+                    continue
+                if value.endswith((":", ";", "(", "[")):
+                    continue
+
+                # De-duplicate near-identical statements.
+                key = re.sub(r"[^a-z0-9]+", " ", value.casefold()).strip()
+                if not key or key in seen:
+                    continue
+
+                duplicate = False
+                for existing in list(seen):
+                    shorter = min(len(existing), len(key))
+                    if shorter >= 40 and (
+                        existing in key or key in existing
+                    ):
+                        duplicate = True
+                        break
+                if duplicate:
+                    continue
+
+                seen.add(key)
+                cleaned.append(value)
+
+            if not cleaned:
+                return []
+
+            # Keep the most informative evidence while preventing data dumps.
+            selected: list[str] = []
+            for sentence in cleaned:
+                if len(selected) >= max_paragraphs * max_sentences_per_paragraph:
+                    break
+                selected.append(sentence)
+
+            # Rebuild readable report paragraphs.
+            return _paragraphize_sentences(
+                selected,
+                max_sentences=max_sentences_per_paragraph,
+                max_chars=500,
+            )
+
+
+        def add_editorial_section(
+            title: str,
+            text: object,
+            *,
+            max_paragraphs: int = 4,
+        ) -> None:
+            """Render a fully rewritten report section from verified evidence."""
+            flowables = _editorial_compose(
+                text,
+                max_paragraphs=max_paragraphs,
+            )
+            if flowables:
+                story.extend(narrative_section(title, flowables))
+
+
         def learning_flowables(text: object) -> list[object]:
             """
             Convert source fragments into readable report prose.
@@ -2610,9 +2710,15 @@ def _build_pdf_report_uncached(
                 )
             )
 
-        add_combined_learning_section(
+        combined_environment_evidence = "\n\n".join(
+            str(value)
+            for value in (climate_text, rivers_text, resources_text)
+            if value != "Not available"
+        )
+        add_editorial_section(
             "Climate, Water & Natural Resources",
-            [climate_text, rivers_text, resources_text],
+            combined_environment_evidence,
+            max_paragraphs=4,
         )
 
         if (
@@ -2932,7 +3038,10 @@ def _build_pdf_report_uncached(
             story.extend(
                 narrative_section(
                     "Leadership Through Time",
-                    learning_flowables(leadership_text),
+                    _editorial_compose(
+                        leadership_text,
+                        max_paragraphs=6,
+                    ),
                 )
             )
 
@@ -2948,25 +3057,30 @@ def _build_pdf_report_uncached(
 
         # 5. People, Society & Culture
         story.extend(chapter_heading(5, "People, Society & Culture"))
-        add_learning_section(
+        add_editorial_section(
             "People & Society",
             context_value("people_society"),
+            max_paragraphs=4,
         )
-        add_learning_section(
+        add_editorial_section(
             "Languages & Religion",
             context_value("people_society", "languages_religion"),
+            max_paragraphs=3,
         )
-        add_learning_section(
+        add_editorial_section(
             "Health System & Public Health",
             context_value("people_society", "health_system"),
+            max_paragraphs=4,
         )
-        add_learning_section(
+        add_editorial_section(
             "Culture, Cuisine, Music & Sport",
             context_value("culture"),
+            max_paragraphs=5,
         )
-        add_learning_section(
+        add_editorial_section(
             "Festivals, Holidays & Traditions",
             context_value("culture", "festivals_holidays"),
+            max_paragraphs=3,
         )
         heritage_text = context_value("culture", "heritage_landmarks")
         if heritage_text != "Not available":
@@ -3001,7 +3115,10 @@ def _build_pdf_report_uncached(
             story.extend(
                 narrative_section(
                     "Literature, Philosophy & Thought",
-                    learning_flowables(literature_text),
+                    _editorial_compose(
+                        literature_text,
+                        max_paragraphs=5,
+                    ),
                 )
             )
 
@@ -3054,9 +3171,10 @@ def _build_pdf_report_uncached(
             ],
         )
 
-        add_learning_section(
+        add_editorial_section(
             "Education & Research",
             context_value("education_science"),
+            max_paragraphs=4,
         )
 
         science_text = context_value(
@@ -3067,13 +3185,17 @@ def _build_pdf_report_uncached(
             story.extend(
                 narrative_section(
                     "Science, Discovery & Invention",
-                    learning_flowables(science_text),
+                    _editorial_compose(
+                        science_text,
+                        max_paragraphs=5,
+                    ),
                 )
             )
 
-        add_learning_section(
+        add_editorial_section(
             "Environment & Biodiversity",
             context_value("environment"),
+            max_paragraphs=4,
         )
 
         if any(
@@ -3214,9 +3336,10 @@ def _build_pdf_report_uncached(
                 )
             )
 
-        add_learning_section(
+        add_editorial_section(
             "International Relations",
             context_value("international_relations"),
+            max_paragraphs=4,
         )
         notable_people_text = context_value(
             "culture",
