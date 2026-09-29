@@ -6,6 +6,7 @@ from __future__ import annotations
 import base64
 import json
 import math
+import os
 import re
 import shutil
 from io import BytesIO, StringIO
@@ -3620,9 +3621,15 @@ def _build_pdf_report_uncached(
     return buffer.getvalue()
 
 
+REPORT_WRITER_CACHE_VERSION = "2026-09-29-r4"
+
 @st.cache_data(ttl=86400, show_spinner=False)
-def _cached_authored_report(evidence_json: str) -> dict[str, str]:
-    """Write the final narrative once per evidence payload."""
+def _cached_authored_report(
+    evidence_json: str,
+    writer_cache_version: str = REPORT_WRITER_CACHE_VERSION,
+) -> dict[str, str]:
+    """Write the final narrative once per evidence payload and writer version."""
+    _ = writer_cache_version
     return generate_authored_report(json.loads(evidence_json))
 
 
@@ -3773,6 +3780,23 @@ st.set_page_config(
     layout="centered",
     initial_sidebar_state="collapsed",
 )
+
+# Streamlit Community Cloud exposes secrets through st.secrets. Mirror the
+# writer credentials into the process environment because the report-writer
+# module is intentionally independent from Streamlit.
+try:
+    if not os.getenv("OPENAI_API_KEY"):
+        secret_key = str(st.secrets.get("OPENAI_API_KEY", "") or "").strip()
+        if secret_key:
+            os.environ["OPENAI_API_KEY"] = secret_key
+    if not os.getenv("FLAG_INTELLIGENCE_WRITER_MODEL"):
+        secret_model = str(
+            st.secrets.get("FLAG_INTELLIGENCE_WRITER_MODEL", "") or ""
+        ).strip()
+        if secret_model:
+            os.environ["FLAG_INTELLIGENCE_WRITER_MODEL"] = secret_model
+except Exception:
+    pass
 
 
 @st.cache_resource
@@ -4534,7 +4558,8 @@ def show_result(
             )
             with st.spinner("Researching and writing the report..."):
                 report["authored_report"] = _cached_authored_report(
-                    evidence_json
+                    evidence_json,
+                    REPORT_WRITER_CACHE_VERSION,
                 )
         except Exception as exc:
             report["authored_report"] = {}
