@@ -4519,8 +4519,11 @@ def show_result(
                 report["authored_report"] = _cached_authored_report(
                     evidence_json
                 )
-        except (requests.RequestException, LookupError, ValueError):
-            pass
+        except Exception as exc:
+            report["authored_report"] = {}
+            report["authored_report_error"] = (
+                f"{type(exc).__name__}: {str(exc)[:240]}"
+            )
 
     missing_required = report.get("official_report_missing_required")
     authored_report = report.get("authored_report")
@@ -4581,6 +4584,11 @@ def show_result(
                 disabled=True,
                 use_container_width=True,
             )
+            if accepted and not authored_ready:
+                st.warning(
+                    "The OpenAI report writer is not active yet. "
+                    "Configure OPENAI_API_KEY in the deployment secrets."
+                )
 
 
     st.markdown("</div>", unsafe_allow_html=True)
