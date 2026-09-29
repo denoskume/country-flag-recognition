@@ -529,7 +529,7 @@ def _generate_section_group(
     keys: tuple[str, ...],
     existing: dict[str, str],
 ) -> dict[str, str]:
-    """Generate one small thematic report block with an internal retry."""
+    """Generate one small thematic report block with retry and model failover."""
     requested = {
         key: ""
         for key in keys
@@ -551,35 +551,37 @@ def _generate_section_group(
         + evidence_json
     )
 
-    last: dict[str, str] = {}
-    for _attempt in range(2):
-        client = OpenAI(
-            api_key=api_key,
-            timeout=120.0,
-            max_retries=0,
-        )
-        try:
-            response = client.responses.create(
-                model=model,
-                reasoning={"effort": "low"},
-                input=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt},
-                ],
-                max_output_tokens=6500,
+    best: dict[str, str] = {}
+    for candidate_model in _model_candidates(model):
+        for _attempt in range(2):
+            client = OpenAI(
+                api_key=api_key,
+                timeout=90.0,
+                max_retries=0,
             )
-            parsed = _parse_writer_response(response.output_text or "")
-            if parsed:
-                last = {
+            try:
+                response = client.responses.create(
+                    model=candidate_model,
+                    reasoning={"effort": "low"},
+                    input=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": prompt},
+                    ],
+                    max_output_tokens=7000,
+                )
+                parsed = _parse_writer_response(response.output_text or "")
+                block = {
                     key: parsed.get(key, "")
                     for key in requested
                     if str(parsed.get(key, "") or "").strip()
                 }
-                if len(last) == len(requested):
-                    return last
-        except Exception:
-            continue
-    return last
+                if len(block) > len(best):
+                    best = block
+                if len(best) == len(requested):
+                    return best
+            except Exception:
+                continue
+    return best
 
 
 def _recover_report_in_chunks(
