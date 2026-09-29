@@ -586,6 +586,29 @@ def _build_pdf_report_uncached(
         keepWithNext=True,
     )
 
+    chapter_title_style = ParagraphStyle(
+        "ChapterTitle",
+        parent=styles["Heading1"],
+        fontName="Helvetica-Bold",
+        fontSize=14.5,
+        leading=17.5,
+        textColor=colors.HexColor("#111111"),
+        spaceBefore=2.0 * mm,
+        spaceAfter=2.0 * mm,
+        keepWithNext=True,
+    )
+
+    contents_item_style = ParagraphStyle(
+        "ContentsItem",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=9.2,
+        leading=14,
+        leftIndent=4 * mm,
+        spaceAfter=1.2 * mm,
+        textColor=colors.HexColor("#222222"),
+    )
+
     narrative_subheading_style = ParagraphStyle(
         "NarrativeSubheading",
         parent=styles["Heading3"],
@@ -658,6 +681,21 @@ def _build_pdf_report_uncached(
             ),
             *flowables,
             Spacer(1, 2.5 * mm),
+        ]
+
+    def chapter_heading(number: int, title: str) -> list[object]:
+        return [
+            Paragraph(
+                f"{number}. {xml_escape(title)}",
+                chapter_title_style,
+            ),
+            HRFlowable(
+                width="100%",
+                thickness=1.15,
+                color=colors.HexColor("#111111"),
+                spaceBefore=0,
+                spaceAfter=3.0 * mm,
+            ),
         ]
 
     def labeled_paragraphs(
@@ -1048,16 +1086,49 @@ def _build_pdf_report_uncached(
             Spacer(1, 3 * mm),
         ])
 
-        overview = clean(profile.get("overview"))
-        if overview != "Not available":
-            story.extend(
-                narrative_section(
-                    "Country Overview",
-                    [Paragraph(xml_escape(overview), body_style)],
-                )
-            )
+        # Contents follows the cover snapshot and establishes the report order.
+        story.append(PageBreak())
+        story.extend(chapter_heading(0, "Contents"))
+        contents_entries = [
+            "1. Introduction",
+            "2. Geography & Environment",
+            "3. Flag & Historical Journey",
+            "4. State, Government & Institutions",
+            "5. People, Society & Culture",
+            "6. Economy, Infrastructure & Innovation",
+            "7. International & Practical Information",
+            "8. Conclusion",
+            "9. Sources & Methodology",
+        ]
+        for entry in contents_entries:
+            story.append(Paragraph(xml_escape(entry), contents_item_style))
 
-        # 2. Geography
+        story.append(PageBreak())
+
+        overview = clean(profile.get("overview"))
+        story.extend(chapter_heading(1, "Introduction"))
+        intro_parts: list[object] = []
+        if overview != "Not available":
+            intro_parts.append(Paragraph(xml_escape(overview), body_style))
+        intro_parts.append(
+            Paragraph(
+                xml_escape(
+                    "This report provides a structured country profile based on "
+                    "public, source-aware information. It brings together national "
+                    "identity, physical geography, historical development, "
+                    "institutions, society, culture, economy, infrastructure and "
+                    "practical information. Reference years may differ between "
+                    "datasets, and time-sensitive facts should be read together "
+                    "with the source information provided in the report."
+                ),
+                body_style,
+            )
+        )
+        story.extend(intro_parts)
+        story.append(Spacer(1, 3 * mm))
+
+        # 2. Geography & Environment
+        story.extend(chapter_heading(2, "Geography & Environment"))
         location_map = _build_pdf_location_map(
             profile.get("latitude"),
             profile.get("longitude"),
@@ -1084,20 +1155,21 @@ def _build_pdf_report_uncached(
             )
             story.extend(narrative_section("Geographic Location", [location_content]))
 
-        geography = info_grid(
-            [
-                ("Largest cities", profile.get("largest_cities")),
-                ("Bordering countries", profile.get("borders")),
-                ("Time zones", profile.get("timezones")),
-                ("Highest point", profile.get("highest_point")),
-                ("Lowest point", profile.get("lowest_point")),
-                ("Country reference coordinates", coordinates),
-            ]
-        )
-        story.extend([
-            section_box("Geography — Key Facts", geography),
-            Spacer(1, 3 * mm),
+        geography_facts = labeled_paragraphs([
+            ("Largest cities", profile.get("largest_cities")),
+            ("Bordering countries", profile.get("borders")),
+            ("Time zones", profile.get("timezones")),
+            ("Highest point", profile.get("highest_point")),
+            ("Lowest point", profile.get("lowest_point")),
+            ("Country reference coordinates", coordinates),
         ])
+        if geography_facts:
+            story.extend(
+                narrative_section(
+                    "Geography - Key Facts",
+                    geography_facts,
+                )
+            )
 
         climate_text = context_value("environment", "climate_seasons")
         rivers_text = context_value("geography", "rivers_lakes")
@@ -1129,7 +1201,8 @@ def _build_pdf_report_uncached(
         ):
             story.append(PageBreak())
 
-        # 3. Flag Intelligence
+        # 3. Flag & Historical Journey
+        story.extend(chapter_heading(3, "Flag & Historical Journey"))
         if isinstance(intelligence, dict):
             flag_info = intelligence.get("flag")
             if isinstance(flag_info, dict):
@@ -1150,13 +1223,12 @@ def _build_pdf_report_uncached(
                     )
 
                 if flag_rows:
-                    story.extend([
-                        section_box(
-                            "Flag Intelligence — Key Facts",
-                            info_grid(flag_rows, two_pairs=False),
-                        ),
-                        Spacer(1, 3 * mm),
-                    ])
+                    story.extend(
+                        narrative_section(
+                            "Flag Intelligence - Key Facts",
+                            labeled_paragraphs(flag_rows),
+                        )
+                    )
 
                 for title, field in (
                     ("Flag Design & Construction", "design_origin"),
@@ -1258,7 +1330,8 @@ def _build_pdf_report_uncached(
         ):
             story.append(PageBreak())
 
-        # 5. State Formation, identity and institutions
+        # 4. State, Government & Institutions
+        story.extend(chapter_heading(4, "State, Government & Institutions"))
         story.extend(
             narrative_section(
                 "State Formation & Sovereignty",
@@ -1271,18 +1344,17 @@ def _build_pdf_report_uncached(
             )
         )
 
-        national_identity = info_grid(
-            [
-                ("National Day", profile.get("national_day")),
-                ("National motto", profile.get("national_motto")),
-                ("National anthem", profile.get("national_anthem")),
-                ("Demonym", profile.get("demonym")),
-            ]
+        story.extend(
+            narrative_section(
+                "National Identity",
+                labeled_paragraphs([
+                    ("National Day", profile.get("national_day")),
+                    ("National motto", profile.get("national_motto")),
+                    ("National anthem", profile.get("national_anthem")),
+                    ("Demonym", profile.get("demonym")),
+                ]),
+            )
         )
-        story.extend([
-            section_box("National Identity", national_identity),
-            Spacer(1, 3 * mm),
-        ])
 
         story.extend(
             narrative_section(
@@ -1310,7 +1382,8 @@ def _build_pdf_report_uncached(
         ):
             story.append(PageBreak())
 
-        # 6. People, society and culture
+        # 5. People, Society & Culture
+        story.extend(chapter_heading(5, "People, Society & Culture"))
         add_learning_section(
             "People & Society",
             context_value("people_society"),
@@ -1345,16 +1418,18 @@ def _build_pdf_report_uncached(
         ):
             story.append(PageBreak())
 
-        economy_summary = info_grid(
-            [
-                ("GDP (current US$)", gdp_value),
-                ("GDP source", profile.get("gdp_source")),
-            ]
-        )
-        story.extend([
-            section_box("Economy — Key Metric", economy_summary),
-            Spacer(1, 3 * mm),
+        story.extend(chapter_heading(6, "Economy, Infrastructure & Innovation"))
+        economy_metric_flowables = labeled_paragraphs([
+            ("GDP (current US$)", gdp_value),
+            ("GDP source", profile.get("gdp_source")),
         ])
+        if economy_metric_flowables:
+            story.extend(
+                narrative_section(
+                    "Economy - Key Metric",
+                    economy_metric_flowables,
+                )
+            )
         add_learning_section(
             "Economic Structure & Trade",
             context_value("economy"),
@@ -1390,6 +1465,8 @@ def _build_pdf_report_uncached(
         ):
             story.append(PageBreak())
 
+        story.extend(chapter_heading(7, "International & Practical Information"))
+
         practical_rows: list[tuple[str, object]] = [
             ("Calling code", profile.get("calling_code")),
             ("Emergency numbers", profile.get("emergency_numbers")),
@@ -1414,43 +1491,62 @@ def _build_pdf_report_uncached(
             context_value("culture", "notable_people"),
         )
 
-        # 7. Did You Know? — only from already sourced profile facts
-        did_you_know_rows: list[tuple[str, object]] = []
-        if clean(profile.get("highest_point")) != "Not available":
-            did_you_know_rows.append(
-                ("Geography", f"Highest point: {clean(profile.get('highest_point'))}.")
+        # 8. Conclusion
+        story.append(PageBreak())
+        story.extend(chapter_heading(8, "Conclusion"))
+        conclusion_sentences = [
+            (
+                f"{decision} is presented in this report through a structured "
+                f"profile covering geography, historical development, institutions, "
+                f"society, culture, economy, infrastructure and practical information."
             )
-        if clean(profile.get("national_anthem")) != "Not available":
-            did_you_know_rows.append(
-                ("National identity", f"National anthem: {clean(profile.get('national_anthem'))}.")
+        ]
+        if clean(profile.get("capital")) != "Not available":
+            conclusion_sentences.append(
+                f"Its capital is {clean(profile.get('capital'))}."
             )
-        if clean(profile.get("largest_cities")) != "Not available":
-            did_you_know_rows.append(
-                ("Urban geography", f"Major cities include {clean(profile.get('largest_cities'))}.")
+        if clean(profile.get("population")) != "Not available":
+            conclusion_sentences.append(
+                f"The population reference used in the report is {population_value}."
             )
-        if clean(profile.get("national_motto")) != "Not available":
-            did_you_know_rows.append(
-                ("National motto", clean(profile.get("national_motto")))
+        if clean(profile.get("government_form")) != "Not available":
+            conclusion_sentences.append(
+                f"The documented form of government is {clean(profile.get('government_form'))}."
             )
-        if clean(profile.get("timezones")) != "Not available":
-            did_you_know_rows.append(
-                ("Time zone", clean(profile.get("timezones")))
+        conclusion_sentences.append(
+            "Taken together, the preceding chapters provide a consolidated "
+            "country-level reference rather than a substitute for specialised, "
+            "real-time or legally authoritative information."
+        )
+        story.append(
+            Paragraph(
+                xml_escape(" ".join(conclusion_sentences)),
+                body_style,
             )
+        )
 
-        if did_you_know_rows:
-            did_you_know_flowables = [
-                Paragraph(
-                    f"<b>{xml_escape(label)}:</b> {xml_escape(clean(value))}",
-                    body_style,
-                )
-                for label, value in did_you_know_rows[:5]
-            ]
-            story.extend(
-                narrative_section(
-                    "Did You Know?",
-                    did_you_know_flowables,
-                )
+        # 9. Sources & Methodology
+        story.extend(chapter_heading(9, "Sources & Methodology"))
+        methodology_text = (
+            "Flag Intelligence combines structured country facts with sourced "
+            "educational context. Current source families include World Bank, "
+            "Wikidata, REST Countries, Wikipedia/MediaWiki and specialised "
+            "emergency-number data where available. Facts may use different "
+            "reference years. Missing information is intentionally preferred "
+            "over unsupported content, and time-sensitive information should be "
+            "interpreted using the source and retrieval context available in the "
+            "underlying record."
+        )
+        story.append(Paragraph(xml_escape(methodology_text), body_style))
+        story.append(
+            Paragraph(
+                xml_escape(
+                    "Source line: World Bank · Wikidata · REST Countries · "
+                    "Wikipedia/MediaWiki · EmergencyNumberAPI where available."
+                ),
+                small_style,
             )
+        )
 
 
 
@@ -1474,8 +1570,8 @@ def _build_pdf_report_uncached(
     source_note = Table(
         [[
             Paragraph(
-                "<b>Sources:</b> Wikidata, World Bank and Wikipedia where "
-                "available. Values may use different reference years.",
+                "<b>Sources:</b> World Bank, Wikidata, REST Countries, "
+                "Wikipedia/MediaWiki and specialised sources where available.",
                 small_style,
             )
         ]],
