@@ -3882,7 +3882,7 @@ def resolve_emergency_numbers(
 
 
 COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-29-v21"
-COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-29-v37"
+COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-29-v38"
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_country_profile_v2(
@@ -4486,8 +4486,10 @@ def show_result(
     }
 
     if accepted:
+        # Local collectors provide optional supporting context only. They must
+        # never prevent the independently researched OpenAI report from running.
         try:
-            with st.spinner("Preparing files..."):
+            with st.spinner("Preparing country context..."):
                 knowledge = get_country_intelligence_v2(
                     decision_code,
                     tuple(
@@ -4505,17 +4507,32 @@ def show_result(
             report["official_report_missing_required"] = (
                 knowledge["missing_required_report_sections"]
             )
+        except Exception as exc:
+            report["local_context_error"] = (
+                f"{type(exc).__name__}: {str(exc)[:240]}"
+            )
+
+        # Living-cost enrichment is also optional.
+        try:
             report["current_living_cost"] = fetch_current_living_cost(
                 decision_code,
                 display_country_name(decision_code),
             )
+        except Exception as exc:
+            report["living_cost_error"] = (
+                f"{type(exc).__name__}: {str(exc)[:240]}"
+            )
+
+        # The OpenAI writer researches the country independently on the web,
+        # using any local context above only as supplementary evidence.
+        try:
             evidence_json = json.dumps(
                 report,
                 sort_keys=True,
                 ensure_ascii=False,
                 default=str,
             )
-            with st.spinner("Writing the report..."):
+            with st.spinner("Researching and writing the report..."):
                 report["authored_report"] = _cached_authored_report(
                     evidence_json
                 )
@@ -4536,8 +4553,6 @@ def show_result(
     )
     report_ready = (
         accepted
-        and isinstance(missing_required, list)
-        and not missing_required
         and authored_ready
     )
 
@@ -4599,8 +4614,8 @@ def show_result(
                     )
                 else:
                     st.warning(
-                        "Report generation is temporarily unavailable. "
-                        "Please try again shortly."
+                        "The report could not be fully verified for publication. "
+                        "Please try again."
                     )
 
 
