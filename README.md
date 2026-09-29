@@ -344,6 +344,36 @@ Countries without medieval or early universities are not forced into an artifici
 
 ---
 
+## Notable figures by field
+
+Notable people are organized by domain rather than compressed into one short list.
+
+Depending on the country's documented history and contributions, the report can include dedicated sections for:
+
+- Philosophers & Thinkers
+- Writers & Poets
+- Mathematicians
+- Physicists
+- Scientists & Medical Figures
+- Inventors & Engineers
+- Artists & Architects
+- Music & Cinema Figures
+- Public & Political Figures
+- Sports Figures
+
+For countries with a rich intellectual, scientific or cultural history, the report aims to include several representative figures across the applicable categories rather than limiting coverage to only a few famous names.
+
+Each person is presented with a compact mini-biography covering, where reliably established:
+
+- period or lifespan;
+- field;
+- major work, discovery, contribution or achievement;
+- national or international significance.
+
+The system does not invent figures to fill empty categories and avoids duplicating the same person across multiple categories unless the cross-disciplinary relevance is genuinely useful.
+
+---
+
 ## Economy, infrastructure and innovation
 
 Coverage may include:
