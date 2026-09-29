@@ -14,7 +14,6 @@ from pathlib import Path
 from urllib.parse import quote_plus
 import sys
 import tempfile
-import threading
 from time import strftime
 import time
 from xml.sax.saxutils import escape as xml_escape
@@ -3702,7 +3701,7 @@ def _build_pdf_report_uncached(
     return buffer.getvalue()
 
 
-REPORT_WRITER_CACHE_VERSION = "2026-09-29-r27"
+REPORT_WRITER_CACHE_VERSION = "2026-09-29-r28"
 
 def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
     """Build a complete local report when the external writer is unavailable."""
@@ -4767,29 +4766,6 @@ if prompt_submission is not None:
         text_process = True
 
 
-def _report_countdown(
-    placeholder,
-    *,
-    total_seconds: int = 295,
-    stop_event=None,
-) -> None:
-    """Update a visible report-generation countdown until completion."""
-    started = time.monotonic()
-    while True:
-        if stop_event is not None and stop_event.is_set():
-            break
-        elapsed = int(time.monotonic() - started)
-        remaining = max(0, total_seconds - elapsed)
-        minutes, seconds = divmod(remaining, 60)
-        placeholder.info(
-            f"Writing the full country report — estimated time remaining: "
-            f"{minutes:02d}:{seconds:02d}"
-        )
-        if remaining <= 0:
-            break
-        time.sleep(1)
-
-
 def show_result(
     image: Image.Image | None = None,
     direct_code: str | None = None,
@@ -4881,17 +4857,37 @@ def show_result(
                 os.environ["OPENAI_API_KEY"] = secret_key
 
         countdown_slot = st.empty()
-        countdown_stop = threading.Event()
-        countdown_thread = threading.Thread(
-            target=_report_countdown,
-            kwargs={
-                "placeholder": countdown_slot,
-                "total_seconds": 295,
-                "stop_event": countdown_stop,
-            },
-            daemon=True,
+        countdown_slot.markdown(
+            """
+            <div id="fi-report-countdown"
+                 style="padding:0.7rem 0.9rem;border:1px solid rgba(128,128,128,.25);
+                        border-radius:0.6rem;margin:0.25rem 0 0.75rem 0;">
+              <div style="font-weight:600;">Writing the full country report</div>
+              <div style="font-size:0.92rem;opacity:.78;">
+                Estimated maximum time remaining:
+                <span id="fi-report-countdown-value">04:55</span>
+              </div>
+            </div>
+            <script>
+            (() => {
+              const value = document.getElementById("fi-report-countdown-value");
+              if (!value) return;
+              const started = Date.now();
+              const total = 295;
+              const tick = () => {
+                const elapsed = Math.floor((Date.now() - started) / 1000);
+                const remaining = Math.max(0, total - elapsed);
+                const m = String(Math.floor(remaining / 60)).padStart(2, "0");
+                const s = String(remaining % 60).padStart(2, "0");
+                value.textContent = m + ":" + s;
+                if (remaining > 0) window.setTimeout(tick, 1000);
+              };
+              tick();
+            })();
+            </script>
+            """,
+            unsafe_allow_html=True,
         )
-        countdown_thread.start()
 
         with st.spinner("Writing the country report..."):
             # The writer authors the report directly from the resolved country
@@ -4922,8 +4918,6 @@ def show_result(
                 )
                 report["authored_report"] = {}
             finally:
-                countdown_stop.set()
-                countdown_thread.join(timeout=1.5)
                 countdown_slot.empty()
 
             # Snapshot metadata is collected only for the PDF cover/table.
