@@ -567,6 +567,66 @@ def _build_pdf_location_map(
     return pdf_map
 
 
+def _flowable_text(value: object) -> str:
+    """Extract visible text recursively from ReportLab flowables for QA."""
+    if isinstance(value, Paragraph):
+        return value.getPlainText()
+    if isinstance(value, Table):
+        parts: list[str] = []
+        for row in getattr(value, "_cellvalues", []):
+            for cell in row:
+                parts.append(_flowable_text(cell))
+        return " ".join(part for part in parts if part)
+    if isinstance(value, (list, tuple)):
+        return " ".join(_flowable_text(item) for item in value)
+    if isinstance(value, str):
+        return value
+    return ""
+
+
+def _validate_professional_report_story(story: list[object]) -> None:
+    """
+    Enforce non-negotiable editorial quality rules before PDF generation.
+
+    The report is rejected when obvious source residue, ambiguous date formats,
+    broken markup, or other raw extraction artefacts remain in visible text.
+    """
+    text = " ".join(_flowable_text(item) for item in story)
+    normalized = re.sub(r"\s+", " ", text)
+
+    violations: list[str] = []
+
+    forbidden_patterns = (
+        (r"\{\{|\}\}", "MediaWiki template residue"),
+        (r"&nbsp;|&amp;|&quot;", "HTML entity residue"),
+        (r"\balt=", "image-alt extraction residue"),
+        (r"\bthumb\|", "MediaWiki image residue"),
+        (r"\bpx\s", "image-dimension residue"),
+        (r"\|", "raw pipe separator"),
+        (
+            r"\b\d{1,2}/\d{1,2}/\d{4}\b",
+            "ambiguous numeric calendar date",
+        ),
+    )
+
+    for pattern, label in forbidden_patterns:
+        if re.search(pattern, normalized, flags=re.IGNORECASE):
+            violations.append(label)
+
+    # Detect malformed punctuation commonly produced by source extraction.
+    if re.search(r"\.\s*\.", normalized):
+        violations.append("duplicate sentence punctuation")
+    if re.search(r";\s*;", normalized):
+        violations.append("empty semicolon-delimited fragment")
+
+    if violations:
+        unique = ", ".join(dict.fromkeys(violations))
+        raise ValueError(
+            "Professional report quality gate failed: "
+            f"{unique}. PDF generation has been blocked."
+        )
+
+
 def _build_pdf_report_uncached(
     report: dict[str, object],
     image: Image.Image | None,
@@ -2336,6 +2396,8 @@ def _build_pdf_report_uncached(
         dict,
     ):
         story.append(source_note)
+
+    _validate_professional_report_story(story)
 
     document.multiBuild(
         story,
