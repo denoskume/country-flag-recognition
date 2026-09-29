@@ -123,7 +123,16 @@ SECTION_ALIASES: dict[str, tuple[str, ...]] = {
         "list of sites", "location of sites",
     ),
     "notable_people": (
-        "notable people", "notable persons", "people",
+        "notable people", "notable persons", "people", "famous people",
+        "public figures", "politicians", "writers", "artists",
+    ),
+    "leadership_history": (
+        "presidents", "president", "heads of state", "heads of government",
+        "prime ministers", "monarchs", "rulers", "leaders",
+    ),
+    "science_inventions": (
+        "science and technology", "science", "technology", "inventions",
+        "discoveries", "inventors", "scientists", "research", "innovation",
     ),
     "economy": (
         "economy", "agriculture", "industry", "trade", "tourism",
@@ -953,7 +962,7 @@ def collect_origins(
                 confidence=0.75,
             )
         )
-        if len(events) >= 6:
+        if len(events) >= 10:
             break
 
     return tuple(events)
@@ -972,7 +981,7 @@ def extract_timeline(
     history_text: str,
     source_url: str,
     *,
-    max_events: int = 18,
+    max_events: int = 30,
 ) -> tuple[TimelineEvent, ...]:
     """Extract explicit dated historical statements conservatively."""
     if not history_text:
@@ -1272,6 +1281,98 @@ def _dedicated_topic_sections(
     return split_article_sections_detailed(text), source_url
 
 
+def _collect_dedicated_topics(
+    country_name: str,
+    topics: tuple[str, ...],
+    *,
+    timeout: float,
+    max_chars: int = 6000,
+    max_blocks_per_topic: int = 10,
+) -> tuple[str, str]:
+    """Collect sourced educational context from dedicated country topic pages."""
+    blocks: list[str] = []
+    source_urls: list[str] = []
+
+    for topic in topics:
+        try:
+            sections, source_url = _dedicated_topic_sections(
+                country_name,
+                topic,
+                timeout=timeout,
+            )
+        except (requests.RequestException, LookupError, ValueError):
+            continue
+
+        if not sections or not source_url:
+            continue
+
+        topic_blocks: list[str] = []
+        for section in sections:
+            heading = _clean_heading(section.heading)
+            if heading in {
+                "references", "bibliography", "notes", "external links",
+                "see also", "sources", "citations",
+            }:
+                continue
+            summary = _compact_body(
+                section.heading,
+                section.body,
+                max_sentences=3,
+                max_chars=900,
+            )
+            if not summary:
+                continue
+            topic_blocks.append(f"{section.heading}: {summary}")
+            if len(topic_blocks) >= max_blocks_per_topic:
+                break
+
+        if topic_blocks:
+            blocks.extend(topic_blocks)
+            source_urls.append(source_url)
+
+        combined = "\n\n".join(blocks)
+        if len(combined) >= max_chars:
+            combined = combined[:max_chars].rsplit(" ", 1)[0].rstrip() + "…"
+            return combined, "; ".join(dict.fromkeys(source_urls))
+
+    combined = "\n\n".join(blocks)
+    if len(combined) > max_chars:
+        combined = combined[:max_chars].rsplit(" ", 1)[0].rstrip() + "…"
+    return combined, "; ".join(dict.fromkeys(source_urls))
+
+
+def _set_multi_topic_context(
+    target: dict[str, Evidence],
+    key: str,
+    country_name: str,
+    topics: tuple[str, ...],
+    *,
+    timeout: float,
+    max_chars: int = 6000,
+) -> None:
+    """Populate one field from multiple dedicated topic pages with provenance."""
+    if key in target:
+        return
+    text, urls = _collect_dedicated_topics(
+        country_name,
+        topics,
+        timeout=timeout,
+        max_chars=max_chars,
+    )
+    if not text:
+        return
+    item = evidence(
+        text,
+        "Wikipedia dedicated topic pages",
+        retrieved_at=datetime.now(timezone.utc).date().isoformat(),
+        confidence=0.72,
+        status=PARTIAL,
+        source_url=urls or None,
+    )
+    if item is not None:
+        target[key] = item
+
+
 def enrich_from_encyclopedia(
     record: CountryIntelligence,
     *,
@@ -1565,6 +1666,51 @@ def enrich_from_encyclopedia(
         culture_url,
         max_chars=1400,
         max_blocks=4,
+    )
+
+    # Leadership history: prefer dedicated lists/pages and keep provenance.
+    _set_multi_topic_context(
+        record.government,
+        "leadership_history",
+        canonical_title,
+        (
+            "List of heads of state",
+            "List of presidents",
+            "List of monarchs",
+            "List of prime ministers",
+        ),
+        timeout=timeout,
+        max_chars=9000,
+    )
+
+    # Public figures: enrich beyond the general culture article when a
+    # dedicated country-specific people page exists.
+    _set_multi_topic_context(
+        record.culture,
+        "notable_people",
+        canonical_title,
+        (
+            "Notable people",
+            "List of people",
+            "List of people from",
+        ),
+        timeout=timeout,
+        max_chars=7000,
+    )
+
+    # Science, discoveries and inventions: keep a separate teaching block.
+    _set_multi_topic_context(
+        record.education_science,
+        "science_inventions",
+        canonical_title,
+        (
+            "Science and technology",
+            "Inventions and discoveries",
+            "List of inventions and discoveries",
+            "Scientists and inventors",
+        ),
+        timeout=timeout,
+        max_chars=8000,
     )
 
     # Government/territorial organization is normally present in the country
