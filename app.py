@@ -567,6 +567,10 @@ def _build_pdf_location_map(
     return pdf_map
 
 
+class ReportQualityError(ValueError):
+    """Raised when a PDF fails the professional editorial quality gate."""
+
+
 def _flowable_text(value: object) -> str:
     """Extract visible text recursively from ReportLab flowables for QA."""
     if isinstance(value, Paragraph):
@@ -621,7 +625,7 @@ def _validate_professional_report_story(story: list[object]) -> None:
 
     if violations:
         unique = ", ".join(dict.fromkeys(violations))
-        raise ValueError(
+        raise ReportQualityError(
             "Professional report quality gate failed: "
             f"{unique}. PDF generation has been blocked."
         )
@@ -818,6 +822,7 @@ def _build_pdf_report_uncached(
         text = re.sub(r"\[\[(?:[^|\]]*\|)?([^\]]+)\]\]", r"\1", text)
         text = re.sub(r"<ref\b[^>]*>.*?</ref>", " ", text, flags=re.I | re.S)
         text = re.sub(r"<ref\b[^>]*/>", " ", text, flags=re.I)
+        text = re.sub(r"\s*\|\s*", ", ", text)
         text = re.sub(r"\s+", " ", text).strip(" ;|")
         return text or "Not available"
 
@@ -3398,15 +3403,28 @@ def show_result(
 
     with pdf_col:
         if report_ready:
-            st.download_button(
-                "Download PDF",
-                data=build_pdf_report(report, image),
-                file_name=(
-                    f"{_report_filename_country(country)}_report.pdf"
-                ),
-                mime="application/pdf",
-                use_container_width=True,
-            )
+            try:
+                pdf_bytes = build_pdf_report(report, image)
+            except ReportQualityError as exc:
+                st.button(
+                    "Download PDF",
+                    disabled=True,
+                    use_container_width=True,
+                )
+                st.warning(
+                    "Official PDF withheld: the professional report quality "
+                    f"gate detected an editorial issue. {exc}"
+                )
+            else:
+                st.download_button(
+                    "Download PDF",
+                    data=pdf_bytes,
+                    file_name=(
+                        f"{_report_filename_country(country)}_report.pdf"
+                    ),
+                    mime="application/pdf",
+                    use_container_width=True,
+                )
         else:
             st.button(
                 "Download PDF",
