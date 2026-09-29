@@ -813,6 +813,10 @@ def _validate_professional_report_story(story: list[object]) -> None:
             r"\b\d{1,2}/\d{1,2}/\d{4}\b",
             "ambiguous numeric calendar date",
         ),
+        (
+            r"\b(?:1\d{3}|20\d{2})\s+-\s+",
+            "legacy date-dash timeline formatting",
+        ),
     )
 
     for pattern, label in forbidden_patterns:
@@ -2273,14 +2277,10 @@ def _build_pdf_report_uncached(
                         if isinstance(item, dict)
                     ]
                     if rows:
-                        flag_history_flowables: list[object] = []
-                        for period, summary in rows:
-                            flag_history_flowables.append(
-                                Paragraph(
-                                    f"<b>{xml_escape(period)}</b> - {xml_escape(summary)}",
-                                    body_style,
-                                )
-                            )
+                        # Flag history follows the same global narrative rule
+                        # as the main historical journey. No country may fall
+                        # back to the legacy "date - fragment" presentation.
+                        flag_history_flowables = _timeline_narrative(rows)
                         story.extend(
                             narrative_section(
                                 "Flag History",
