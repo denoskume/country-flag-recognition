@@ -10,10 +10,28 @@ from __future__ import annotations
 import json
 import os
 import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 from typing import Any
 
 from openai import OpenAI
+
+
+REPORT_GENERATION_BUDGET_SECONDS = min(
+    285.0,
+    max(
+        120.0,
+        float(os.getenv("FLAG_INTELLIGENCE_REPORT_BUDGET_SECONDS", "270")),
+    ),
+)
+
+
+def _remaining_budget(deadline: float, *, cap: float) -> float:
+    """Return a safe per-call timeout inside the shared report budget."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 8.0:
+        return 0.0
+    return min(cap, max(8.0, remaining - 5.0))
 
 
 REPORT_SECTION_KEYS = (
@@ -556,6 +574,7 @@ def _generate_section_group(
     group_name: str,
     keys: tuple[str, ...],
     existing: dict[str, str],
+    deadline: float,
 ) -> dict[str, str]:
     """Generate one small thematic report block with retry and model failover."""
     requested = {
@@ -586,9 +605,12 @@ def _generate_section_group(
     best: dict[str, str] = {}
     for candidate_model in _model_candidates(model):
         for _attempt in range(2):
+            timeout = _remaining_budget(deadline, cap=75.0)
+            if timeout <= 0:
+                return best
             client = OpenAI(
                 api_key=api_key,
-                timeout=90.0,
+                timeout=timeout,
                 max_retries=0,
             )
             try:
@@ -622,6 +644,7 @@ def _generate_single_section(
     model: str,
     evidence_json: str,
     key: str,
+    deadline: float,
 ) -> str:
     """Write one section independently as a last-resort editorial pass."""
     prompt = (
@@ -644,9 +667,12 @@ def _generate_single_section(
 
     for candidate_model in _model_candidates(model):
         for _attempt in range(3):
+            timeout = _remaining_budget(deadline, cap=55.0)
+            if timeout <= 0:
+                return ""
             client = OpenAI(
                 api_key=api_key,
-                timeout=75.0,
+                timeout=timeout,
                 max_retries=0,
             )
             try:
@@ -674,6 +700,7 @@ def _recover_report_in_chunks(
     model: str,
     evidence_json: str,
     draft: dict[str, str],
+    deadline: float,
 ) -> dict[str, str]:
     """Repair an incomplete report through smaller parallel thematic calls."""
     merged = {key: str(draft.get(key, "") or "") for key in REPORT_SECTION_KEYS}
@@ -702,17 +729,28 @@ def _recover_report_in_chunks(
                 group_name=group_name,
                 keys=keys,
                 existing=merged,
+                deadline=deadline,
             ): group_name
             for group_name, keys in jobs
         }
-        for future in as_completed(futures):
-            try:
-                block = future.result()
-            except Exception:
-                block = {}
-            for key, value in block.items():
-                if value and not str(merged.get(key, "") or "").strip():
-                    merged[key] = value
+        try:
+            completed = as_completed(
+                futures,
+                timeout=max(1.0, deadline - time.monotonic()),
+            )
+            for future in completed:
+                try:
+                    block = future.result()
+                except Exception:
+                    block = {}
+                for key, value in block.items():
+                    if value and not str(merged.get(key, "") or "").strip():
+                        merged[key] = value
+        except TimeoutError:
+            pass
+        finally:
+            for future in futures:
+                future.cancel()
 
     # Final targeted rescue: retry only the groups that still contain missing
     # core content. This keeps failure isolation narrow and prevents one bad
@@ -730,6 +768,7 @@ def _recover_report_in_chunks(
                 group_name=f"{group_name}_final_rescue",
                 keys=keys,
                 existing=merged,
+                deadline=deadline,
             )
             for key, value in block.items():
                 if value and not str(merged.get(key, "") or "").strip():
@@ -754,17 +793,28 @@ def _recover_report_in_chunks(
                     model=model,
                     evidence_json=evidence_json,
                     key=key,
+                    deadline=deadline,
                 ): key
                 for key in missing_keys
             }
-            for future in as_completed(futures):
-                key = futures[future]
-                try:
-                    value = future.result()
-                except Exception:
-                    value = ""
-                if value:
-                    merged[key] = value
+            try:
+                completed = as_completed(
+                    futures,
+                    timeout=max(1.0, deadline - time.monotonic()),
+                )
+                for future in completed:
+                    key = futures[future]
+                    try:
+                        value = future.result()
+                    except Exception:
+                        value = ""
+                    if value:
+                        merged[key] = value
+            except TimeoutError:
+                pass
+            finally:
+                for future in futures:
+                    future.cancel()
 
     return merged
 
@@ -783,11 +833,14 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
         default=str,
     )
 
+    deadline = time.monotonic() + REPORT_GENERATION_BUDGET_SECONDS
+
     draft = _recover_report_in_chunks(
         api_key=api_key,
         model=model,
         evidence_json=evidence_json,
         draft={},
+        deadline=deadline,
     )
     if not draft:
         return {}
