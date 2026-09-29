@@ -1399,7 +1399,7 @@ def _wikidata_citizenship_qids(
     return result
 
 
-def _candidate_people_from_text(text: str, *, limit: int = 24) -> list[str]:
+def _candidate_people_from_text(text: str, *, limit: int = 10) -> list[str]:
     """Extract likely person names from list-like country source material."""
     value = str(text or "")
     candidates: list[str] = []
@@ -1432,8 +1432,8 @@ def build_notable_person_profiles(
     country_name: str,
     source_text: str,
     *,
-    timeout: float = 10.0,
-    max_people: int = 8,
+    timeout: float = 4.0,
+    max_people: int = 4,
 ) -> tuple[str, str]:
     """
     Build short individual biographies for notable people.
@@ -1455,9 +1455,13 @@ def build_notable_person_profiles(
     profiles: list[str] = []
     source_urls: list[str] = []
 
+    request_budget = max_people * 2
+    attempts = 0
+
     for name in candidates:
-        if len(profiles) >= max_people:
+        if len(profiles) >= max_people or attempts >= request_budget:
             break
+        attempts += 1
         try:
             canonical, person_qid, intro = _wikipedia_page_identity(
                 name,
@@ -1468,12 +1472,24 @@ def build_notable_person_profiles(
         if not canonical or not person_qid or not intro:
             continue
 
-        citizenship = _wikidata_citizenship_qids(
-            person_qid,
-            timeout=timeout,
+        intro_lower = intro.casefold()
+        country_lower = country_name.casefold()
+
+        # Fast path: if the lead explicitly identifies the person with the
+        # country (e.g. "French physicist"), accept without an extra request.
+        country_token = country_lower.rstrip("s")
+        fast_identity_match = (
+            country_lower in intro_lower
+            or country_token in intro_lower
         )
-        if country_qid not in citizenship:
-            continue
+
+        if not fast_identity_match:
+            citizenship = _wikidata_citizenship_qids(
+                person_qid,
+                timeout=min(timeout, 3.0),
+            )
+            if country_qid not in citizenship:
+                continue
 
         sentences = _sentences(intro)
         summary = " ".join(sentences[:3]).strip()
@@ -2127,8 +2143,8 @@ def enrich_from_encyclopedia(
         profiles_text, profile_urls = build_notable_person_profiles(
             canonical_title,
             str(notable_seed.value),
-            timeout=min(timeout, 10.0),
-            max_people=8,
+            timeout=min(timeout, 4.0),
+            max_people=4,
         )
         if profiles_text:
             profile_item = evidence(
