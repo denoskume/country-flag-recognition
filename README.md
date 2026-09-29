@@ -13,6 +13,10 @@
   Version 0.1.0
 </p>
 
+<p align="center">
+  <a href="https://flag-intelligence.streamlit.app/"><b>Open Flag Intelligence</b></a>
+</p>
+
 Flag Intelligence is a personal computer-vision and country-intelligence project that connects worldwide flag recognition with structured country knowledge and professional report generation.
 
 A user can either:
@@ -573,22 +577,46 @@ API credentials must never be committed to the repository.
 
 ---
 
-## Product web interface
+## Live application
 
-A separate FastAPI-compatible web entry point also exists:
+Flag Intelligence V0.1.0 is publicly available here:
+
+**https://flag-intelligence.streamlit.app/**
+
+The deployed application currently provides the complete user workflow:
+
+- flag-image recognition;
+- direct country-name / ISO input;
+- Country Intelligence report generation;
+- JSON export;
+- professional PDF export;
+- geographic context;
+- Ask Flag Intelligence.
+
+---
+
+## Local development
+
+Run the Streamlit application locally with:
 
 ```bash
 pip install -r requirements.txt
+streamlit run app.py
+```
+
+A separate FastAPI-compatible development entry point is also available:
+
+```bash
 PYTHONPATH=src uvicorn serve:app --reload
 ```
 
-Then open:
+Local FastAPI development is available at:
 
 ```text
 http://127.0.0.1:8000
 ```
 
-The Streamlit application remains the most complete interface for the current V0.1.0 workflow.
+The public Streamlit deployment is the reference interface for Flag Intelligence V0.1.0.
 
 ---
 
