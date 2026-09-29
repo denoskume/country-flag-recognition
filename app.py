@@ -394,7 +394,10 @@ def _cover_flag_image(
         else:
             return None
 
-        flag_image._restrictSize(64 * mm, 42 * mm)
+        # Fixed physical size on the report cover.
+        # Width: 4 cm · Height: 2 cm.
+        flag_image.drawWidth = 40 * mm
+        flag_image.drawHeight = 20 * mm
         return flag_image
     except Exception:
         return None
