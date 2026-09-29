@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Flag Intelligence logo">
+  <circle cx="128" cy="128" r="124" fill="#f90016"/>
+  <g fill="#fff">
+    <rect x="91" y="50" width="8" height="92" rx="4"/>
+    <path d="M101 60 C125 45, 145 71, 174 55 L174 74 C146 90, 125 65, 101 79 Z"/>
+    <path d="M101 83 C124 68, 145 94, 166 82 L166 101 C145 113, 124 88, 101 102 Z"/>
+    <path d="M101 106 C121 94, 138 116, 153 110 L153 128 C138 136, 120 116, 101 126 Z"/>
+  </g>
+  <text x="128" y="185" text-anchor="middle" fill="#fff"
+        font-family="Arial, Helvetica, sans-serif" font-size="51" font-weight="900">FLAG</text>
+  <text x="128" y="217" text-anchor="middle" fill="#fff"
+        font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="800"
+        letter-spacing="1">INTELLIGENCE</text>
+</svg>
