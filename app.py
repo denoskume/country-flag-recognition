@@ -3701,7 +3701,7 @@ def _build_pdf_report_uncached(
     return buffer.getvalue()
 
 
-REPORT_WRITER_CACHE_VERSION = "2026-09-29-r30"
+REPORT_WRITER_CACHE_VERSION = "2026-09-29-r31"
 
 def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
     """Build a complete local report when the external writer is unavailable."""
@@ -3959,7 +3959,6 @@ def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
     }
     return result
 
-@st.cache_data(ttl=86400, show_spinner=False)
 def _cached_authored_report(
     evidence_json: str,
     writer_cache_version: str = REPORT_WRITER_CACHE_VERSION,
@@ -4887,6 +4886,10 @@ def show_result(
             </script>
             """,
             unsafe_allow_html=True,
+        )
+
+        report["_writer_api_key_available"] = bool(
+            os.getenv("OPENAI_API_KEY", "").strip()
         )
 
         with st.spinner("Writing the country report..."):
