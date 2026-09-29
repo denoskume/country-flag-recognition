@@ -3139,34 +3139,78 @@ def _build_pdf_report_uncached(
         # enough room for the heading and a useful amount of conclusion text.
         story.append(CondPageBreak(55 * mm))
         story.extend(chapter_heading(8, "Conclusion"))
-        conclusion_sentences = [
-            (
-                f"{decision} is presented in this report through a structured "
-                f"profile covering geography, historical development, institutions, "
-                f"society, culture, economy, infrastructure and practical information."
-            )
-        ]
-        if clean(profile.get("capital")) != "Not available":
+        conclusion_sentences: list[str] = []
+
+        capital_value = clean(profile.get("capital"))
+        government_value = clean(profile.get("government_form"))
+        national_day_value = professional_date(profile.get("national_day"))
+
+        if capital_value != "Not available":
             conclusion_sentences.append(
-                f"Its capital is {clean(profile.get('capital'))}."
+                f"{decision} emerges from this report as a country whose national "
+                f"identity is anchored in {capital_value} as its capital and shaped "
+                f"by a long historical process linking territory, institutions and "
+                f"collective memory."
             )
-        if clean(profile.get("population")) != "Not available":
+        else:
             conclusion_sentences.append(
-                f"The population reference used in the report is {population_value}."
+                f"{decision} emerges from this report as a country shaped by the "
+                f"interaction of geography, historical development, institutions "
+                f"and collective identity."
             )
-        if clean(profile.get("government_form")) != "Not available":
+
+        if national_day_value != "Not available":
             conclusion_sentences.append(
-                f"The documented form of government is {clean(profile.get('government_form'))}."
+                f"Its national symbols and commemorations, including {national_day_value}, "
+                f"connect the modern state to the historical milestones presented "
+                f"throughout the report."
             )
+
+        if government_value != "Not available":
+            conclusion_sentences.append(
+                f"Politically, the country is organised as a {government_value}, "
+                f"while its present institutions reflect successive historical "
+                f"transformations in sovereignty, leadership and public administration."
+            )
+
         conclusion_sentences.append(
-            "Taken together, the preceding chapters provide a consolidated "
-            "country-level reference rather than a substitute for specialised, "
-            "real-time or legally authoritative information."
+            "Socially and culturally, the report shows that national identity is "
+            "not defined by a single tradition: language, religion, regional customs, "
+            "literature, philosophy, music, cuisine, public figures and heritage all "
+            "contribute to the country's broader cultural profile."
         )
-        story.append(
-            Paragraph(
-                xml_escape(" ".join(conclusion_sentences)),
-                body_style,
+
+        if gdp_value != "Not available":
+            conclusion_sentences.append(
+                f"Economically, the reported GDP reference of {gdp_value} sits within "
+                f"a wider system of industry, trade, transport, energy and services, "
+                f"while the science and education sections illustrate the role of "
+                f"research, invention and intellectual production in national development."
+            )
+        else:
+            conclusion_sentences.append(
+                "Economically, the report links industry, trade, infrastructure, energy, "
+                "education and research to the country's wider development trajectory."
+            )
+
+        conclusion_sentences.append(
+            "The international and practical sections place these domestic characteristics "
+            "in a wider context by connecting the country to diplomacy, international "
+            "institutions, mobility, everyday costs and essential public information."
+        )
+
+        conclusion_sentences.append(
+            "Taken together, the report should be read as an integrated learning reference: "
+            "its purpose is not merely to list facts, but to explain how geography, history, "
+            "institutions, society, culture, economic activity and knowledge production "
+            "interact to form the country as it exists today."
+        )
+
+        story.extend(
+            _paragraphize_sentences(
+                conclusion_sentences,
+                max_sentences=2,
+                max_chars=520,
             )
         )
 
