@@ -157,13 +157,14 @@ The authored report currently supports the following sections:
 17. Economy, Trade & Key Industries
 18. Infrastructure, Transport & Energy
 19. Education & Research
-20. Science, Discovery & Invention
-21. Environment & Biodiversity
-22. Cost of Living & Everyday Prices
-23. Practical & Emergency Information
-24. International Relations
-25. Notable Public Figures
-26. Conclusion
+20. Universities & Higher Education
+21. Science, Discovery & Invention
+22. Environment & Biodiversity
+23. Cost of Living & Everyday Prices
+24. Practical & Emergency Information
+25. International Relations
+26. Notable Public Figures
+27. Conclusion
 
 The exact depth of a section depends on the country and the reliability of the available context.
 
@@ -279,6 +280,32 @@ Notable figures are written as short explanatory biographies rather than raw nam
 
 ---
 
+## Universities & higher education
+
+University coverage is treated as a dedicated report domain.
+
+Where reliable information exists, the report should identify both:
+
+- historically significant universities or predecessor institutions;
+- currently prominent or internationally recognized universities.
+
+For the most important institutions, the report aims to explain:
+
+- official institution name;
+- city or location;
+- founding year or historical origin where well established;
+- important predecessor, merger, closure or renaming history where relevant;
+- role in the development of national higher education;
+- major academic or research strengths;
+- notable scientific, cultural or public contributions;
+- broader national or international significance.
+
+Exact contemporary ranking positions are included only when the ranking body, edition/year and position are supported by the available context. Otherwise, the report uses neutral descriptions such as **major national university**, **widely recognized institution**, or **internationally prominent university**.
+
+Countries without medieval or early universities are not forced into an artificial ancient-university narrative; the report instead identifies the earliest major modern higher-education institutions.
+
+---
+
 ## Economy, infrastructure and innovation
 
 Coverage may include:
@@ -295,7 +322,12 @@ Coverage may include:
 - roads;
 - airports;
 - electricity and energy;
-- universities;
+- education systems;
+- universities and higher education;
+- historically significant universities;
+- currently prominent and internationally recognized universities;
+- founding context, location and institutional evolution;
+- academic strengths and major contributions;
 - research;
 - science;
 - technology;
