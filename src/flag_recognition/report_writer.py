@@ -310,7 +310,7 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     model = os.getenv("FLAG_INTELLIGENCE_WRITER_MODEL", "gpt-5.6-sol").strip()
     client = OpenAI(
         api_key=api_key,
-        timeout=90.0,
+        timeout=105.0,
         max_retries=0,
     )
 
@@ -361,30 +361,22 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     if not draft:
         return {}
 
-    try:
-        corrected, passed, issues = _review_and_correct(
-            client,
-            model,
-            evidence_json,
-            draft,
-        )
-    except Exception as exc:
-        # Keep the researched first-pass report available if the independent
-        # verifier is temporarily unavailable. Deterministic QA still runs.
-        mechanical = _deterministic_quality_issues(draft)
-        draft["__qa_passed"] = not mechanical
-        draft["__qa_issues"] = mechanical
-        draft["__review_warning"] = (
-            f"Second-pass verification unavailable: {type(exc).__name__}"
-        )
-        return draft
-
-    if not corrected:
-        mechanical = _deterministic_quality_issues(draft)
-        draft["__qa_passed"] = not mechanical
-        draft["__qa_issues"] = mechanical
-        return draft
-
-    corrected["__qa_passed"] = passed
-    corrected["__qa_issues"] = issues
-    return corrected
+    # One OpenAI call must complete the whole research + writing + factual
+    # self-check workflow. Only deterministic mechanical QA runs afterwards,
+    # keeping total generation latency within the 120-second product budget.
+    mechanical = _deterministic_quality_issues(draft)
+    substantial_sections = sum(
+        1
+        for key in REPORT_SECTION_KEYS
+        if draft.get(key, "").strip()
+    )
+    passed = (
+        substantial_sections >= 12
+        and not mechanical
+        and bool(draft.get("introduction"))
+        and bool(draft.get("historical_journey"))
+        and bool(draft.get("conclusion"))
+    )
+    draft["__qa_passed"] = passed
+    draft["__qa_issues"] = mechanical
+    return draft
