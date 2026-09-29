@@ -3607,6 +3607,19 @@ st.markdown(
             font-weight: 750;
         }
 
+        div[data-testid="stCameraInput"] {
+            width: 100%;
+        }
+
+        div[data-testid="stCameraInput"] video,
+        div[data-testid="stCameraInput"] img {
+            width: 100% !important;
+            max-height: 62vh;
+            object-fit: contain;
+            border-radius: 14px;
+            background: #0f172a;
+        }
+
         .stButton > button[kind="primary"] {
             min-height: 48px;
             border: 0;
@@ -3663,7 +3676,14 @@ st.markdown(
 
         @media (max-width: 700px) {
             .block-container {
-                padding-top: 1.5rem;
+                padding-top: 1rem;
+                padding-left: .75rem;
+                padding-right: .75rem;
+            }
+
+            div[data-testid="stCameraInput"] video,
+            div[data-testid="stCameraInput"] img {
+                max-height: 58vh;
             }
             .flag-banner {
                 height: auto;
@@ -3780,27 +3800,57 @@ with st.container(border=True):
         if not MODEL_PATH.is_file():
             st.error(f"Model checkpoint not found: {MODEL_PATH}")
 
-        upload_col, preview_col = st.columns([1.35, 0.65], gap="medium")
-
-        with upload_col:
-            uploaded_file = st.file_uploader(
-                "Select image",
-                type=["jpg", "jpeg", "png", "webp"],
-                label_visibility="collapsed",
-            )
-
-        with preview_col:
-            if uploaded_file is not None:
-                image = Image.open(uploaded_file).convert("RGB")
-
-            render_fixed_upload_preview(image)
-
-        process = st.button(
-            "Process image",
-            type="primary",
-            use_container_width=True,
-            disabled=(image is None or not MODEL_PATH.is_file()),
+        image_source = st.radio(
+            "Image source",
+            ("Upload", "Camera"),
+            horizontal=True,
+            label_visibility="collapsed",
+            help=(
+                "Use Camera on a phone or tablet to capture a flag directly "
+                "with the device camera."
+            ),
         )
+
+        if image_source == "Camera":
+            captured_file = st.camera_input(
+                "Capture flag",
+                help=(
+                    "Point the camera at the flag, keep the full flag visible, "
+                    "and capture the image."
+                ),
+            )
+            if captured_file is not None:
+                image = Image.open(captured_file).convert("RGB")
+                st.caption(
+                    "Capture received. Recognition starts automatically."
+                )
+                process = bool(MODEL_PATH.is_file())
+            else:
+                st.caption(
+                    "On phones and tablets, allow camera access when prompted."
+                )
+        else:
+            upload_col, preview_col = st.columns([1.35, 0.65], gap="medium")
+
+            with upload_col:
+                uploaded_file = st.file_uploader(
+                    "Select image",
+                    type=["jpg", "jpeg", "png", "webp"],
+                    label_visibility="collapsed",
+                )
+
+            with preview_col:
+                if uploaded_file is not None:
+                    image = Image.open(uploaded_file).convert("RGB")
+
+                render_fixed_upload_preview(image)
+
+            process = st.button(
+                "Process image",
+                type="primary",
+                use_container_width=True,
+                disabled=(image is None or not MODEL_PATH.is_file()),
+            )
     else:
         typed_country = st.text_input(
             "Country name",
