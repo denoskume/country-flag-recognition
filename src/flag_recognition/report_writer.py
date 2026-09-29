@@ -18,10 +18,10 @@ from openai import OpenAI
 
 
 REPORT_GENERATION_BUDGET_SECONDS = min(
-    270.0,
+    295.0,
     max(
         120.0,
-        float(os.getenv("FLAG_INTELLIGENCE_REPORT_BUDGET_SECONDS", "270")),
+        float(os.getenv("FLAG_INTELLIGENCE_REPORT_BUDGET_SECONDS", "295")),
     ),
 )
 
@@ -638,8 +638,8 @@ def _generate_section_group(
 
     best: dict[str, str] = {}
     for candidate_model in _model_candidates(model):
-        for _attempt in range(2):
-            timeout = _remaining_budget(deadline, cap=75.0)
+        for _attempt in range(3):
+            timeout = _remaining_budget(deadline, cap=110.0)
             if timeout <= 0:
                 return best
             client = OpenAI(
@@ -659,7 +659,7 @@ def _generate_section_group(
                         tuple(requested.keys()),
                         name="flag_intelligence_report_block",
                     ),
-                    max_output_tokens=12000,
+                    max_output_tokens=16000,
                 )
                 parsed = _parse_writer_response(response.output_text or "")
                 block = {
@@ -705,7 +705,7 @@ def _generate_single_section(
 
     for candidate_model in _model_candidates(model):
         for _attempt in range(3):
-            timeout = _remaining_budget(deadline, cap=55.0)
+            timeout = _remaining_budget(deadline, cap=80.0)
             if timeout <= 0:
                 return ""
             client = OpenAI(
@@ -725,7 +725,7 @@ def _generate_single_section(
                         (key,),
                         name="flag_intelligence_single_section",
                     ),
-                    max_output_tokens=2600,
+                    max_output_tokens=4000,
                 )
                 parsed = _parse_writer_response(response.output_text or "")
                 value = str(parsed.get(key, "") or "").strip()
@@ -762,11 +762,11 @@ def _recover_report_in_chunks(
     # Small independent calls are much less timeout-prone than one very long
     # response. Reserve part of the global budget for targeted rescue.
     group_phase_deadline = min(
-        deadline - 110.0,
-        time.monotonic() + 120.0,
+        deadline - 90.0,
+        time.monotonic() + 180.0,
     )
     if group_phase_deadline <= time.monotonic() + 5.0:
-        group_phase_deadline = min(deadline - 10.0, time.monotonic() + 45.0)
+        group_phase_deadline = min(deadline - 8.0, time.monotonic() + 75.0)
 
     executor = ThreadPoolExecutor(max_workers=min(2, len(jobs)))
     futures = {
