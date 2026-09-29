@@ -832,7 +832,11 @@ def _validate_professional_report_story(story: list[object]) -> None:
         violations.append("unresolved Wikidata identifier")
     if "■■" in normalized:
         violations.append("unsupported or missing glyphs")
-    if re.search(r"\b(?:hlist|ublistr?|wikitable)\b", normalized, flags=re.IGNORECASE):
+    if re.search(
+        r"\b(?:hlist|ublistr?|ulist|plainlist|flatlist|wikitable|item[_ -]?style)\b",
+        normalized,
+        flags=re.IGNORECASE,
+    ):
         violations.append("source markup residue")
     if re.search(r"\bNot available\b", normalized, flags=re.IGNORECASE):
         violations.append("unresolved missing value exposed to reader")
@@ -1098,6 +1102,43 @@ def _build_pdf_report_uncached(
             " ",
             text,
             flags=re.IGNORECASE,
+        )
+
+        # Remove residual list/table markup emitted by MediaWiki templates.
+        # These fragments can appear inline in otherwise valid prose.
+        text = re.sub(
+            r"\b(?:hlist|ublistr?|ulist|plainlist|flatlist)\b",
+            " ",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(
+            r"\bitem[_ -]?style\s*=\s*[^,;|}\]]+",
+            " ",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(
+            r"\bclass\s*=\s*[\"']?wikitable[\"']?",
+            " ",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(
+            r"\b(?:style|rowspan|colspan|align)\s*=\s*[^,;|}\]]+",
+            " ",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(
+            r"(?<!\w)[*#]+\s*",
+            " ",
+            text,
+        )
+        text = re.sub(
+            r"[{}\[\]]+",
+            " ",
+            text,
         )
 
         text = re.sub(r"\s*\|\s*", ", ", text)
@@ -3117,7 +3158,7 @@ def resolve_emergency_numbers(
 
 
 COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-29-v20"
-COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-29-v22"
+COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-29-v23"
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_country_profile_v2(
