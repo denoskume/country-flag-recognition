@@ -885,28 +885,80 @@ def _repair_quality_issues(
 
 
 def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
-    """Generate the report through resilient thematic blocks from the start."""
+    """Author one complete report, then repair only missing or weak sections."""
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
         return {}
 
     model = os.getenv("FLAG_INTELLIGENCE_WRITER_MODEL", "gpt-5.6-sol").strip()
-    evidence_json = json.dumps(
-        report,
-        ensure_ascii=False,
-        sort_keys=True,
-        default=str,
-    )
+    country_name = str(
+        report.get("decision")
+        or report.get("country")
+        or report.get("country_code")
+        or ""
+    ).strip()
+    if not country_name:
+        return {}
 
     deadline = time.monotonic() + REPORT_GENERATION_BUDGET_SECONDS
+    schema_hint = {key: "" for key in REPORT_SECTION_KEYS}
 
+    prompt = (
+        f"Write the COMPLETE Flag Intelligence country report for {country_name}. "
+        "You are the author of the report: write every section yourself as coherent, "
+        "original, publication-ready English prose. Do not paste source fragments, "
+        "do not reuse the same paragraph under different headings, and do not output "
+        "MediaWiki labels, citations, URLs, markdown headings, or bibliography text. "
+        "Return ONE valid JSON object containing every required key.\n\n"
+        "The report must be comprehensive. Cover physical geography, climate and "
+        "seasonal months, flag history and symbolism, chronological history, government "
+        "and legal system, society and demographics, language and religion, health, "
+        "culture, festivals, heritage, cities and regions, national symbols, literature "
+        "and philosophy, economy, infrastructure, education, historically important and "
+        "currently prominent universities, science and inventions, environment, cost of "
+        "living context, emergency information, international relations, and conclusion. "
+        "For notable people, populate the dedicated categories with several relevant "
+        "figures and compact mini-biographies where reliable: philosophers, writers and "
+        "poets, mathematicians, physicists, scientists and medical figures, inventors and "
+        "engineers, artists and architects, music and cinema figures, public figures, and "
+        "sports figures. Do not limit a rich country to only three or four names.\n\n"
+        "Required JSON keys:\n"
+        + json.dumps(schema_hint, ensure_ascii=False)
+    )
+
+    draft: dict[str, str] = {}
+
+    # Primary path: one coherent authoring pass for the entire document.
+    primary_timeout = _remaining_budget(deadline, cap=220.0)
+    if primary_timeout > 0:
+        client = OpenAI(
+            api_key=api_key,
+            timeout=primary_timeout,
+            max_retries=1,
+        )
+        try:
+            response = client.responses.create(
+                model=model,
+                reasoning={"effort": "low"},
+                input=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                max_output_tokens=50000,
+            )
+            draft = _parse_writer_response(response.output_text or "")
+        except Exception:
+            draft = {}
+
+    # Repair only what the main authoring pass did not complete.
     draft = _recover_report_in_chunks(
         api_key=api_key,
         model=model,
-        evidence_json=evidence_json,
-        draft={},
+        evidence_json=json.dumps(report, ensure_ascii=False, sort_keys=True),
+        draft=draft,
         deadline=deadline,
     )
+
     if not draft:
         return {}
 
@@ -918,7 +970,7 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
         draft = _repair_quality_issues(
             api_key=api_key,
             model=model,
-            evidence_json=evidence_json,
+            evidence_json=json.dumps(report, ensure_ascii=False, sort_keys=True),
             draft=draft,
             issues=mechanical,
             deadline=deadline,
@@ -935,6 +987,7 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
         and not mechanical
         and bool(draft.get("introduction"))
         and bool(draft.get("historical_journey"))
+        and bool(draft.get("universities_higher_education"))
         and bool(draft.get("conclusion"))
     )
 
@@ -951,5 +1004,5 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     draft["__qa_passed"] = passed
     draft["__qa_issues"] = issues
     draft["__substantial_sections"] = substantial
-    draft["__generation_mode"] = "chunked_primary"
+    draft["__generation_mode"] = "single_author_pass_with_targeted_repair"
     return draft
