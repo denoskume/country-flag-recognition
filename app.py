@@ -3700,7 +3700,7 @@ def _build_pdf_report_uncached(
     return buffer.getvalue()
 
 
-REPORT_WRITER_CACHE_VERSION = "2026-09-29-r21"
+REPORT_WRITER_CACHE_VERSION = "2026-09-29-r22"
 
 def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
     """Build a complete local report when the external writer is unavailable."""
@@ -4845,6 +4845,16 @@ def show_result(
     }
 
     if accepted:
+        # Streamlit Cloud secrets are accepted explicitly as a fallback to
+        # environment variables so the writer never silently misses the API key.
+        if not os.getenv("OPENAI_API_KEY", "").strip():
+            try:
+                secret_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+            except Exception:
+                secret_key = ""
+            if secret_key:
+                os.environ["OPENAI_API_KEY"] = secret_key
+
         with st.spinner("Writing the country report..."):
             # The writer authors the report directly from the resolved country
             # identity. No encyclopedia/context payload is injected into the prose.
