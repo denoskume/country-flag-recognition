@@ -3471,6 +3471,23 @@ def _build_pdf_report_uncached(
                 context_value("international_relations"),
                 max_paragraphs=4,
             )
+        notable_categories = (
+            ("Philosophers & Thinkers", "notable_figures_philosophy"),
+            ("Writers & Poets", "notable_figures_literature_poetry"),
+            ("Mathematicians", "notable_figures_mathematics"),
+            ("Physicists", "notable_figures_physics"),
+            ("Scientists & Medical Figures", "notable_figures_science_medicine"),
+            ("Inventors & Engineers", "notable_figures_invention_engineering"),
+            ("Artists & Architects", "notable_figures_arts_architecture"),
+            ("Music & Cinema Figures", "notable_figures_music_cinema"),
+            ("Public & Political Figures", "notable_figures_public_life"),
+            ("Sports Figures", "notable_figures_sport"),
+        )
+        categorized_people_added = False
+        for category_title, category_key in notable_categories:
+            if add_authored_section(category_title, category_key):
+                categorized_people_added = True
+
         notable_people_text = context_value(
             "culture",
             "notable_people",
@@ -3478,14 +3495,15 @@ def _build_pdf_report_uncached(
         notable_people_flowables = authored_flowables(
             "notable_public_figures"
         )
-        if not notable_people_flowables:
+        if not notable_people_flowables and not categorized_people_added:
             notable_people_flowables = person_profile_flowables(
                 notable_people_text
             )
         if notable_people_flowables:
             story.extend(
                 narrative_section(
-                    "Notable Public Figures",
+                    "Other Notable Public Figures" if categorized_people_added
+                    else "Notable Public Figures",
                     notable_people_flowables,
                 )
             )
