@@ -493,7 +493,7 @@ def _build_pdf_location_map(
     return pdf_map
 
 
-def build_pdf_report(
+def _build_pdf_report_uncached(
     report: dict[str, object],
     image: Image.Image | None,
 ) -> bytes:
@@ -1402,6 +1402,40 @@ def build_pdf_report(
     return buffer.getvalue()
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def _cached_pdf_report(
+    report_json: str,
+    image_bytes: bytes | None,
+) -> bytes:
+    report = json.loads(report_json)
+    image = (
+        Image.open(BytesIO(image_bytes)).convert("RGB")
+        if image_bytes is not None
+        else None
+    )
+    return _build_pdf_report_uncached(report, image)
+
+
+def build_pdf_report(
+    report: dict[str, object],
+    image: Image.Image | None,
+) -> bytes:
+    """Return a cached PDF for identical country report inputs."""
+    image_bytes = None
+    if image is not None:
+        buffer = BytesIO()
+        image.convert("RGB").save(buffer, format="JPEG", quality=88)
+        image_bytes = buffer.getvalue()
+
+    report_json = json.dumps(
+        report,
+        sort_keys=True,
+        ensure_ascii=False,
+        default=str,
+    )
+    return _cached_pdf_report(report_json, image_bytes)
+
+
 MODEL_PATH = ROOT_DIR / "artifacts/models/worldwide_mobilenet_v3_small.pt"
 CONFIG_PATH = ROOT_DIR / "configs/deployment.yaml"
 
@@ -1599,7 +1633,7 @@ def resolve_emergency_numbers(
 COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-28-v18"
 COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-28-v21"
 
-@st.cache_data(ttl=1800, show_spinner=False)
+@st.cache_data(ttl=86400, show_spinner=False)
 def get_country_profile_v2(
     country_code: str,
     schema_version: str = COUNTRY_PROFILE_SCHEMA_VERSION,
@@ -1729,7 +1763,7 @@ def _country_profile_payload(
     }
 
 
-@st.cache_data(ttl=1800, show_spinner=False)
+@st.cache_data(ttl=86400, show_spinner=False)
 def get_country_intelligence_v2(
     country_code: str,
     similar_flags: tuple[str, ...] = (),
@@ -1741,10 +1775,9 @@ def get_country_intelligence_v2(
         country_code,
         schema_version=COUNTRY_PROFILE_SCHEMA_VERSION,
     )
-    try:
-        historical_profile = get_fresh_historical_profile(country_code)
-    except Exception:
-        historical_profile = profile
+    # Reuse the already-fetched profile. Fetching the full country profile
+    # a second time here duplicated Wikidata/World Bank/REST Countries work.
+    historical_profile = profile
 
     payload = _country_profile_payload(
         country_code,
