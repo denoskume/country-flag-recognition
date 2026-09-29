@@ -3700,7 +3700,7 @@ def _build_pdf_report_uncached(
     return buffer.getvalue()
 
 
-REPORT_WRITER_CACHE_VERSION = "2026-09-29-r22"
+REPORT_WRITER_CACHE_VERSION = "2026-09-29-r23"
 
 def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
     """Build a complete local report when the external writer is unavailable."""
@@ -4968,8 +4968,8 @@ def show_result(
             )
             if accepted and not authored_ready:
                 st.warning(
-                    "The full country report could not be completed. "
-                    "A PDF is not generated from an incomplete fallback."
+                    "The country report did not pass the completeness check. "
+                    "A new full report must be generated before PDF publication."
                 )
 
 
