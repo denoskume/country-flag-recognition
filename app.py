@@ -68,11 +68,6 @@ fetch_emergency_numbers_fallback = (
     country_info_module.fetch_emergency_numbers_fallback
 )
 format_emergency_numbers = country_info_module.format_emergency_numbers
-from flag_recognition.inference import (
-    load_inference_bundle,
-    predict_image,
-    predict_robust,
-)
 from flag_recognition.taxonomy import country_code_from_text, country_name_from_code
 from flag_recognition.country_intelligence import (
     build_from_legacy_profile,
@@ -1524,6 +1519,8 @@ st.set_page_config(
 
 @st.cache_resource
 def get_model():
+    from flag_recognition.inference import load_inference_bundle
+
     return load_inference_bundle(MODEL_PATH, device="cpu")
 
 
@@ -2149,9 +2146,6 @@ with st.container(border=True):
     if input_mode == "Flag image":
         if not MODEL_PATH.is_file():
             st.error(f"Model checkpoint not found: {MODEL_PATH}")
-        else:
-            bundle = get_model()
-            deployment_threshold = get_deployment_threshold()
 
         upload_col, preview_col = st.columns([1.35, 0.65], gap="medium")
 
@@ -2172,7 +2166,7 @@ with st.container(border=True):
             "Process image",
             type="primary",
             use_container_width=True,
-            disabled=(image is None or bundle is None),
+            disabled=(image is None or not MODEL_PATH.is_file()),
         )
     else:
         typed_country = st.text_input(
@@ -2197,6 +2191,11 @@ def show_result(
     direct_code: str | None = None,
 ):
     if direct_code is None:
+        from flag_recognition.inference import predict_robust
+
+        bundle = get_model()
+        deployment_threshold = get_deployment_threshold()
+
         with st.spinner("Processing image..."):
             prediction = predict_robust(
                 image,
