@@ -2139,6 +2139,51 @@ def _build_pdf_report_uncached(
 
             return flowables
 
+        def person_profile_flowables(text: object) -> list[object]:
+            """Render verified notable people as individual mini-biographies."""
+            raw = clean(text)
+            if raw == "Not available":
+                return []
+
+            blocks = [
+                block.strip()
+                for block in re.split(r"\n\s*\n+", raw)
+                if block.strip()
+            ]
+            flowables: list[object] = []
+
+            for block in blocks[:10]:
+                match = re.match(r"^([^:]{2,90}):\s*(.+)$", block, flags=re.DOTALL)
+                if match:
+                    name = clean(match.group(1))
+                    biography = clean(match.group(2))
+                else:
+                    name = ""
+                    biography = clean(block)
+
+                if biography == "Not available":
+                    continue
+
+                if name:
+                    flowables.append(
+                        Paragraph(
+                            xml_escape(name),
+                            narrative_subheading_style,
+                        )
+                    )
+
+                sentences = _sentence_units(biography)
+                flowables.extend(
+                    _paragraphize_sentences(
+                        sentences,
+                        max_sentences=2,
+                        max_chars=480,
+                    )
+                )
+
+            return flowables
+
+
         def add_learning_section(title: str, text: object) -> None:
             flowables = learning_flowables(text)
             if flowables:
@@ -3128,10 +3173,20 @@ def _build_pdf_report_uncached(
             "International Relations",
             context_value("international_relations"),
         )
-        add_learning_section(
-            "Notable Public Figures",
-            context_value("culture", "notable_people"),
+        notable_people_text = context_value(
+            "culture",
+            "notable_people",
         )
+        notable_people_flowables = person_profile_flowables(
+            notable_people_text
+        )
+        if notable_people_flowables:
+            story.extend(
+                narrative_section(
+                    "Notable Public Figures",
+                    notable_people_flowables,
+                )
+            )
 
         # 8. Conclusion
         # Never force an empty page when the previous chapter already ended
@@ -3551,7 +3606,7 @@ def resolve_emergency_numbers(
 
 
 COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-29-v21"
-COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-29-v28"
+COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-29-v31"
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_country_profile_v2(
