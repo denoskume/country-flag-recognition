@@ -3819,12 +3819,44 @@ with st.container(border=True):
                     "and capture the image."
                 ),
             )
+
             if captured_file is not None:
-                image = Image.open(captured_file).convert("RGB")
+                capture_bytes = captured_file.getvalue()
+                capture_signature = (
+                    len(capture_bytes),
+                    capture_bytes[:32],
+                    capture_bytes[-32:] if len(capture_bytes) >= 32 else capture_bytes,
+                )
+
+                st.session_state["camera_capture_bytes"] = capture_bytes
+                st.session_state["camera_capture_signature"] = capture_signature
+
+            stored_capture = st.session_state.get("camera_capture_bytes")
+            if stored_capture:
+                image = Image.open(BytesIO(stored_capture)).convert("RGB")
                 st.caption(
                     "Capture received. Recognition starts automatically."
                 )
-                process = bool(MODEL_PATH.is_file())
+
+                current_signature = st.session_state.get(
+                    "camera_capture_signature"
+                )
+                processed_signature = st.session_state.get(
+                    "camera_processed_signature"
+                )
+
+                # Run recognition once per newly captured frame. The persisted
+                # image remains available on subsequent reruns so downloads,
+                # including the PDF, stay active.
+                if (
+                    current_signature is not None
+                    and current_signature != processed_signature
+                    and MODEL_PATH.is_file()
+                ):
+                    process = True
+                    st.session_state["camera_processed_signature"] = (
+                        current_signature
+                    )
             else:
                 st.caption(
                     "On phones and tablets, allow camera access when prompted."
@@ -3977,6 +4009,22 @@ def show_result(
         and not missing_required
     )
 
+    # Persist the completed camera-driven report so mobile/tablet reruns do
+    # not disable the PDF after the recognition dialog has been built.
+    if input_mode_used == "image" and accepted:
+        st.session_state["last_image_report"] = report
+        st.session_state["last_image_report_ready"] = report_ready
+        if image is not None:
+            image_buffer = BytesIO()
+            image.convert("RGB").save(
+                image_buffer,
+                format="JPEG",
+                quality=92,
+            )
+            st.session_state["last_image_report_jpeg"] = (
+                image_buffer.getvalue()
+            )
+
     json_col, pdf_col = st.columns(2, gap="small")
 
     with json_col:
@@ -4034,3 +4082,41 @@ if text_process:
         )
     else:
         show_result(direct_code=resolved_code)
+
+# Keep camera-generated downloads available outside the one-shot dialog rerun.
+if (
+    input_mode == "Flag image"
+    and st.session_state.get("last_image_report")
+    and st.session_state.get("last_image_report_jpeg")
+):
+    persisted_report = st.session_state["last_image_report"]
+    persisted_ready = bool(
+        st.session_state.get("last_image_report_ready")
+    )
+    persisted_image = Image.open(
+        BytesIO(st.session_state["last_image_report_jpeg"])
+    ).convert("RGB")
+
+    if persisted_ready:
+        try:
+            persisted_pdf = build_pdf_report(
+                persisted_report,
+                persisted_image,
+            )
+        except ReportQualityError as exc:
+            st.warning(
+                "Official PDF withheld: the professional report quality "
+                f"gate detected an editorial issue. {exc}"
+            )
+        else:
+            st.download_button(
+                "Download latest captured PDF",
+                data=persisted_pdf,
+                file_name=(
+                    f"{_report_filename_country(str(persisted_report.get('decision', 'country')))}"
+                    "_report.pdf"
+                ),
+                mime="application/pdf",
+                use_container_width=True,
+                key="persistent_camera_pdf_download",
+            )
