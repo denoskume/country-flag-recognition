@@ -870,6 +870,18 @@ def _validate_professional_report_story(story: list[object]) -> None:
         flags=re.IGNORECASE,
     ):
         violations.append("raw catalogue or navigation residue")
+    if re.search(
+        r"\b(for for|in in|by by|on on|the the|and and)\b",
+        normalized,
+        flags=re.IGNORECASE,
+    ):
+        violations.append("duplicated word or preposition")
+    if re.search(
+        r"\b(?:in|by|on)\s+(\d{3,4})\s*,[^.!?]{0,120}\b(?:in|by|on)\s+\1\b",
+        normalized,
+        flags=re.IGNORECASE,
+    ):
+        violations.append("duplicated timeline date")
     if re.search(r"\+Adults|::", normalized):
         violations.append("table/list extraction residue")
     if re.search(r"\bNot available\b", normalized, flags=re.IGNORECASE):
@@ -1725,6 +1737,39 @@ def _build_pdf_report_uncached(
             value = re.sub(
                 r"Global Oral Health Status Report[^.]*?2030\)?\s*",
                 "",
+                value,
+                flags=re.IGNORECASE,
+            )
+
+            # Remove duplicated words/prepositions introduced by source
+            # stitching or API motivation text (e.g. "for for").
+            value = re.sub(
+                r"\b(for|in|on|by|the|a|an|to|of|and)\s+\1\b",
+                r"\1",
+                value,
+                flags=re.IGNORECASE,
+            )
+
+            # Collapse immediately repeated years/dates such as
+            # "in 1579, ... in 1579" or "by 1801, in 1801".
+            value = re.sub(
+                r"\b(in|by|on)\s+(\d{3,4})\s*,\s*"
+                r"(?:(?:in|by|on)\s+\2\s*,?\s*)",
+                r"\1 \2, ",
+                value,
+                flags=re.IGNORECASE,
+            )
+            value = re.sub(
+                r"\b(\d{3,4})\b(\s*[,;:]?\s*)\1\b",
+                r"\1",
+                value,
+            )
+
+            # Remove repeated adjacent phrases created when multiple source
+            # fragments overlap.
+            value = re.sub(
+                r"\b([^.!?]{8,80})\s+\1\b",
+                r"\1",
                 value,
                 flags=re.IGNORECASE,
             )
