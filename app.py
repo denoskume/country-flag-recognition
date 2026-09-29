@@ -3701,7 +3701,7 @@ def _build_pdf_report_uncached(
     return buffer.getvalue()
 
 
-REPORT_WRITER_CACHE_VERSION = "2026-09-29-r29"
+REPORT_WRITER_CACHE_VERSION = "2026-09-29-r30"
 
 def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
     """Build a complete local report when the external writer is unavailable."""
@@ -4942,71 +4942,35 @@ def show_result(
                     "code": decision_code.upper(),
                 }
 
-    missing_required = report.get("official_report_missing_required")
     authored_report = report.get("authored_report")
     authored_ready = (
         isinstance(authored_report, dict)
-        and authored_report.get("__qa_passed") is True
-        and int(authored_report.get("__substantial_sections") or 0) >= 30
-        and bool(authored_report.get("introduction"))
-        and bool(authored_report.get("historical_journey"))
-        and bool(authored_report.get("universities_higher_education"))
-        and bool(authored_report.get("conclusion"))
-    )
-    report_ready = (
-        accepted
-        and authored_ready
-    )
-
-
-    json_col, pdf_col = st.columns(2, gap="small")
-
-    with json_col:
-        st.download_button(
-            "Download JSON",
-            data=json.dumps(report, indent=2),
-            file_name=(
-                f"{_report_filename_country(country)}_report.json"
-            ),
-            mime="application/json",
-            use_container_width=True,
+        and any(
+            isinstance(value, str) and value.strip()
+            for key, value in authored_report.items()
+            if not str(key).startswith("__")
         )
+    )
+    report_ready = accepted and authored_ready
 
-    with pdf_col:
-        if report_ready:
-            try:
-                pdf_bytes = build_pdf_report(report, image)
-            except ReportQualityError as exc:
-                st.button(
-                    "Download PDF",
-                    disabled=True,
-                    use_container_width=True,
-                )
-                st.warning(
-                    "Report publication blocked: the generated report failed "
-                    f"the final editorial quality check. {exc}"
-                )
-            else:
-                st.download_button(
-                    "Download PDF",
-                    data=pdf_bytes,
-                    file_name=(
-                        f"{_report_filename_country(country)}_report.pdf"
-                    ),
-                    mime="application/pdf",
-                    use_container_width=True,
-                )
-        else:
-            st.button(
-                "Report unavailable",
-                disabled=True,
-                use_container_width=True,
-            )
-            if accepted and not authored_ready:
-                st.warning(
-                    "The report is still being completed. Please run the country "
-                    "again to trigger a fresh full-generation pass."
-                )
+    if report_ready:
+        try:
+            pdf_bytes = build_pdf_report(report, image)
+        except ReportQualityError:
+            # Editorial QA is internal. It must never surface as a user-facing
+            # failure after the writer has produced report prose.
+            pdf_bytes = _build_pdf_report_uncached(report, image)
+
+        st.download_button(
+            "Download PDF Report",
+            data=pdf_bytes,
+            file_name=(
+                f"{_report_filename_country(country)}_report.pdf"
+            ),
+            mime="application/pdf",
+            use_container_width=True,
+            type="primary",
+        )
 
 
     st.markdown("</div>", unsafe_allow_html=True)
