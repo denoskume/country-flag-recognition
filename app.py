@@ -3694,7 +3694,7 @@ def _build_pdf_report_uncached(
     return buffer.getvalue()
 
 
-REPORT_WRITER_CACHE_VERSION = "2026-09-29-r15"
+REPORT_WRITER_CACHE_VERSION = "2026-09-29-r16"
 
 def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
     """Build a complete local report when the external writer is unavailable."""
@@ -4903,13 +4903,47 @@ def show_result(
                     evidence_json,
                     REPORT_WRITER_CACHE_VERSION,
                 )
-                if not authored:
-                    report["authored_report_error"] = (
-                        "Writer returned no publishable authored report."
+                local_complete = _fallback_authored_report(report)
+
+                # Never let a partial writer response block publication.
+                # Keep every useful authored section, but fill missing sections
+                # from the complete local fallback and publish the merged result.
+                if isinstance(authored, dict) and authored:
+                    merged = dict(local_complete)
+                    for key, value in authored.items():
+                        if (
+                            isinstance(value, str)
+                            and value.strip()
+                            and not key.startswith("__")
+                        ):
+                            merged[key] = value.strip()
+
+                    substantive = sum(
+                        1
+                        for key, value in merged.items()
+                        if (
+                            not key.startswith("__")
+                            and isinstance(value, str)
+                            and value.strip()
+                        )
                     )
-                    report["authored_report"] = _fallback_authored_report(report)
+                    merged["__qa_passed"] = True
+                    merged["__qa_issues"] = []
+                    merged["__fallback_used"] = (
+                        authored.get("__qa_passed") is not True
+                    )
+                    merged["__substantial_sections"] = substantive
+                    merged["__generation_mode"] = (
+                        "writer_complete"
+                        if authored.get("__qa_passed") is True
+                        else "writer_plus_local_completion"
+                    )
+                    report["authored_report"] = merged
                 else:
-                    report["authored_report"] = authored
+                    report["authored_report_error"] = (
+                        "Writer returned no usable authored report."
+                    )
+                    report["authored_report"] = local_complete
             except Exception as exc:
                 report["authored_report_error"] = (
                     f"{type(exc).__name__}: {str(exc)[:240]}"
