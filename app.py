@@ -8,8 +8,9 @@ import json
 import math
 import re
 import shutil
-from io import BytesIO
+from io import BytesIO, StringIO
 from pathlib import Path
+from urllib.parse import quote_plus
 import sys
 import tempfile
 from time import strftime
@@ -145,6 +146,186 @@ def merge_visually_identical_candidates(
         key=lambda item: item[1],
         reverse=True,
     )
+
+
+
+def _normalize_price_cell(value: object) -> str | None:
+    """Normalize a scraped price cell while keeping its original currency."""
+    if value is None:
+        return None
+    text = str(value).replace("\xa0", " ").strip()
+    text = re.sub(r"\s+", " ", text)
+    if not text or text.lower() in {"nan", "none"}:
+        return None
+    return text
+
+
+def _numbeo_price_lookup(html: str) -> dict[str, str]:
+    """Extract selected current country prices from Numbeo tables."""
+    wanted = {
+        "Apartment (1 bedroom) in City Centre": "rent_1br_centre",
+        "Apartment (1 bedroom) Outside of Centre": "rent_1br_outside",
+        "Basic (Electricity, Heating, Cooling, Water, Garbage) for 85m2 Apartment": "utilities",
+        "Internet (60 Mbps or More, Unlimited Data, Cable/ADSL)": "internet",
+        "Monthly Pass (Regular Price)": "transport_pass",
+        "Gasoline (1 liter)": "gasoline_numbeo",
+        "Average Monthly Net Salary (After Tax)": "net_salary",
+        "Meal, Inexpensive Restaurant": "cheap_meal",
+    }
+    result: dict[str, str] = {}
+    try:
+        tables = pd.read_html(StringIO(html))
+    except (ValueError, ImportError):
+        return result
+
+    for table in tables:
+        if table.shape[1] < 2:
+            continue
+        for _, row in table.iterrows():
+            label = _normalize_price_cell(row.iloc[0])
+            value = _normalize_price_cell(row.iloc[1])
+            if not label or not value:
+                continue
+            for expected, key in wanted.items():
+                if label.casefold() == expected.casefold():
+                    result[key] = value
+    return result
+
+
+def _livingcost_slug(country_name: str) -> str:
+    """Return a best-effort Livingcost country slug."""
+    overrides = {
+        "Côte d'Ivoire": "ivory-coast",
+        "Ivory Coast": "ivory-coast",
+        "United States": "united-states",
+        "United Kingdom": "united-kingdom",
+        "South Korea": "south-korea",
+        "North Korea": "north-korea",
+        "Czechia": "czech-republic",
+    }
+    if country_name in overrides:
+        return overrides[country_name]
+    slug = country_name.lower()
+    slug = re.sub(r"[^a-z0-9]+", "-", slug)
+    return slug.strip("-")
+
+
+@st.cache_data(ttl=43200, show_spinner=False)
+def fetch_current_living_cost(
+    country_code: str,
+    country_name: str,
+) -> dict[str, object]:
+    """
+    Fetch current indicative living-cost data.
+
+    Livingcost supplies country-level monthly budget estimates; Numbeo supplies
+    current crowd-sourced everyday prices; GlobalPetrolPrices is used when a
+    recent weekly gasoline price can be parsed. Missing providers never block
+    the report.
+    """
+    result: dict[str, object] = {
+        "country_code": country_code.upper(),
+        "country_name": country_name,
+        "sources": [],
+    }
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (compatible; FlagIntelligence/0.1; "
+            "+https://github.com/denoskume/country-flag-recognition)"
+        )
+    }
+
+    # Livingcost: country-level population-weighted monthly estimates.
+    try:
+        slug = _livingcost_slug(country_name)
+        url = f"https://livingcost.org/cost/{slug}"
+        response = requests.get(url, headers=headers, timeout=8)
+        response.raise_for_status()
+        plain = re.sub(r"<[^>]+>", " ", response.text)
+        plain = re.sub(r"\s+", " ", plain)
+
+        patterns = {
+            "monthly_one_person_with_rent_usd": r"Total with rent\s*\$\s*([\d,]+(?:\.\d+)?)",
+            "monthly_one_person_without_rent_usd": r"Without rent\s*\$\s*([\d,]+(?:\.\d+)?)",
+            "monthly_family_with_rent_usd": r"Family of 4.*?Total with rent\s*\$\s*([\d,]+(?:\.\d+)?)",
+            "food_one_person_usd": r"Food\s*\$\s*([\d,]+(?:\.\d+)?)",
+            "transport_one_person_usd": r"Transport\s*\$\s*([\d,]+(?:\.\d+)?)",
+            "salary_after_tax_usd": r"Monthly salary after tax\s*\$\s*([\d,]+(?:\.\d+)?)",
+        }
+        for key, pattern in patterns.items():
+            match = re.search(pattern, plain, flags=re.IGNORECASE)
+            if match:
+                result[key] = match.group(1)
+
+        updated = re.search(
+            r"Updated:\s*([A-Za-z]+\s+\d{1,2},\s+\d{4})",
+            plain,
+            flags=re.IGNORECASE,
+        )
+        if updated:
+            result["livingcost_updated"] = updated.group(1)
+
+        if any(key.startswith("monthly_") for key in result):
+            result["sources"].append("Livingcost")
+    except (requests.RequestException, ValueError):
+        pass
+
+    # Numbeo: current everyday prices in the country's local display currency.
+    try:
+        url = (
+            "https://www.numbeo.com/cost-of-living/"
+            f"country_result.jsp?country={quote_plus(country_name)}"
+        )
+        response = requests.get(url, headers=headers, timeout=8)
+        response.raise_for_status()
+        prices = _numbeo_price_lookup(response.text)
+        if prices:
+            result.update(prices)
+            result["sources"].append("Numbeo")
+
+        plain = re.sub(r"<[^>]+>", " ", response.text)
+        plain = re.sub(r"\s+", " ", plain)
+        updated = re.search(
+            r"Last update:\s*([^<]{3,40}?)(?:\s{2,}|$)",
+            plain,
+            flags=re.IGNORECASE,
+        )
+        if updated:
+            result["numbeo_updated"] = updated.group(1).strip()
+    except (requests.RequestException, ValueError):
+        pass
+
+    # GlobalPetrolPrices: recent weekly gasoline price where available.
+    try:
+        petrol_name = country_name.replace(" ", "_")
+        url = (
+            "https://www.globalpetrolprices.com/"
+            f"{quote_plus(petrol_name)}/gasoline_prices/"
+        )
+        response = requests.get(url, headers=headers, timeout=8)
+        response.raise_for_status()
+        plain = re.sub(r"<[^>]+>", " ", response.text)
+        plain = re.sub(r"\s+", " ", plain)
+        match = re.search(
+            r"current gasoline price.*?is\s+([A-Z]{3})\s*([\d.]+)\s+per liter",
+            plain,
+            flags=re.IGNORECASE,
+        )
+        if match:
+            result["gasoline_current"] = f"{match.group(1).upper()} {match.group(2)} per litre"
+            date_match = re.search(
+                r"updated on\s+(\d{1,2}-[A-Za-z]{3}-\d{4})",
+                plain,
+                flags=re.IGNORECASE,
+            )
+            if date_match:
+                result["gasoline_updated"] = date_match.group(1)
+            result["sources"].append("GlobalPetrolPrices")
+    except (requests.RequestException, ValueError):
+        pass
+
+    result["sources"] = list(dict.fromkeys(result["sources"]))
+    return result
 
 
 def _pdf_text(value: object) -> str:
@@ -2370,6 +2551,94 @@ def _build_pdf_report_uncached(
 
         story.extend(chapter_heading(7, "International & Practical Information"))
 
+        living_cost = report.get("current_living_cost")
+        if isinstance(living_cost, dict):
+            cost_sentences: list[str] = []
+            monthly_with_rent = living_cost.get("monthly_one_person_with_rent_usd")
+            monthly_without_rent = living_cost.get("monthly_one_person_without_rent_usd")
+            if monthly_with_rent and monthly_without_rent:
+                cost_sentences.append(
+                    f"At country level, the latest indicative estimate places the "
+                    f"average monthly cost for one person at about US$ {monthly_with_rent} "
+                    f"including rent and US$ {monthly_without_rent} excluding rent."
+                )
+            elif monthly_with_rent:
+                cost_sentences.append(
+                    f"The latest indicative estimate places the average monthly "
+                    f"cost for one person at about US$ {monthly_with_rent}, including rent."
+                )
+
+            rent_centre = living_cost.get("rent_1br_centre")
+            rent_outside = living_cost.get("rent_1br_outside")
+            if rent_centre and rent_outside:
+                cost_sentences.append(
+                    f"For housing, a one-bedroom apartment averages roughly "
+                    f"{rent_centre} in a city centre and {rent_outside} outside "
+                    f"central areas."
+                )
+
+            utilities = living_cost.get("utilities")
+            internet_price = living_cost.get("internet")
+            transport_pass = living_cost.get("transport_pass")
+            everyday_parts: list[str] = []
+            if utilities:
+                everyday_parts.append(
+                    f"basic monthly utilities for an 85 m² apartment are about {utilities}"
+                )
+            if internet_price:
+                everyday_parts.append(f"home Internet is about {internet_price} per month")
+            if transport_pass:
+                everyday_parts.append(
+                    f"a regular public-transport pass is around {transport_pass} per month"
+                )
+            if everyday_parts:
+                if len(everyday_parts) == 1:
+                    detail = everyday_parts[0]
+                else:
+                    detail = ", ".join(everyday_parts[:-1]) + f", while {everyday_parts[-1]}"
+                cost_sentences.append(
+                    f"Everyday recurring expenses also matter: {detail}."
+                )
+
+            gasoline = (
+                living_cost.get("gasoline_current")
+                or living_cost.get("gasoline_numbeo")
+            )
+            if gasoline:
+                fuel_sentence = f"Petrol is currently around {gasoline}"
+                fuel_date = living_cost.get("gasoline_updated")
+                if fuel_date:
+                    fuel_sentence += f" as of {fuel_date}"
+                cost_sentences.append(fuel_sentence + ".")
+
+            net_salary = living_cost.get("net_salary")
+            if net_salary:
+                cost_sentences.append(
+                    f"For context, the reported average monthly net salary is "
+                    f"approximately {net_salary}."
+                )
+
+            if cost_sentences:
+                source_names = living_cost.get("sources") or []
+                source_note = (
+                    " These figures are indicative national averages rather than "
+                    "fixed prices; actual costs vary substantially by city, household "
+                    "size and lifestyle."
+                )
+                if source_names:
+                    source_note += (
+                        " Current-price sources used here include "
+                        + ", ".join(str(name) for name in source_names)
+                        + "."
+                    )
+                cost_sentences.append(source_note.strip())
+                story.extend(
+                    narrative_section(
+                        "Cost of Living & Everyday Prices",
+                        _narrative_paragraph(cost_sentences),
+                    )
+                )
+
         calling_code = fact_value(profile.get("calling_code"))
         emergency_numbers_raw = fact_value(profile.get("emergency_numbers"))
         emergency_numbers = (
@@ -2458,8 +2727,9 @@ def _build_pdf_report_uncached(
         methodology_text = (
             "Flag Intelligence combines structured country facts with sourced "
             "educational context. Current source families include World Bank, "
-            "Wikidata, REST Countries, Wikipedia/MediaWiki and specialised "
-            "emergency-number data where available. Facts may use different "
+            "Wikidata, REST Countries, Wikipedia/MediaWiki, Livingcost, Numbeo, "
+            "GlobalPetrolPrices and specialised emergency-number data where "
+            "available. Facts may use different "
             "reference years. Missing information is intentionally preferred "
             "over unsupported content, and time-sensitive information should be "
             "interpreted using the source and retrieval context available in the "
@@ -2470,7 +2740,8 @@ def _build_pdf_report_uncached(
             Paragraph(
                 xml_escape(
                     "Source line: World Bank · Wikidata · REST Countries · "
-                    "Wikipedia/MediaWiki · EmergencyNumberAPI where available."
+                    "Wikipedia/MediaWiki · Livingcost · Numbeo · "
+                    "GlobalPetrolPrices · EmergencyNumberAPI where available."
                 ),
                 small_style,
             )
@@ -3441,6 +3712,10 @@ def show_result(
             report["official_report_manifest"] = knowledge["report_manifest"]
             report["official_report_missing_required"] = (
                 knowledge["missing_required_report_sections"]
+            )
+            report["current_living_cost"] = fetch_current_living_cost(
+                decision_code,
+                display_country_name(decision_code),
             )
         except (requests.RequestException, LookupError, ValueError):
             pass
