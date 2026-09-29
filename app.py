@@ -1326,7 +1326,7 @@ def _build_pdf_report_uncached(
         def _timeline_narrative(
             rows: list[tuple[str, str]],
         ) -> list[object]:
-            """Convert dated events into connected historical narration."""
+            """Convert dated events into varied, coherent historical narration."""
             events = [
                 (clean(period), _normalize_sentence(summary))
                 for period, summary in rows
@@ -1339,23 +1339,41 @@ def _build_pdf_report_uncached(
             paragraphs: list[object] = []
             chunk: list[str] = []
 
+            transition_sets = (
+                ("A few decades later, in", "Subsequently, in", "By", "Later, in"),
+                ("This was followed by", "The sequence continued in", "In the years that followed, by", "Thereafter, in"),
+                ("A major shift came in", "A turning point emerged in", "The political landscape changed again in", "The next decisive moment came in"),
+                ("Against this background, in", "In this broader context, by", "Amid these changes, in", "Within this evolving context, in"),
+                ("The situation evolved further in", "The period entered a new phase in", "A new chapter began in", "The historical trajectory then moved to"),
+            )
+
             for index, (period, summary) in enumerate(events):
+                lowered_summary = (
+                    summary[0].lower() + summary[1:]
+                    if len(summary) > 1
+                    else summary.lower()
+                )
+
                 if index == 0:
-                    sentence = f"In {period}, {summary[0].lower() + summary[1:] if len(summary) > 1 else summary.lower()}"
+                    sentence = f"In {period}, {lowered_summary}"
                 elif index == len(events) - 1:
-                    sentence = f"More recently, in {period}, {summary[0].lower() + summary[1:] if len(summary) > 1 else summary.lower()}"
+                    sentence = f"More recently, in {period}, {lowered_summary}"
                 else:
-                    connectors = (
-                        "This development was followed by",
-                        "The next major turning point came in",
-                        "Later, in",
-                        "Another important stage occurred in",
-                    )
-                    connector = connectors[(index - 1) % len(connectors)]
-                    if connector.endswith("in"):
-                        sentence = f"{connector} {period}, {summary[0].lower() + summary[1:] if len(summary) > 1 else summary.lower()}"
+                    connector_group = transition_sets[(index - 1) % len(transition_sets)]
+                    connector = connector_group[(index - 1) % len(connector_group)]
+
+                    if connector in {
+                        "This was followed by",
+                        "The historical trajectory then moved to",
+                    }:
+                        sentence = f"{connector} {period}, when {lowered_summary}"
+                    elif connector == "By":
+                        sentence = f"By {period}, {lowered_summary}"
+                    elif connector.startswith("In the years that followed"):
+                        sentence = f"In the years that followed, by {period}, {lowered_summary}"
                     else:
-                        sentence = f"{connector} {period}: {summary}"
+                        sentence = f"{connector} {period}, {lowered_summary}"
+
                 chunk.append(sentence)
 
                 if len(chunk) >= 4:
