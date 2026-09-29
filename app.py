@@ -1805,12 +1805,12 @@ def _build_pdf_report_uncached(
                 "TOCLevel1",
                 parent=contents_item_style,
                 fontName="Helvetica",
-                fontSize=9.2,
-                leading=14,
+                fontSize=10.5,
+                leading=14.5,
                 leftIndent=0,
                 firstLineIndent=0,
-                spaceBefore=1.0 * mm,
-                spaceAfter=1.0 * mm,
+                spaceBefore=1.4 * mm,
+                spaceAfter=1.4 * mm,
             )
         ]
         toc.dotsMinLevel = 0
