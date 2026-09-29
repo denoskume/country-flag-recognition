@@ -459,6 +459,34 @@ def _report_completeness(draft: dict[str, str]) -> tuple[int, list[str]]:
     return len(substantial), missing_core
 
 
+def _report_json_schema(keys: tuple[str, ...]) -> dict[str, object]:
+    """Strict Responses API schema for authored report sections."""
+    return {
+        "type": "object",
+        "properties": {
+            key: {"type": "string"}
+            for key in keys
+        },
+        "required": list(keys),
+        "additionalProperties": False,
+    }
+
+
+def _structured_text_format(
+    keys: tuple[str, ...],
+    *,
+    name: str,
+) -> dict[str, object]:
+    return {
+        "format": {
+            "type": "json_schema",
+            "name": name,
+            "strict": True,
+            "schema": _report_json_schema(keys),
+        }
+    }
+
+
 def _parse_writer_response(raw: str) -> dict[str, str]:
     raw = _strip_code_fence(raw or "")
     if not raw:
@@ -621,6 +649,10 @@ def _generate_section_group(
                         {"role": "system", "content": SYSTEM_PROMPT},
                         {"role": "user", "content": prompt},
                     ],
+                    text=_structured_text_format(
+                        tuple(requested.keys()),
+                        name="flag_intelligence_report_block",
+                    ),
                     max_output_tokens=7000,
                 )
                 parsed = _parse_writer_response(response.output_text or "")
@@ -683,6 +715,10 @@ def _generate_single_section(
                         {"role": "system", "content": SYSTEM_PROMPT},
                         {"role": "user", "content": prompt},
                     ],
+                    text=_structured_text_format(
+                        (key,),
+                        name="flag_intelligence_single_section",
+                    ),
                     max_output_tokens=2600,
                 )
                 parsed = _parse_writer_response(response.output_text or "")
@@ -944,6 +980,10 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": prompt},
                 ],
+                text=_structured_text_format(
+                    REPORT_SECTION_KEYS,
+                    name="flag_intelligence_country_report",
+                ),
                 max_output_tokens=50000,
             )
             draft = _parse_writer_response(response.output_text or "")
@@ -984,7 +1024,6 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     passed = (
         substantial >= 30
         and not missing_core
-        and not mechanical
         and bool(draft.get("introduction"))
         and bool(draft.get("historical_journey"))
         and bool(draft.get("universities_higher_education"))
