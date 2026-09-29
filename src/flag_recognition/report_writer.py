@@ -619,6 +619,31 @@ def _recover_report_in_chunks(
                 if value and not str(merged.get(key, "") or "").strip():
                     merged[key] = value
 
+    # Final targeted rescue: retry only the groups that still contain missing
+    # core content. This keeps failure isolation narrow and prevents one bad
+    # thematic call from invalidating the whole report.
+    _count, missing_core = _report_completeness(merged)
+    if missing_core:
+        missing_set = set(missing_core)
+        for group_name, keys in SECTION_RECOVERY_GROUPS:
+            if not missing_set.intersection(keys):
+                continue
+            block = _generate_section_group(
+                api_key=api_key,
+                model=model,
+                evidence_json=evidence_json,
+                group_name=f"{group_name}_final_rescue",
+                keys=keys,
+                existing=merged,
+            )
+            for key, value in block.items():
+                if value and not str(merged.get(key, "") or "").strip():
+                    merged[key] = value
+            _count, missing_core = _report_completeness(merged)
+            missing_set = set(missing_core)
+            if not missing_core:
+                break
+
     return merged
 
 
