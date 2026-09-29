@@ -705,11 +705,11 @@ def _build_pdf_report_uncached(
         "CompactBody",
         parent=styles["BodyText"],
         fontName="Helvetica",
-        fontSize=8.4,
-        leading=12.0,
+        fontSize=10.5,
+        leading=14.0,
         alignment=TA_JUSTIFY,
         textColor=colors.HexColor("#222222"),
-        spaceAfter=2.2 * mm,
+        spaceAfter=2.4 * mm,
     )
 
     narrative_heading_style = ParagraphStyle(
