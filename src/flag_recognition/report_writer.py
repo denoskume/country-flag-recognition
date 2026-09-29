@@ -22,15 +22,20 @@ REPORT_SECTION_KEYS = (
     "flag_design_symbolism",
     "origins_early_history",
     "historical_journey",
+    "key_historical_timeline",
     "state_formation_identity",
     "government_structure",
+    "legal_constitutional_system",
     "leadership_through_time",
     "people_society",
+    "demographics_population_structure",
     "languages_religion",
     "health_public_health",
     "culture_cuisine_music_sport",
     "festivals_holidays_traditions",
     "heritage_landmarks",
+    "major_cities_regional_profiles",
+    "national_symbols_identity",
     "literature_philosophy_thought",
     "economy_trade_industries",
     "infrastructure_transport_energy",
@@ -71,6 +76,9 @@ NON-NEGOTIABLE RULES
   uncertain, use cautious wording or omit the unsupported detail.
 - Keep history chronological and relevant to the country. Exclude unrelated
   global background unless it directly explains a national event.
+- key_historical_timeline must provide a concise chronological sequence of major
+  national milestones using supported dates or periods. It should summarize, not
+  duplicate, the longer historical_journey prose.
 - For historical events, explain what happened and why it mattered rather than
   listing dates mechanically.
 - For notable people, write mini-biographies. For each person retained, explain
@@ -94,6 +102,18 @@ NON-NEGOTIABLE RULES
 - Do not overstate causal claims.
 - Avoid repetition across sections. Each fact should normally appear once in
   the most relevant section.
+- major_cities_regional_profiles should explain the capital, largest or most
+  influential cities, their economic/cultural roles, and meaningful regional
+  differences without becoming a travel guide.
+- demographics_population_structure should cover population distribution,
+  urbanization, age structure when reliably known, migration/diaspora context,
+  and major demographic patterns. Do not invent ethnic or religious percentages.
+- national_symbols_identity should cover official or widely established national
+  symbols such as the coat of arms, motto, anthem and other formally recognized
+  symbols where relevant, while distinguishing official status from common usage.
+- legal_constitutional_system should summarize the constitution, legal tradition,
+  court structure and the interaction of civil, common, religious or customary
+  law where applicable, without giving legal advice.
 - Use short, coherent paragraphs. Prefer 2-4 sentences per paragraph.
 - Preserve useful dates and measurements only when they are supported.
 - The conclusion must synthesize the whole report rather than repeat the
@@ -347,7 +367,10 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
         "Write, self-check and finalize the country report from the country identity "
         "and supporting context below. The universities_higher_education section "
         "must provide substantial coverage of historically important and currently "
-        "prominent universities where reliable knowledge exists.\n\n"
+        "prominent universities where reliable knowledge exists. The key_historical_timeline, "
+        "major_cities_regional_profiles, demographics_population_structure, "
+        "national_symbols_identity and legal_constitutional_system sections should "
+        "also be completed whenever reliable knowledge exists.\n\n"
         "Required JSON shape:\n"
         + json.dumps(schema_hint, ensure_ascii=False)
         + "\n\nEVIDENCE:\n"
