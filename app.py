@@ -797,6 +797,38 @@ def _build_pdf_report_uncached(
             flowables.append(Paragraph(xml_escape(cleaned), body_style))
         return flowables
 
+    def readable_fact_paragraph(
+        sentences: list[str],
+    ) -> list[object]:
+        """Render short factual sections as continuous report prose."""
+        cleaned_sentences = [
+            re.sub(r"\s+", " ", sentence).strip()
+            for sentence in sentences
+            if sentence and sentence.strip()
+        ]
+        if not cleaned_sentences:
+            return []
+        return [
+            Paragraph(
+                xml_escape(" ".join(cleaned_sentences)),
+                body_style,
+            )
+        ]
+
+    def fact_value(value: object) -> str | None:
+        """Return a cleaned fact value, preserving explicit 'Not applicable'."""
+        cleaned = clean(value)
+        if cleaned == "Not available":
+            return None
+        return cleaned
+
+    def sentence_for(label: str, value: object) -> str | None:
+        """Convert a short label/value fact into a readable sentence."""
+        cleaned = fact_value(value)
+        if cleaned is None:
+            return None
+        return f"{label}: {cleaned}."
+
     def compact_list(value: object, limit: int = 12) -> str:
         text = clean(value)
         if text == "Not available":
@@ -1423,14 +1455,17 @@ def _build_pdf_report_uncached(
         # 2. Geography & Environment
         story.extend(chapter_heading(2, "Geography & Environment"))
 
-        geography_facts = labeled_paragraphs([
-            ("Largest cities", profile.get("largest_cities")),
-            ("Bordering countries", profile.get("borders")),
-            ("Time zones", profile.get("timezones")),
-            ("Highest point", profile.get("highest_point")),
-            ("Lowest point", profile.get("lowest_point")),
-            ("Country reference coordinates", coordinates),
-        ])
+        geography_sentences = [
+            sentence_for("Largest cities", profile.get("largest_cities")),
+            sentence_for("Bordering countries", profile.get("borders")),
+            sentence_for("Time zones", profile.get("timezones")),
+            sentence_for("Highest point", profile.get("highest_point")),
+            sentence_for("Lowest point", profile.get("lowest_point")),
+            sentence_for("Country reference coordinates", coordinates),
+        ]
+        geography_facts = readable_fact_paragraph(
+            [sentence for sentence in geography_sentences if sentence]
+        )
         if geography_facts:
             story.extend(
                 narrative_section(
@@ -1491,10 +1526,16 @@ def _build_pdf_report_uncached(
                     )
 
                 if flag_rows:
+                    flag_sentences = [
+                        sentence_for(label, value)
+                        for label, value in flag_rows
+                    ]
                     story.extend(
                         narrative_section(
                             "Flag Intelligence - Key Facts",
-                            labeled_paragraphs(flag_rows),
+                            readable_fact_paragraph(
+                                [sentence for sentence in flag_sentences if sentence]
+                            ),
                         )
                     )
 
@@ -1600,42 +1641,117 @@ def _build_pdf_report_uncached(
 
         # 4. State, Government & Institutions
         story.extend(chapter_heading(4, "State, Government & Institutions"))
-        story.extend(
-            narrative_section(
-                "State Formation & Sovereignty",
-                labeled_paragraphs([
-                    ("Former colonial power(s)", profile.get("former_colonial_powers")),
-                    ("Colonial / sovereignty status", profile.get("colonial_period")),
-                    ("Independence / sovereignty date", profile.get("independence_day")),
-                    ("Key independence figure", profile.get("independence_leader")),
-                ]),
+
+        colonial_power = fact_value(profile.get("former_colonial_powers"))
+        sovereignty_status = fact_value(profile.get("colonial_period"))
+        sovereignty_date = fact_value(profile.get("independence_day"))
+        independence_figure = fact_value(profile.get("independence_leader"))
+
+        sovereignty_sentences: list[str] = []
+        if sovereignty_status:
+            sovereignty_sentences.append(
+                f"The country's colonial or sovereignty status is recorded as "
+                f"{sovereignty_status}."
             )
+        if colonial_power:
+            sovereignty_sentences.append(
+                f"Former colonial power(s): {colonial_power}."
+            )
+        if sovereignty_date:
+            sovereignty_sentences.append(
+                f"The recorded independence or sovereignty date is "
+                f"{sovereignty_date}."
+            )
+        if independence_figure:
+            sovereignty_sentences.append(
+                f"The key independence figure is listed as "
+                f"{independence_figure}."
+            )
+        if sovereignty_sentences:
+            story.extend(
+                narrative_section(
+                    "State Formation & Sovereignty",
+                    readable_fact_paragraph(sovereignty_sentences),
+                )
+            )
+
+        national_day = fact_value(profile.get("national_day"))
+        national_motto = fact_value(profile.get("national_motto"))
+        national_anthem = fact_value(profile.get("national_anthem"))
+        demonym = fact_value(profile.get("demonym"))
+
+        identity_sentences: list[str] = []
+        if national_day:
+            identity_sentences.append(
+                f"The national day is {national_day}."
+            )
+        if national_motto:
+            identity_sentences.append(
+                f"The national motto is {national_motto}."
+            )
+        if national_anthem:
+            identity_sentences.append(
+                f"The national anthem is {national_anthem}."
+            )
+        if demonym:
+            identity_sentences.append(
+                f"The demonym is {demonym}."
+            )
+        if identity_sentences:
+            story.extend(
+                narrative_section(
+                    "National Identity",
+                    readable_fact_paragraph(identity_sentences),
+                )
+            )
+
+        government_form = fact_value(profile.get("government_form"))
+        head_of_state = fact_value(profile.get("head_of_state"))
+        head_of_state_office = fact_value(profile.get("head_of_state_office"))
+        head_of_government = fact_value(profile.get("head_of_government"))
+        head_of_government_office = fact_value(
+            profile.get("head_of_government_office")
         )
 
-        story.extend(
-            narrative_section(
-                "National Identity",
-                labeled_paragraphs([
-                    ("National Day", profile.get("national_day")),
-                    ("National motto", profile.get("national_motto")),
-                    ("National anthem", profile.get("national_anthem")),
-                    ("Demonym", profile.get("demonym")),
-                ]),
+        government_sentences: list[str] = []
+        if government_form:
+            government_sentences.append(
+                f"The documented form of government is {government_form}."
             )
-        )
-
-        story.extend(
-            narrative_section(
-                "Government & Institutions",
-                labeled_paragraphs([
-                    ("Government form", profile.get("government_form")),
-                    ("Head of State", profile.get("head_of_state")),
-                    ("Head of State office", profile.get("head_of_state_office")),
-                    ("Head of Government", profile.get("head_of_government")),
-                    ("Head of Government office", profile.get("head_of_government_office")),
-                ]),
+        if head_of_state and head_of_state_office:
+            government_sentences.append(
+                f"The head of state is {head_of_state}, serving as "
+                f"{head_of_state_office}."
             )
-        )
+        elif head_of_state:
+            government_sentences.append(
+                f"The head of state is {head_of_state}."
+            )
+        elif head_of_state_office:
+            government_sentences.append(
+                f"The head of state office is {head_of_state_office}."
+            )
+        if head_of_government and head_of_government_office:
+            government_sentences.append(
+                f"The head of government is {head_of_government}, serving as "
+                f"{head_of_government_office}."
+            )
+        elif head_of_government:
+            government_sentences.append(
+                f"The head of government is {head_of_government}."
+            )
+        elif head_of_government_office:
+            government_sentences.append(
+                f"The head of government office is "
+                f"{head_of_government_office}."
+            )
+        if government_sentences:
+            story.extend(
+                narrative_section(
+                    "Government & Institutions",
+                    readable_fact_paragraph(government_sentences),
+                )
+            )
         add_learning_section(
             "Administrative Divisions",
             context_value("government", "administrative_divisions"),
@@ -1687,10 +1803,19 @@ def _build_pdf_report_uncached(
             story.append(PageBreak())
 
         story.extend(chapter_heading(6, "Economy, Infrastructure & Innovation"))
-        economy_metric_flowables = labeled_paragraphs([
-            ("GDP (current US$)", gdp_value),
-            ("GDP source", profile.get("gdp_source")),
-        ])
+        gdp_source = fact_value(profile.get("gdp_source"))
+        economy_sentences: list[str] = []
+        if gdp_value != "Not available":
+            if gdp_source:
+                economy_sentences.append(
+                    f"GDP (current US$) is {gdp_value}, using {gdp_source} "
+                    f"as the cited source."
+                )
+            else:
+                economy_sentences.append(
+                    f"GDP (current US$) is {gdp_value}."
+                )
+        economy_metric_flowables = readable_fact_paragraph(economy_sentences)
         if economy_metric_flowables:
             story.extend(
                 narrative_section(
@@ -1735,20 +1860,40 @@ def _build_pdf_report_uncached(
 
         story.extend(chapter_heading(7, "International & Practical Information"))
 
-        practical_rows: list[tuple[str, object]] = [
-            ("Calling code", profile.get("calling_code")),
-            ("Emergency numbers", profile.get("emergency_numbers")),
-            ("Driving side", profile.get("driving_side")),
-            ("Internet domain", profile.get("internet_domain")),
-            ("Time zones", profile.get("timezones")),
-        ]
-        story.extend([
-            section_box(
-                "Practical & Emergency Information",
-                info_grid(practical_rows, two_pairs=False),
-            ),
-            Spacer(1, 3 * mm),
-        ])
+        calling_code = fact_value(profile.get("calling_code"))
+        emergency_numbers = fact_value(profile.get("emergency_numbers"))
+        driving_side = fact_value(profile.get("driving_side"))
+        internet_domain = fact_value(profile.get("internet_domain"))
+        time_zones = fact_value(profile.get("timezones"))
+
+        practical_sentences: list[str] = []
+        if calling_code:
+            practical_sentences.append(
+                f"The international calling code is {calling_code}."
+            )
+        if emergency_numbers:
+            practical_sentences.append(
+                f"Emergency numbers are {emergency_numbers}."
+            )
+        if driving_side:
+            practical_sentences.append(
+                f"Vehicles drive on the {driving_side} side of the road."
+            )
+        if internet_domain:
+            practical_sentences.append(
+                f"The country-code internet domain is {internet_domain}."
+            )
+        if time_zones:
+            practical_sentences.append(
+                f"The listed time zone information is {time_zones}."
+            )
+        if practical_sentences:
+            story.extend(
+                narrative_section(
+                    "Practical & Emergency Information",
+                    readable_fact_paragraph(practical_sentences),
+                )
+            )
 
         add_learning_section(
             "International Relations",
