@@ -35,6 +35,7 @@ REPORT_SECTION_KEYS = (
     "economy_trade_industries",
     "infrastructure_transport_energy",
     "education_research",
+    "universities_higher_education",
     "science_discovery_invention",
     "environment_biodiversity",
     "cost_of_living",
@@ -76,6 +77,20 @@ NON-NEGOTIABLE RULES
   who they are/were, their period or lifespan when supported, their field, why
   they became notable, and a major contribution or achievement. Never output a
   raw name-role list.
+- The universities_higher_education section is mandatory whenever reliable
+  knowledge exists. Distinguish historically significant institutions from
+  currently prominent or internationally recognized universities. For each
+  important institution retained, explain its city/location, founding period or
+  historical origin when well established, institutional role, major academic
+  strengths or contributions, and why it matters nationally or internationally.
+- Do not invent ranking positions. Exact contemporary rankings are time-sensitive:
+  include a rank only when the supplied context establishes the ranking body,
+  edition/year and position. Otherwise use neutral wording such as "widely
+  recognized", "a major national university", or "internationally prominent".
+- For countries without medieval or early universities, identify the earliest
+  major modern higher-education institutions instead of forcing an ancient
+  university narrative. Mention historical closures, mergers, renamings or
+  predecessor institutions when they are important to understanding continuity.
 - Do not overstate causal claims.
 - Avoid repetition across sections. Each fact should normally appear once in
   the most relevant section.
@@ -330,7 +345,9 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
 
     user_prompt = (
         "Write, self-check and finalize the country report from the country identity "
-        "and supporting context below.\n\n"
+        "and supporting context below. The universities_higher_education section "
+        "must provide substantial coverage of historically important and currently "
+        "prominent universities where reliable knowledge exists.\n\n"
         "Required JSON shape:\n"
         + json.dumps(schema_hint, ensure_ascii=False)
         + "\n\nEVIDENCE:\n"
