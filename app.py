@@ -828,6 +828,14 @@ def _validate_professional_report_story(story: list[object]) -> None:
         violations.append("duplicate sentence punctuation")
     if re.search(r";\s*;", normalized):
         violations.append("empty semicolon-delimited fragment")
+    if re.search(r"\bQ\d{2,}\b", normalized):
+        violations.append("unresolved Wikidata identifier")
+    if "■■" in normalized:
+        violations.append("unsupported or missing glyphs")
+    if re.search(r"\b(?:hlist|ublistr?|wikitable)\b", normalized, flags=re.IGNORECASE):
+        violations.append("source markup residue")
+    if re.search(r"\bNot available\b", normalized, flags=re.IGNORECASE):
+        violations.append("unresolved missing value exposed to reader")
 
     if violations:
         unique = ", ".join(dict.fromkeys(violations))
@@ -2775,15 +2783,16 @@ def _build_pdf_report_uncached(
         # 9. Sources & Methodology
         story.extend(chapter_heading(9, "Sources & Methodology"))
         methodology_text = (
-            "Flag Intelligence combines structured country facts with sourced "
-            "educational context. Current source families include World Bank, "
-            "Wikidata, REST Countries, Wikipedia/MediaWiki, Livingcost, Numbeo, "
-            "GlobalPetrolPrices and specialised emergency-number data where "
-            "available. Facts may use different "
-            "reference years. Missing information is intentionally preferred "
-            "over unsupported content, and time-sensitive information should be "
-            "interpreted using the source and retrieval context available in the "
-            "underlying record."
+            "Flag Intelligence applies the same source-quality rules to every "
+            "country. Critical factual fields are prioritised from official or "
+            "primary sources where available, including national authorities and "
+            "the World Bank. Wikidata, REST Countries and Wikipedia/MediaWiki are "
+            "used as supplementary sources and must not override stronger verified "
+            "evidence. Livingcost, Numbeo and GlobalPetrolPrices are treated as "
+            "indicative current-price sources rather than official statistics. "
+            "Reference years may differ between datasets. Missing information is "
+            "preferred over unsupported or contradictory content, and time-sensitive "
+            "facts must be interpreted together with their source and retrieval date."
         )
         story.append(Paragraph(xml_escape(methodology_text), body_style))
         story.append(
@@ -3107,8 +3116,8 @@ def resolve_emergency_numbers(
     )
 
 
-COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-29-v19"
-COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-28-v21"
+COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-29-v20"
+COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-29-v22"
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_country_profile_v2(
