@@ -829,6 +829,61 @@ def _recover_report_in_chunks(
     return merged
 
 
+def _repair_quality_issues(
+    *,
+    api_key: str,
+    model: str,
+    evidence_json: str,
+    draft: dict[str, str],
+    issues: list[str],
+    deadline: float,
+) -> dict[str, str]:
+    """Rewrite sections implicated by deterministic QA while budget remains."""
+    keys = []
+    for issue in issues:
+        key = issue.split(":", 1)[0].strip()
+        if key in REPORT_SECTION_KEYS and key not in keys:
+            keys.append(key)
+
+    if not keys or deadline - time.monotonic() <= 8.0:
+        return draft
+
+    repaired = dict(draft)
+    executor = ThreadPoolExecutor(max_workers=min(4, len(keys)))
+    futures = {
+        executor.submit(
+            _generate_single_section,
+            api_key=api_key,
+            model=model,
+            evidence_json=evidence_json,
+            key=key,
+            deadline=deadline,
+        ): key
+        for key in keys
+    }
+    try:
+        completed = as_completed(
+            futures,
+            timeout=max(1.0, deadline - time.monotonic()),
+        )
+        for future in completed:
+            key = futures[future]
+            try:
+                value = future.result()
+            except Exception:
+                value = ""
+            if value:
+                repaired[key] = value
+    except TimeoutError:
+        pass
+    finally:
+        for future in futures:
+            future.cancel()
+        executor.shutdown(wait=False, cancel_futures=True)
+
+    return repaired
+
+
 def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     """Generate the report through resilient thematic blocks from the start."""
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -858,6 +913,20 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     mechanical = _deterministic_quality_issues(draft)
     duplicate_issues = _cross_section_duplicate_issues(draft)
     mechanical = list(dict.fromkeys(mechanical + duplicate_issues))
+
+    if mechanical and deadline - time.monotonic() > 8.0:
+        draft = _repair_quality_issues(
+            api_key=api_key,
+            model=model,
+            evidence_json=evidence_json,
+            draft=draft,
+            issues=mechanical,
+            deadline=deadline,
+        )
+        mechanical = _deterministic_quality_issues(draft)
+        duplicate_issues = _cross_section_duplicate_issues(draft)
+        mechanical = list(dict.fromkeys(mechanical + duplicate_issues))
+
     substantial, missing_core = _report_completeness(draft)
 
     passed = (
