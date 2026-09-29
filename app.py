@@ -3025,7 +3025,34 @@ def resolve_emergency_numbers(
     country_code: str,
     profile_value: str | None = None,
 ) -> str:
-    """Return emergency numbers even if a stale profile/cache is incomplete."""
+    """Return emergency numbers with verified overrides taking priority."""
+    normalized_code = str(country_code or "").strip().lower()
+
+    # Verified country overrides must win even if Streamlit hands us a stale
+    # cached profile value from an earlier app run.
+    override = str(
+        country_info_module.COUNTRY_PROFILE_OVERRIDES.get(
+            normalized_code,
+            {},
+        ).get(
+            "emergency_numbers",
+            "",
+        )
+    ).strip()
+    if override:
+        try:
+            profile = get_country_profile_v2(
+                normalized_code,
+                schema_version=COUNTRY_PROFILE_SCHEMA_VERSION,
+            )
+            calling_code = profile.calling_code
+        except Exception:
+            calling_code = ""
+        return format_emergency_numbers(
+            override,
+            calling_code,
+        )
+
     current = str(profile_value or "").strip()
     if current and current != "Not available":
         try:
@@ -3080,7 +3107,7 @@ def resolve_emergency_numbers(
     )
 
 
-COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-28-v18"
+COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-29-v19"
 COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-28-v21"
 
 @st.cache_data(ttl=86400, show_spinner=False)
