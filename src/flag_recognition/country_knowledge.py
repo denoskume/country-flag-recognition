@@ -1342,6 +1342,7 @@ def _wikipedia_page_identity(
     """Return canonical title, Wikidata QID and introductory extract."""
     response = _get_with_retry(
         WIKIPEDIA_API,
+        attempts=1,
         params={
             "action": "query",
             "prop": "pageprops|extracts",
@@ -1378,6 +1379,7 @@ def _wikidata_citizenship_qids(
     try:
         response = _get_with_retry(
             WIKIDATA_ENTITY_API.format(qid=qid),
+            attempts=1,
             headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
             timeout=timeout,
         )
@@ -1432,7 +1434,7 @@ def build_notable_person_profiles(
     country_name: str,
     source_text: str,
     *,
-    timeout: float = 4.0,
+    timeout: float = 2.5,
     max_people: int = 4,
 ) -> tuple[str, str]:
     """
@@ -1486,7 +1488,7 @@ def build_notable_person_profiles(
         if not fast_identity_match:
             citizenship = _wikidata_citizenship_qids(
                 person_qid,
-                timeout=min(timeout, 3.0),
+                timeout=min(timeout, 2.0),
             )
             if country_qid not in citizenship:
                 continue
@@ -2143,7 +2145,7 @@ def enrich_from_encyclopedia(
         profiles_text, profile_urls = build_notable_person_profiles(
             canonical_title,
             str(notable_seed.value),
-            timeout=min(timeout, 4.0),
+            timeout=min(timeout, 2.5),
             max_people=4,
         )
         if profiles_text:
