@@ -862,6 +862,13 @@ def _validate_professional_report_story(story: list[object]) -> None:
         violations.append("source markup residue")
     if re.search(r"https?://|www\.", normalized, flags=re.IGNORECASE):
         violations.append("raw URL exposed in narrative")
+    if re.search(
+        r"\b(?:Political parties President|family tree of .* monarchs|"
+        r"French literary awards:\s*–|Further reading:)\b",
+        normalized,
+        flags=re.IGNORECASE,
+    ):
+        violations.append("raw catalogue or navigation residue")
     if re.search(r"\+Adults|::", normalized):
         violations.append("table/list extraction residue")
     if re.search(r"\bNot available\b", normalized, flags=re.IGNORECASE):
@@ -1886,6 +1893,168 @@ def _build_pdf_report_uncached(
                 )
             return paragraphs
 
+        INLINE_TOPIC_LABELS = (
+            "Carolingian dynasty", "Capetian dynasty", "House of Capet",
+            "House of Valois", "House of Bourbon", "National Convention",
+            "Directory", "Consulate", "19th-century monarchs",
+            "Fiction", "Poetry", "Theatre", "Nonfiction",
+            "Literary criticism", "Medieval period", "Nominalism",
+            "Platonism", "Indifferentism", "Peter Abelard",
+            "Physics", "Chemistry", "Mathematics", "Nuclear power",
+            "Space science", "Historical", "Scientific fields",
+            "Businessmen and entrepreneurs", "Fashion", "Architecture",
+            "Film, television and radio personalities", "Musicians",
+            "Politicians/Law", "Writers", "Key industries",
+            "Main export goods", "Main import goods",
+        )
+
+        def _split_editorial_units(value: str) -> list[tuple[str, str]]:
+            """
+            Split raw encyclopedic prose into topical units.
+
+            The source often collapses headings such as 'Physics:' or
+            'National Convention:' into one continuous paragraph. Recover
+            those headings before rendering so every topic can become its own
+            short section.
+            """
+            text = _normalize_sentence(value)
+            if not text:
+                return []
+
+            labels_pattern = "|".join(
+                re.escape(label)
+                for label in sorted(
+                    INLINE_TOPIC_LABELS,
+                    key=len,
+                    reverse=True,
+                )
+            )
+            text = re.sub(
+                rf"\s+(?=({labels_pattern})\s*:)",
+                "\n",
+                text,
+                flags=re.IGNORECASE,
+            )
+
+            units: list[tuple[str, str]] = []
+            for raw in re.split(r"\n+", text):
+                part = raw.strip()
+                if not part:
+                    continue
+
+                match = re.match(
+                    rf"^({labels_pattern})\s*:\s*(.*)$",
+                    part,
+                    flags=re.IGNORECASE,
+                )
+                if match:
+                    units.append(
+                        (
+                            match.group(1).strip(),
+                            match.group(2).strip(),
+                        )
+                    )
+                else:
+                    units.append(("", part))
+
+            return units
+
+        def _sentence_units(value: str) -> list[str]:
+            """Split cleaned prose into readable sentence-level units."""
+            text = _normalize_sentence(value)
+            if not text:
+                return []
+
+            # Break at normal sentence boundaries and before obvious inline
+            # topic labels that survived source extraction.
+            sentences = re.split(
+                r"(?<=[.!?])\s+(?=[A-ZÀ-ÖØ-Þ0-9])",
+                text,
+            )
+            return [
+                item.strip()
+                for item in sentences
+                if item and item.strip()
+            ]
+
+        def _representative_sentences(
+            value: str,
+            *,
+            max_sentences: int = 6,
+            max_chars: int = 1500,
+        ) -> list[str]:
+            """
+            Keep informative prose while preventing raw catalogues from
+            flooding the report.
+
+            Long name/award/catalogue sections are represented by the first
+            well-formed examples rather than copied wholesale.
+            """
+            sentences = _sentence_units(value)
+            selected: list[str] = []
+            char_count = 0
+
+            for sentence in sentences:
+                cleaned = re.sub(r"\s+", " ", sentence).strip()
+                if not cleaned:
+                    continue
+
+                # Drop obvious navigation/caption/list artefacts.
+                if re.search(
+                    r"\b(?:see chart below|further reading|political parties|"
+                    r"family tree|painting by|walk, paris|seminar with)\b",
+                    cleaned,
+                    flags=re.IGNORECASE,
+                ):
+                    continue
+
+                projected = char_count + len(cleaned)
+                if selected and (
+                    len(selected) >= max_sentences
+                    or projected > max_chars
+                ):
+                    break
+
+                selected.append(cleaned)
+                char_count = projected
+
+            return selected
+
+        def _render_editorial_text(value: str) -> list[object]:
+            """
+            Render any long source text as structured, short paragraphs.
+
+            No raw source block is allowed to become a single PDF paragraph.
+            """
+            units = _split_editorial_units(value)
+            if not units:
+                return []
+
+            flowables: list[object] = []
+            for heading, body in units:
+                sentences = _representative_sentences(body)
+                if not sentences:
+                    continue
+
+                if heading:
+                    flowables.append(
+                        Paragraph(
+                            xml_escape(heading),
+                            narrative_subheading_style,
+                        )
+                    )
+
+                flowables.extend(
+                    _paragraphize_sentences(
+                        sentences,
+                        max_sentences=2,
+                        max_chars=460,
+                    )
+                )
+
+            return flowables
+
+
         def learning_flowables(text: object) -> list[object]:
             """
             Convert source fragments into readable report prose.
@@ -1937,14 +2106,15 @@ def _build_pdf_report_uncached(
                         sentences.append(summary)
 
                 # Keep paragraphs readable instead of producing one giant block.
-                return _paragraphize_sentences(
-                    sentences,
-                    max_sentences=3,
-                    max_chars=560,
-                )
+                restructured: list[object] = []
+                for sentence_block in sentences:
+                    rendered = _render_editorial_text(sentence_block)
+                    if rendered:
+                        restructured.extend(rendered)
+                return restructured
 
-            # Preserve only meaningful internal structure when the source
-            # genuinely contains several distinct topics.
+            # Preserve meaningful internal structure, but never render the
+            # source summary as one dense paragraph.
             flowables: list[object] = []
             for heading, summary in prepared:
                 if heading and heading.lower() not in generic_headings:
@@ -1954,12 +2124,11 @@ def _build_pdf_report_uncached(
                             narrative_subheading_style,
                         )
                     )
-                flowables.append(
-                    Paragraph(
-                        xml_escape(summary),
-                        body_style,
-                    )
-                )
+
+                rendered = _render_editorial_text(summary)
+                if rendered:
+                    flowables.extend(rendered)
+
             return flowables
 
         def add_learning_section(title: str, text: object) -> None:
