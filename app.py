@@ -13,6 +13,7 @@ from pathlib import Path
 import sys
 import tempfile
 from time import strftime
+from xml.sax.saxutils import escape as xml_escape
 
 import pandas as pd
 import pydeck as pdk
@@ -567,9 +568,34 @@ def _build_pdf_report_uncached(
         "CompactBody",
         parent=styles["BodyText"],
         fontName="Helvetica",
-        fontSize=7.6,
-        leading=10.2,
+        fontSize=8.4,
+        leading=12.0,
         textColor=colors.HexColor("#222222"),
+        spaceAfter=2.2 * mm,
+    )
+
+    narrative_heading_style = ParagraphStyle(
+        "NarrativeSectionHeading",
+        parent=styles["Heading2"],
+        fontName="Helvetica-Bold",
+        fontSize=11.2,
+        leading=13.5,
+        textColor=colors.HexColor("#111111"),
+        spaceBefore=1.5 * mm,
+        spaceAfter=1.2 * mm,
+        keepWithNext=True,
+    )
+
+    narrative_subheading_style = ParagraphStyle(
+        "NarrativeSubheading",
+        parent=styles["Heading3"],
+        fontName="Helvetica-Bold",
+        fontSize=8.5,
+        leading=10.5,
+        textColor=colors.HexColor("#333333"),
+        spaceBefore=1.2 * mm,
+        spaceAfter=0.8 * mm,
+        keepWithNext=True,
     )
 
     small_style = ParagraphStyle(
@@ -583,7 +609,70 @@ def _build_pdf_report_uncached(
 
     def clean(value: object) -> str:
         text = _pdf_text(value)
-        return text if text not in {"", "None"} else "Not available"
+        if text in {"", "None"}:
+            return "Not available"
+
+        # Keep report text human-readable by removing common MediaWiki residue.
+        text = re.sub(
+            r"\{\{\s*convert\|([^|{}]+)\|([^|{}]+)[^{}]*\}\}",
+            r"\1 \2",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(
+            r"\{\{\s*Start date(?: and age)?\|(\d{4})\|(\d{1,2})\|(\d{1,2})[^{}]*\}\}",
+            lambda m: f"{int(m.group(3))}/{int(m.group(2))}/{m.group(1)}",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(r"\{\{[^{}]*\}\}", " ", text)
+        text = re.sub(
+            r"\bthumb\|[^.]*?(?=(?:[A-Z][a-z]+\s|The\s|In\s|France\s|Renewable\s|Climate\s|$))",
+            " ",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(r"\[\[(?:[^|\]]*\|)?([^\]]+)\]\]", r"\1", text)
+        text = re.sub(r"<ref\b[^>]*>.*?</ref>", " ", text, flags=re.I | re.S)
+        text = re.sub(r"<ref\b[^>]*/>", " ", text, flags=re.I)
+        text = re.sub(r"\s+", " ", text).strip(" ;|")
+        return text or "Not available"
+
+    def paragraph(value: object, style=body_style) -> Paragraph:
+        return Paragraph(xml_escape(clean(value)), style)
+
+    def narrative_section(
+        title: str,
+        flowables: list[object],
+    ) -> list[object]:
+        if not flowables:
+            return []
+        return [
+            Paragraph(xml_escape(title), narrative_heading_style),
+            HRFlowable(
+                width="100%",
+                thickness=0.7,
+                color=colors.HexColor("#B8BEC7"),
+                spaceBefore=0,
+                spaceAfter=2.0 * mm,
+            ),
+            *flowables,
+            Spacer(1, 2.5 * mm),
+        ]
+
+    def labeled_paragraphs(
+        rows: list[tuple[str, object]],
+    ) -> list[object]:
+        flowables: list[object] = []
+        for label, value in rows:
+            cleaned = clean(value)
+            if cleaned == "Not available":
+                continue
+            flowables.append(
+                Paragraph(xml_escape(label), narrative_subheading_style)
+            )
+            flowables.append(Paragraph(xml_escape(cleaned), body_style))
+        return flowables
 
     def compact_list(value: object, limit: int = 12) -> str:
         text = clean(value)
@@ -880,41 +969,35 @@ def _build_pdf_report_uncached(
                 return clean(context.get("value"))
             return "Not available"
 
-        def learning_table(text: object) -> Table | None:
+        def learning_flowables(text: object) -> list[object]:
             blocks = _learning_blocks(text)
             if not blocks:
-                return None
+                return []
 
-            rows = [
-                [
-                    Paragraph(heading, label_style),
-                    Paragraph(summary, body_style),
-                ]
-                for heading, summary in blocks[:6]
-            ]
-            table = Table(
-                rows,
-                colWidths=[38 * mm, (REPORT_WIDTH_MM - 38.0) * mm],
-                hAlign="LEFT",
-            )
-            table.setStyle(
-                TableStyle([
-                    ("BOX", (0, 0), (-1, -1), 0.45, colors.HexColor("#D6D6D6")),
-                    ("INNERGRID", (0, 0), (-1, -1), 0.2, colors.HexColor("#E5E7EB")),
-                    ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#F6F7F9")),
-                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 5),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-                    ("TOPPADDING", (0, 0), (-1, -1), 4.5),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4.5),
-                ])
-            )
-            return table
+            flowables: list[object] = []
+            for heading, summary in blocks[:8]:
+                cleaned_summary = clean(summary)
+                if cleaned_summary == "Not available":
+                    continue
+                if heading and heading.lower() != "overview":
+                    flowables.append(
+                        Paragraph(
+                            xml_escape(clean(heading)),
+                            narrative_subheading_style,
+                        )
+                    )
+                flowables.append(
+                    Paragraph(
+                        xml_escape(cleaned_summary),
+                        body_style,
+                    )
+                )
+            return flowables
 
         def add_learning_section(title: str, text: object) -> None:
-            table = learning_table(text)
-            if table is not None:
-                story.extend(split_section(title, table))
+            flowables = learning_flowables(text)
+            if flowables:
+                story.extend(narrative_section(title, flowables))
 
         # 1. Country at a Glance
         glance_rows = [
@@ -967,18 +1050,12 @@ def _build_pdf_report_uncached(
 
         overview = clean(profile.get("overview"))
         if overview != "Not available":
-            overview_paragraph = Paragraph(
-                overview,
-                ParagraphStyle(
-                    "CountryOverviewV3",
-                    parent=body_style,
-                    leftIndent=6,
-                    rightIndent=6,
-                    spaceBefore=4,
-                    spaceAfter=4,
-                ),
+            story.extend(
+                narrative_section(
+                    "Country Overview",
+                    [Paragraph(xml_escape(overview), body_style)],
+                )
             )
-            story.extend(split_section("Country Overview", overview_paragraph))
 
         # 2. Geography
         location_map = _build_pdf_location_map(
@@ -1005,7 +1082,7 @@ def _build_pdf_report_uncached(
                     ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
                 ])
             )
-            story.extend(split_section("Geographic Location", location_content))
+            story.extend(narrative_section("Geographic Location", [location_content]))
 
         geography = info_grid(
             [
@@ -1107,10 +1184,18 @@ def _build_pdf_report_uncached(
                         if isinstance(item, dict)
                     ]
                     if rows:
+                        flag_history_flowables: list[object] = []
+                        for period, summary in rows:
+                            flag_history_flowables.append(
+                                Paragraph(
+                                    f"<b>{xml_escape(period)}</b> - {xml_escape(summary)}",
+                                    body_style,
+                                )
+                            )
                         story.extend(
-                            split_section(
+                            narrative_section(
                                 "Flag History",
-                                info_grid(rows, two_pairs=False),
+                                flag_history_flowables,
                             )
                         )
 
@@ -1126,10 +1211,18 @@ def _build_pdf_report_uncached(
                     if isinstance(event, dict)
                 ]
                 if origin_rows:
+                    origin_flowables: list[object] = []
+                    for label, summary in origin_rows:
+                        origin_flowables.append(
+                            Paragraph(xml_escape(label), narrative_subheading_style)
+                        )
+                        origin_flowables.append(
+                            Paragraph(xml_escape(summary), body_style)
+                        )
                     story.extend(
-                        split_section(
+                        narrative_section(
                             "Origins & Early History",
-                            info_grid(origin_rows, two_pairs=False),
+                            origin_flowables,
                         )
                     )
 
@@ -1144,10 +1237,18 @@ def _build_pdf_report_uncached(
                     if isinstance(event, dict)
                 ]
                 if timeline_rows:
+                    timeline_flowables: list[object] = []
+                    for period, summary in timeline_rows:
+                        timeline_flowables.append(
+                            Paragraph(
+                                f"<b>{xml_escape(period)}</b> - {xml_escape(summary)}",
+                                body_style,
+                            )
+                        )
                     story.extend(
-                        split_section(
+                        narrative_section(
                             "Historical Journey",
-                            info_grid(timeline_rows, two_pairs=False),
+                            timeline_flowables,
                         )
                     )
 
@@ -1158,19 +1259,17 @@ def _build_pdf_report_uncached(
             story.append(PageBreak())
 
         # 5. State Formation, identity and institutions
-        sovereignty = info_grid(
-            [
-                ("Former colonial power(s)", profile.get("former_colonial_powers")),
-                ("Colonial / sovereignty status", profile.get("colonial_period")),
-                ("Independence / sovereignty date", profile.get("independence_day")),
-                ("Key independence figure", profile.get("independence_leader")),
-            ],
-            two_pairs=False,
+        story.extend(
+            narrative_section(
+                "State Formation & Sovereignty",
+                labeled_paragraphs([
+                    ("Former colonial power(s)", profile.get("former_colonial_powers")),
+                    ("Colonial / sovereignty status", profile.get("colonial_period")),
+                    ("Independence / sovereignty date", profile.get("independence_day")),
+                    ("Key independence figure", profile.get("independence_leader")),
+                ]),
+            )
         )
-        story.extend([
-            section_box("State Formation & Sovereignty", sovereignty),
-            Spacer(1, 3 * mm),
-        ])
 
         national_identity = info_grid(
             [
@@ -1185,20 +1284,18 @@ def _build_pdf_report_uncached(
             Spacer(1, 3 * mm),
         ])
 
-        government = info_grid(
-            [
-                ("Government form", profile.get("government_form")),
-                ("Head of State", profile.get("head_of_state")),
-                ("Head of State office", profile.get("head_of_state_office")),
-                ("Head of Government", profile.get("head_of_government")),
-                ("Head of Government office", profile.get("head_of_government_office")),
-            ],
-            two_pairs=False,
+        story.extend(
+            narrative_section(
+                "Government & Institutions",
+                labeled_paragraphs([
+                    ("Government form", profile.get("government_form")),
+                    ("Head of State", profile.get("head_of_state")),
+                    ("Head of State office", profile.get("head_of_state_office")),
+                    ("Head of Government", profile.get("head_of_government")),
+                    ("Head of Government office", profile.get("head_of_government_office")),
+                ]),
+            )
         )
-        story.extend([
-            section_box("Government & Institutions", government),
-            Spacer(1, 3 * mm),
-        ])
         add_learning_section(
             "Administrative Divisions",
             context_value("government", "administrative_divisions"),
@@ -1341,13 +1438,19 @@ def _build_pdf_report_uncached(
             )
 
         if did_you_know_rows:
-            story.extend([
-                section_box(
+            did_you_know_flowables = [
+                Paragraph(
+                    f"<b>{xml_escape(label)}:</b> {xml_escape(clean(value))}",
+                    body_style,
+                )
+                for label, value in did_you_know_rows[:5]
+            ]
+            story.extend(
+                narrative_section(
                     "Did You Know?",
-                    info_grid(did_you_know_rows[:5], two_pairs=False),
-                ),
-                Spacer(1, 3 * mm),
-            ])
+                    did_you_know_flowables,
+                )
+            )
 
 
 
