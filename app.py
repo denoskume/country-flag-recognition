@@ -3694,7 +3694,7 @@ def _build_pdf_report_uncached(
     return buffer.getvalue()
 
 
-REPORT_WRITER_CACHE_VERSION = "2026-09-29-r12"
+REPORT_WRITER_CACHE_VERSION = "2026-09-29-r13"
 
 def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
     """Create a complete no-failure narrative fallback from local country facts."""
@@ -3778,9 +3778,10 @@ def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
             "summary preserves only locally available facts when the full authored "
             "report cannot be produced."
         ),
-        "__qa_passed": True,
-        "__qa_issues": [],
+        "__qa_passed": False,
+        "__qa_issues": ["incomplete local fallback; full authored report unavailable"],
         "__fallback_used": True,
+        "__substantial_sections": 0,
     }
     return result
 
@@ -4698,10 +4699,17 @@ def show_result(
                     ensure_ascii=False,
                     default=str,
                 )
-                report["authored_report"] = _cached_authored_report(
+                authored = _cached_authored_report(
                     evidence_json,
                     REPORT_WRITER_CACHE_VERSION,
                 )
+                if not authored:
+                    report["authored_report_error"] = (
+                        "Writer returned no publishable authored report."
+                    )
+                    report["authored_report"] = _fallback_authored_report(report)
+                else:
+                    report["authored_report"] = authored
             except Exception as exc:
                 report["authored_report_error"] = (
                     f"{type(exc).__name__}: {str(exc)[:240]}"
@@ -4712,9 +4720,13 @@ def show_result(
     authored_report = report.get("authored_report")
     authored_ready = (
         isinstance(authored_report, dict)
-        and bool(authored_report.get("introduction"))
-        and bool(authored_report.get("conclusion"))
+        and authored_report.get("__fallback_used") is not True
         and authored_report.get("__qa_passed") is True
+        and int(authored_report.get("__substantial_sections") or 0) >= 24
+        and bool(authored_report.get("introduction"))
+        and bool(authored_report.get("historical_journey"))
+        and bool(authored_report.get("universities_higher_education"))
+        and bool(authored_report.get("conclusion"))
     )
     report_ready = (
         accepted
