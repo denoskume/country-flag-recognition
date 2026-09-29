@@ -280,6 +280,16 @@ def _strip_code_fence(value: str) -> str:
     return text.strip()
 
 
+def _sanitize_report_text(value: str) -> str:
+    """Repair harmless editorial artefacts before the quality gate."""
+    text = str(value or "")
+    text = text.replace(" | ", " · ").replace("|", " · ")
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r" *\n *", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
 def _normalize_output(payload: Any) -> dict[str, str]:
     if not isinstance(payload, dict):
         return {}
@@ -288,16 +298,16 @@ def _normalize_output(payload: Any) -> dict[str, str]:
         value = payload.get(key, "")
         if not isinstance(value, str):
             value = ""
-        result[key] = re.sub(r"[ \t]+", " ", value).strip()
+        result[key] = _sanitize_report_text(value)
     return result
 
 
 def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     """Generate final report prose from the collected evidence payload.
 
-    The call is intentionally bounded: no SDK retries and a finite timeout.
-    The caller can safely fall back to deterministic rendering if the API is
-    unavailable.
+    The call uses a generous timeout and one SDK retry so slower countries are
+    not discarded prematurely. The caller still has a deterministic fallback if
+    the external API is completely unavailable.
     """
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
@@ -306,8 +316,8 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     model = os.getenv("FLAG_INTELLIGENCE_WRITER_MODEL", "gpt-5.6-sol").strip()
     client = OpenAI(
         api_key=api_key,
-        timeout=90.0,
-        max_retries=0,
+        timeout=180.0,
+        max_retries=1,
     )
 
     schema_hint = {key: "" for key in REPORT_SECTION_KEYS}
@@ -334,7 +344,7 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
-        max_output_tokens=8000,
+        max_output_tokens=12000,
     )
 
     raw = _strip_code_fence(response.output_text or "")
@@ -356,9 +366,9 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     if not draft:
         return {}
 
-    # One OpenAI call must complete the whole research + writing + factual
-    # self-check workflow. Only deterministic mechanical QA runs afterwards,
-    # keeping total generation latency within the 120-second product budget.
+    # The writer gets enough time to complete slower countries. Deterministic
+    # mechanical QA still runs locally afterwards so harmless formatting defects
+    # are repaired instead of blocking publication.
     mechanical = _deterministic_quality_issues(draft)
     substantial_sections = sum(
         1
