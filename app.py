@@ -1181,6 +1181,28 @@ def _build_pdf_report_uncached(
             flags=re.IGNORECASE,
         )
 
+        # Remove Timeline/graph configuration residue emitted by MediaWiki.
+        # Keep any prose that follows an explicit overview label.
+        text = re.sub(
+            r"\btag\s*:\s*timeline\b.*?(?=\boverview\s*:|$)",
+            " ",
+            text,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        text = re.sub(
+            r"\b(?:ImageSize|PlotArea|TimeAxis|ScaleMajor|ScaleMinor|AlignBars|"
+            r"DateFormat|Period|Colors|Define|BarData|PlotData)\s*=.*?(?=\boverview\s*:|$)",
+            " ",
+            text,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        text = re.sub(
+            r"\boverview\s*:\s*",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        )
+
         # Remove leftover table/list punctuation and pseudo-headings that
         # commonly survive encyclopedia extraction.
         text = re.sub(r"\s*\+Adults\b", " Adults", text, flags=re.IGNORECASE)
@@ -1320,20 +1342,12 @@ def _build_pdf_report_uncached(
     def readable_fact_paragraph(
         sentences: list[str],
     ) -> list[object]:
-        """Render short factual sections as continuous report prose."""
-        cleaned_sentences = [
-            re.sub(r"\s+", " ", sentence).strip()
-            for sentence in sentences
-            if sentence and sentence.strip()
-        ]
-        if not cleaned_sentences:
-            return []
-        return [
-            Paragraph(
-                xml_escape(" ".join(cleaned_sentences)),
-                body_style,
-            )
-        ]
+        """Render factual sections as short, readable paragraphs."""
+        return _paragraphize_sentences(
+            sentences,
+            max_sentences=3,
+            max_chars=520,
+        )
 
     def fact_value(value: object) -> str | None:
         """Return a cleaned fact value, preserving explicit 'Not applicable'."""
@@ -1730,16 +1744,59 @@ def _build_pdf_report_uncached(
                 joined = ", ".join(parts[:-1]) + f", and {parts[-1]}"
             return f"{intro} {joined}."
 
-        def _narrative_paragraph(sentences: list[str]) -> list[object]:
-            """Build one coherent paragraph from connected factual sentences."""
-            usable = [
-                re.sub(r"\s+", " ", s).strip()
-                for s in sentences
-                if s and re.sub(r"\s+", " ", s).strip()
+        def _paragraphize_sentences(
+            sentences: list[str],
+            *,
+            max_sentences: int = 3,
+            max_chars: int = 560,
+        ) -> list[object]:
+            """Render readable paragraphs instead of dense text walls."""
+            normalized = [
+                re.sub(r"\s+", " ", sentence).strip()
+                for sentence in sentences
+                if sentence and re.sub(r"\s+", " ", sentence).strip()
             ]
-            if not usable:
+            if not normalized:
                 return []
-            return [Paragraph(xml_escape(" ".join(usable)), body_style)]
+
+            flowables: list[object] = []
+            chunk: list[str] = []
+            char_count = 0
+
+            def flush() -> None:
+                nonlocal chunk, char_count
+                if not chunk:
+                    return
+                flowables.append(
+                    Paragraph(
+                        xml_escape(" ".join(chunk)),
+                        body_style,
+                    )
+                )
+                flowables.append(Spacer(1, 1.8 * mm))
+                chunk = []
+                char_count = 0
+
+            for sentence in normalized:
+                projected = char_count + len(sentence) + (1 if chunk else 0)
+                if chunk and (
+                    len(chunk) >= max_sentences
+                    or projected > max_chars
+                ):
+                    flush()
+                chunk.append(sentence)
+                char_count += len(sentence) + (1 if chunk else 0)
+
+            flush()
+
+            if flowables and isinstance(flowables[-1], Spacer):
+                flowables.pop()
+            return flowables
+
+
+        def _narrative_paragraph(sentences: list[str]) -> list[object]:
+            """Build coherent, visually separated report paragraphs."""
+            return _paragraphize_sentences(sentences)
 
         def _timeline_narrative(
             rows: list[tuple[str, str]],
@@ -1794,20 +1851,22 @@ def _build_pdf_report_uncached(
 
                 chunk.append(sentence)
 
-                if len(chunk) >= 4:
-                    paragraphs.append(
-                        Paragraph(
-                            xml_escape(" ".join(chunk)),
-                            body_style,
+                if len(chunk) >= 3:
+                    paragraphs.extend(
+                        _paragraphize_sentences(
+                            chunk,
+                            max_sentences=3,
+                            max_chars=620,
                         )
                     )
                     chunk = []
 
             if chunk:
-                paragraphs.append(
-                    Paragraph(
-                        xml_escape(" ".join(chunk)),
-                        body_style,
+                paragraphs.extend(
+                    _paragraphize_sentences(
+                        chunk,
+                        max_sentences=3,
+                        max_chars=620,
                     )
                 )
             return paragraphs
@@ -1863,29 +1922,11 @@ def _build_pdf_report_uncached(
                         sentences.append(summary)
 
                 # Keep paragraphs readable instead of producing one giant block.
-                paragraphs: list[object] = []
-                chunk: list[str] = []
-                char_count = 0
-                for sentence in sentences:
-                    chunk.append(sentence)
-                    char_count += len(sentence)
-                    if char_count >= 650:
-                        paragraphs.append(
-                            Paragraph(
-                                xml_escape(" ".join(chunk)),
-                                body_style,
-                            )
-                        )
-                        chunk = []
-                        char_count = 0
-                if chunk:
-                    paragraphs.append(
-                        Paragraph(
-                            xml_escape(" ".join(chunk)),
-                            body_style,
-                        )
-                    )
-                return paragraphs
+                return _paragraphize_sentences(
+                    sentences,
+                    max_sentences=3,
+                    max_chars=560,
+                )
 
             # Preserve only meaningful internal structure when the source
             # genuinely contains several distinct topics.
