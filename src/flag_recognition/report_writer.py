@@ -372,63 +372,49 @@ def _normalize_output(payload: Any) -> dict[str, str]:
     return result
 
 
-def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
-    """Generate final report prose from the collected evidence payload.
-
-    The call uses a generous timeout and one SDK retry so slower countries are
-    not discarded prematurely. The caller still has a deterministic fallback if
-    the external API is completely unavailable.
-    """
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    if not api_key:
-        return {}
-
-    model = os.getenv("FLAG_INTELLIGENCE_WRITER_MODEL", "gpt-5.6-sol").strip()
-    client = OpenAI(
-        api_key=api_key,
-        timeout=180.0,
-        max_retries=1,
+def _report_completeness(draft: dict[str, str]) -> tuple[int, list[str]]:
+    """Return substantial-section count and missing core sections."""
+    substantial = [
+        key for key in REPORT_SECTION_KEYS
+        if str(draft.get(key, "") or "").strip()
+    ]
+    core_sections = (
+        "introduction",
+        "physical_geography",
+        "climate_water_resources",
+        "seasons_climate_calendar",
+        "flag_design_symbolism",
+        "origins_early_history",
+        "historical_journey",
+        "key_historical_timeline",
+        "state_formation_identity",
+        "government_structure",
+        "legal_constitutional_system",
+        "people_society",
+        "demographics_population_structure",
+        "culture_cuisine_music_sport",
+        "heritage_landmarks",
+        "major_cities_regional_profiles",
+        "economy_trade_industries",
+        "infrastructure_transport_energy",
+        "education_research",
+        "universities_higher_education",
+        "science_discovery_invention",
+        "practical_emergency",
+        "international_relations",
+        "conclusion",
     )
+    missing_core = [
+        key for key in core_sections
+        if not str(draft.get(key, "") or "").strip()
+    ]
+    return len(substantial), missing_core
 
-    schema_hint = {key: "" for key in REPORT_SECTION_KEYS}
-    evidence_json = json.dumps(
-        report,
-        ensure_ascii=False,
-        sort_keys=True,
-        default=str,
-    )
 
-    user_prompt = (
-        "Write, self-check and finalize the country report from the country identity "
-        "and supporting context below. The universities_higher_education section "
-        "must provide substantial coverage of historically important and currently "
-        "prominent universities where reliable knowledge exists. The key_historical_timeline, "
-        "major_cities_regional_profiles, demographics_population_structure, "
-        "national_symbols_identity, legal_constitutional_system and "
-        "seasons_climate_calendar sections should also be completed whenever "
-        "reliable knowledge exists. Populate the dedicated notable_figures_* "
-        "categories comprehensively where the country has well-established "
-        "figures, rather than limiting the report to a few famous names.\n\n"
-        "Required JSON shape:\n"
-        + json.dumps(schema_hint, ensure_ascii=False)
-        + "\n\nEVIDENCE:\n"
-        + evidence_json
-    )
-
-    response = client.responses.create(
-        model=model,
-        reasoning={"effort": "low"},
-        input=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
-        max_output_tokens=16000,
-    )
-
-    raw = _strip_code_fence(response.output_text or "")
+def _parse_writer_response(raw: str) -> dict[str, str]:
+    raw = _strip_code_fence(raw or "")
     if not raw:
         return {}
-
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError:
@@ -439,27 +425,134 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
             parsed = json.loads(match.group(0))
         except json.JSONDecodeError:
             return {}
+    return _normalize_output(parsed)
 
-    draft = _normalize_output(parsed)
+
+def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
+    """Generate a complete publishable country report with one recovery pass."""
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        return {}
+
+    model = os.getenv("FLAG_INTELLIGENCE_WRITER_MODEL", "gpt-5.6-sol").strip()
+    client = OpenAI(
+        api_key=api_key,
+        timeout=240.0,
+        max_retries=0,
+    )
+
+    schema_hint = {key: "" for key in REPORT_SECTION_KEYS}
+    evidence_json = json.dumps(
+        report,
+        ensure_ascii=False,
+        sort_keys=True,
+        default=str,
+    )
+
+    base_prompt = (
+        "Write a comprehensive Flag Intelligence country report. Return every "
+        "required key in one JSON object. Do not shorten the report merely to fit "
+        "the schema: each applicable section must contain useful educational prose. "
+        "Preserve the breadth of the established report while adding the newer "
+        "sections for seasons, universities, cities, demographics, national symbols, "
+        "law, historical timeline and categorized notable figures.\n\n"
+        "Universities must cover historically important and currently prominent "
+        "institutions. Notable figures must be distributed across the dedicated "
+        "field categories with several representative figures where justified.\n\n"
+        "Required JSON shape:\n"
+        + json.dumps(schema_hint, ensure_ascii=False)
+        + "\n\nEVIDENCE:\n"
+        + evidence_json
+    )
+
+    draft: dict[str, str] = {}
+    first_error = ""
+
+    try:
+        response = client.responses.create(
+            model=model,
+            reasoning={"effort": "low"},
+            input=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": base_prompt},
+            ],
+            max_output_tokens=20000,
+        )
+        draft = _parse_writer_response(response.output_text or "")
+    except Exception as exc:
+        first_error = f"{type(exc).__name__}: {str(exc)[:200]}"
+
+    substantial, missing_core = _report_completeness(draft) if draft else (0, [])
+
+    # Recovery pass: if the first response timed out, parsed badly, or omitted
+    # important sections, ask for a complete replacement rather than publishing
+    # a thin local fallback.
+    if substantial < 24 or missing_core:
+        recovery_prompt = (
+            "Produce a COMPLETE replacement report for the same country. The previous "
+            "attempt was incomplete or unavailable. Return one valid JSON object with "
+            "ALL required keys. Fill every applicable core section substantially. "
+            "Do not summarize the whole country into a few sections. Include the full "
+            "historical narrative, seasonal calendar, universities, major cities, "
+            "demographics, national symbols, legal system, science, economy, culture, "
+            "international relations, and categorized notable figures.\n\n"
+            "Required JSON shape:\n"
+            + json.dumps(schema_hint, ensure_ascii=False)
+            + "\n\nEVIDENCE:\n"
+            + evidence_json
+        )
+        if draft:
+            recovery_prompt += (
+                "\n\nINCOMPLETE FIRST DRAFT (use only as a starting point; replace "
+                "and expand it):\n" + json.dumps(draft, ensure_ascii=False)
+            )
+        if first_error:
+            recovery_prompt += "\n\nFIRST ATTEMPT ERROR:\n" + first_error
+
+        try:
+            response = client.responses.create(
+                model=model,
+                reasoning={"effort": "low"},
+                input=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": recovery_prompt},
+                ],
+                max_output_tokens=22000,
+            )
+            recovered = _parse_writer_response(response.output_text or "")
+            recovered_count, recovered_missing = _report_completeness(recovered)
+            if recovered_count > substantial:
+                draft = recovered
+                substantial = recovered_count
+                missing_core = recovered_missing
+        except Exception:
+            pass
+
     if not draft:
         return {}
 
-    # The writer gets enough time to complete slower countries. Deterministic
-    # mechanical QA still runs locally afterwards so harmless formatting defects
-    # are repaired instead of blocking publication.
     mechanical = _deterministic_quality_issues(draft)
-    substantial_sections = sum(
-        1
-        for key in REPORT_SECTION_KEYS
-        if draft.get(key, "").strip()
-    )
+    substantial, missing_core = _report_completeness(draft)
+
     passed = (
-        substantial_sections >= 12
+        substantial >= 24
+        and not missing_core
         and not mechanical
         and bool(draft.get("introduction"))
         and bool(draft.get("historical_journey"))
         and bool(draft.get("conclusion"))
     )
+    issues = list(mechanical)
+    if substantial < 24:
+        issues.append(
+            f"report incomplete: only {substantial} substantive sections"
+        )
+    if missing_core:
+        issues.append(
+            "missing core sections: " + ", ".join(missing_core)
+        )
+
     draft["__qa_passed"] = passed
-    draft["__qa_issues"] = mechanical
+    draft["__qa_issues"] = issues
+    draft["__substantial_sections"] = substantial
     return draft
