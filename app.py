@@ -3611,6 +3611,23 @@ st.markdown(
             background: #fafafa;
         }
 
+        .inline-result-shell {
+            width: 100%;
+            margin: 1rem 0 5.5rem;
+            padding: 1.25rem 1.35rem;
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            background: #ffffff;
+            box-shadow: 0 12px 32px rgba(15,23,42,.06);
+        }
+
+        .inline-result-title {
+            font-size: 1.15rem;
+            font-weight: 800;
+            color: var(--text);
+            margin-bottom: .8rem;
+        }
+
         .result-name {
             font-size: 1.65rem;
             font-weight: 850;
@@ -3778,12 +3795,16 @@ if prompt_submission is not None:
         text_process = True
 
 
-@st.dialog("Country result", width="small")
 def show_result(
     image: Image.Image | None = None,
     direct_code: str | None = None,
 ):
-    """Build the complete result privately and expose only final downloads."""
+    """Build the complete result inline and expose final downloads."""
+    st.markdown(
+        '<div class="inline-result-shell">'
+        '<div class="inline-result-title">Country result</div>',
+        unsafe_allow_html=True,
+    )
     if direct_code is None:
         from flag_recognition.inference import predict_robust
 
@@ -3931,6 +3952,9 @@ def show_result(
                 disabled=True,
                 use_container_width=True,
             )
+
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 if process and image is not None:
