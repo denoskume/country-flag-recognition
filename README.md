@@ -1,51 +1,40 @@
 <p>
-  <img align="left" src="assets/flag-intelligence-logo.svg" alt="Flag Intelligence" height="72">
+  <img align="left" src="assets/flag_intelligence_logo.svg" alt="Flag Intelligence" height="72">
 </p>
 <br clear="both">
 
 <h1 align="center">FLAG INTELLIGENCE</h1>
 
 <p align="center">
-  <b>Recognize a flag — or type a country name — and explore the country behind it.</b>
+  <b>Recognize a flag — or type a country name — and generate a structured country intelligence report.</b>
 </p>
 
-Flag Intelligence is a personal computer-vision and country-intelligence project that combines worldwide flag recognition with a source-aware learning system.
+<p align="center">
+  Version 0.1.0
+</p>
 
-The project has evolved beyond image classification. A user can now either:
+Flag Intelligence is a personal computer-vision and country-intelligence project that connects worldwide flag recognition with structured country knowledge and professional report generation.
+
+A user can either:
 
 - upload a flag image and let the vision model identify the country; or
-- type a country name or ISO code directly and open the same Country Intelligence experience without using the vision model.
+- type a country name or ISO code directly.
 
-Both paths converge on one shared country-knowledge pipeline.
+Both input modes converge on the same country-report pipeline.
 
 ---
 
 ## Product goal
 
-The long-term goal is simple:
+> **Identify a country from its flag or name, then provide a clear, structured and educational report about that country.**
 
-> **Upload a flag or name a country, then learn that country in depth without needing to visit it first.**
+The application is designed to move beyond simple flag classification. For an accepted country, it aims to provide useful information covering geography, history, government, society, culture, economy, infrastructure, science, environment and practical information.
 
-Flag Intelligence is designed to provide a structured, sourced overview of a country while avoiding sensitive or private information.
-
-The system aims to answer questions such as:
-
-- What country is this flag associated with?
-- What does the flag mean?
-- Where is the country located?
-- What is its historical journey?
-- How was the modern state formed?
-- What languages and religions are present?
-- What are its major cities, rivers, mountains and climate zones?
-- What drives its economy?
-- What are its important industries, exports and natural resources?
-- How is the country governed?
-- What are its major cultural traditions and heritage sites?
-- What emergency and practical information is useful to know?
+The final output can be exported as both JSON and PDF.
 
 ---
 
-## Current input modes
+## Input modes
 
 ### 1. Flag image
 
@@ -54,30 +43,32 @@ Upload flag image
       ↓
 Worldwide vision model
       ↓
-Robust prediction + open-set decision
+Robust prediction
+      ↓
+Open-set decision
       ↓
 Accepted country
       ↓
-Country Intelligence
+Country Intelligence report
 ```
 
-The image workflow provides:
+The image workflow includes:
 
-- top prediction;
-- confidence;
-- Top-1 margin;
+- Top-1 prediction;
+- confidence score;
+- decision margin;
 - ranked alternatives;
-- visually equivalent flag handling;
-- accepted / ambiguous decision state.
+- similar / visually equivalent flag handling;
+- accepted or ambiguous decision state.
 
-### 2. Country name
+### 2. Country name or ISO code
 
 ```text
 Type country name or ISO code
       ↓
 Deterministic country resolver
       ↓
-Country Intelligence
+Country Intelligence report
 ```
 
 Examples:
@@ -86,275 +77,300 @@ Examples:
 France
 Côte d’Ivoire
 Ivory Coast
-Japan
-South Korea
+Lebanon
+India
+Nigeria
 FR
 FRA
 CI
-XK
+LB
 ```
 
-Text input does **not** simulate image recognition. No artificial confidence score is created. The interface explicitly reports that the country was selected by name.
+Text input does not simulate image recognition and does not create an artificial confidence score.
 
 ---
 
-## Country Intelligence
+## Country report pipeline
 
-Once a country is resolved, the system builds a structured country record from multiple public sources.
+Once a country is resolved, the application builds a structured profile and generates the final report through a shared pipeline.
 
-Current knowledge domains include:
+```text
+Country resolved
+      ↓
+Structured country profile
+      ↓
+Historical / practical context
+      ↓
+OpenAI-authored country report
+      ↓
+Deterministic editorial QA
+      ↓
+Automatic text sanitization
+      ↓
+Professional PDF + JSON export
+```
 
-### Country identity
+The report writer receives the country identity and available structured context, then authors the final educational report in professional English.
 
-- country name;
-- ISO alpha-2 / alpha-3;
+The application does not require a separate user-facing web-research step before writing the report.
+
+### Reliability behavior
+
+Report generation is designed to avoid unnecessary failures:
+
+- extended OpenAI writer timeout;
+- one controlled SDK retry;
+- cached successful authored reports;
+- automatic cleanup of harmless formatting artefacts;
+- deterministic QA after generation;
+- local fallback generation if the external writer is unavailable;
+- progress feedback shown immediately after country recognition.
+
+A transient writer failure must not prevent the application from returning usable country output.
+
+---
+
+## Report content
+
+The authored report currently supports the following sections:
+
+1. Introduction
+2. Physical Geography
+3. Climate, Water & Natural Resources
+4. Flag Design, Adoption & Symbolism
+5. Origins & Early History
+6. Historical Journey
+7. State Formation & National Identity
+8. Government & Administrative Structure
+9. Leadership Through Time
+10. People & Society
+11. Languages & Religion
+12. Health System & Public Health
+13. Culture, Cuisine, Music & Sport
+14. Festivals, Holidays & Traditions
+15. Heritage, UNESCO & Major Landmarks
+16. Literature, Philosophy & Thought
+17. Economy, Trade & Key Industries
+18. Infrastructure, Transport & Energy
+19. Education & Research
+20. Science, Discovery & Invention
+21. Environment & Biodiversity
+22. Cost of Living & Everyday Prices
+23. Practical & Emergency Information
+24. International Relations
+25. Notable Public Figures
+26. Conclusion
+
+The exact depth of a section depends on the country and the reliability of the available context.
+
+---
+
+## Country snapshot
+
+The report also includes a concise structured snapshot where available:
+
 - capital;
-- region and subregion;
 - population and reference year;
 - area;
 - official language(s);
 - currency;
-- demonym;
-- time zones;
+- national day;
 - calling code;
+- driving side;
 - internet domain;
-- driving side.
+- emergency numbers;
+- geographic location.
 
-### Flag Intelligence
+Emergency numbers are displayed by service where possible, for example:
 
-When a reliable dedicated source is available:
+```text
+Police: 170 · Fire: 180 · Ambulance: 185
+```
 
-- adoption date;
-- proportions;
-- design and construction;
-- symbolism;
-- historical flag context;
-- similar or visually confusable flags.
+The international calling code is not repeated inside emergency service numbers.
 
-### Geography
+---
 
-- geographic location;
-- borders;
-- major cities;
-- coordinates;
-- highest and lowest points;
-- climate and seasons;
-- rivers, lakes and waterways;
-- mountains and relief;
-- natural resources;
-- environment and biodiversity.
+## Historical coverage
 
-### History
+History is treated as a core part of the product rather than an optional enrichment block.
 
-- origins and early history;
-- historical timeline;
+The report aims to explain:
+
+- early societies and historical origins;
+- major kingdoms, states or political formations;
+- external rule or colonial history where applicable;
 - major political transitions;
-- colonial history where historically applicable;
-- occupation / partition / union / dissolution handling;
-- independence or sovereignty transition where applicable;
-- key independence-era figures where relevant.
+- independence or sovereignty milestones;
+- important independence-era figures;
+- civil conflict, constitutional change or state reorganization where relevant;
+- modern state formation.
 
-The history model does **not** force every country into a colonial-independence template. Countries without a classical independence transition are handled separately.
+The system does not force every country into the same colonial-independence template.
 
-### Government and institutions
+Countries with different historical trajectories are handled accordingly.
 
-- government form;
+---
+
+## Flag Intelligence
+
+For the selected country, the report can describe:
+
+- flag layout;
+- colours;
+- symbols;
+- adoption context;
+- historical development;
+- commonly accepted symbolism;
+- visually similar flags where relevant.
+
+The application also handles known visually similar or identical flags to reduce misleading prediction fragmentation.
+
+Examples include:
+
+- Côte d’Ivoire / Ireland;
+- Chad / Romania;
+- Indonesia / Monaco;
+- Netherlands / Luxembourg;
+- Australia / New Zealand.
+
+---
+
+## Government and institutions
+
+Where reliable context is available, the report can cover:
+
+- form of government;
 - head of state;
 - head of government;
+- legislative structure;
+- judiciary;
 - administrative divisions;
-- major institutions;
+- institutional development;
 - international organizations.
 
-Current political office holders are treated as time-sensitive data and should be interpreted with their source freshness in mind.
+Current office holders are time-sensitive facts and should be interpreted together with the report generation date.
 
-### People and society
+---
+
+## People, society and culture
+
+The report can include:
 
 - demographic context;
 - languages;
 - religion;
 - health-system context;
-- social structure where reliable source material exists.
-
-### Culture
-
 - cuisine;
 - music;
 - sport;
-- literature and arts;
+- literature;
 - traditions;
-- festivals and holidays;
-- UNESCO and heritage sites;
-- notable public figures when adequately sourced.
+- public holidays;
+- heritage sites;
+- UNESCO sites;
+- notable public figures.
 
-### Economy
-
-- GDP and reference year;
-- economic structure;
-- agriculture;
-- industry;
-- services;
-- key economic drivers;
-- exports and imports;
-- important production sectors;
-- natural-resource links where available.
-
-### Infrastructure
-
-- transport overview;
-- roads and rail;
-- ports;
-- airports;
-- energy;
-- electricity;
-- connectivity and telecommunications.
-
-### Education and science
-
-- education context;
-- universities / research context where available;
-- science and innovation information.
-
-### Practical information
-
-- local emergency numbers;
-- calling code;
-- driving side;
-- internet domain;
-- basic country-level practical information.
-
-Emergency numbers are presented as local numbers and are kept separate from the international calling code.
+Notable figures are written as short explanatory biographies rather than raw name lists.
 
 ---
 
-## Ask Flag Intelligence
+## Economy, infrastructure and innovation
 
-The application also includes a retrieval-style question interface.
+Coverage may include:
 
-Users can ask questions such as:
-
-```text
-What is the capital?
-What happened in 1960?
-What does the flag mean?
-Which countries border Côte d’Ivoire?
-What are the main economic sectors?
-```
-
-Answers are produced from the structured Country Intelligence record. Missing information is not intentionally fabricated.
+- major economic sectors;
+- agriculture;
+- industry;
+- services;
+- exports and imports;
+- major production sectors;
+- transport;
+- ports;
+- rail;
+- roads;
+- airports;
+- electricity and energy;
+- universities;
+- research;
+- science;
+- technology;
+- environment and biodiversity.
 
 ---
 
 ## Reports and exports
 
-Accepted / selected countries can generate:
+For an accepted or directly selected country, the application can generate:
 
-- JSON output;
-- an A4 Country Intelligence PDF;
-- sourced country-learning sections;
-- country maps and core profile information.
+- downloadable JSON;
+- professional A4 PDF;
+- country snapshot;
+- geographic map;
+- long-form authored country report.
 
-The PDF is content-driven: sections are included when the knowledge pipeline has usable source-backed information.
+The PDF and JSON use the same underlying country result.
 
-Image mode can include the uploaded flag preview. Text mode can generate the same report without requiring an uploaded image.
+Text input can generate the same report as image input without requiring an uploaded flag image.
 
 ---
 
-## Source strategy
+## Report quality gate
 
-Flag Intelligence is intentionally source-aware.
+The final report is checked before publication.
 
-The current pipeline combines structured and encyclopedic sources such as:
+Mechanical QA detects issues such as:
 
-- Wikidata;
-- World Bank;
-- REST Countries;
-- Wikipedia / MediaWiki;
-- dedicated country-topic pages where available.
+- duplicated words;
+- duplicated year constructions;
+- repeated sentences;
+- source or navigation residue;
+- malformed editorial fragments.
 
-The system separates:
+Harmless formatting artefacts are repaired automatically before QA.
 
-1. structured facts;
-2. topic-specific enrichment;
-3. historical timeline extraction;
-4. flag-specific enrichment;
-5. report validation.
+For example:
 
-The design rule is:
+```text
+Police: 110 | Ambulance: 113
+```
 
-> **Prefer missing information over confidently publishing unsupported information.**
+is normalized to:
 
-Different facts may have different reference years. Time-sensitive information must therefore retain source and freshness context.
+```text
+Police: 110 · Ambulance: 113
+```
+
+The goal is to block genuinely malformed content, not to reject a report because of a repairable separator.
 
 ---
 
 ## Worldwide coverage
 
-The project taxonomy currently contains **250 classes**:
+The project taxonomy contains **250 classes**:
 
 - 249 ISO 3166-1 country / territory codes;
 - Kosovo as the additional project class `XK`.
 
-The vision model and the Country Intelligence system are designed around this worldwide taxonomy.
+Both the visual-recognition layer and the country-resolution layer are designed around this worldwide taxonomy.
 
-This does **not** mean that every deep-learning section is equally complete for every country. Public-source structure and availability vary substantially by country.
-
----
-
-## Worldwide Country Intelligence audit
-
-A dedicated automated audit now evaluates the complete 250-class taxonomy.
-
-```text
-250 country / territory classes
-          ↓
-5 audit shards
-          ↓
-Country profile + Country Intelligence
-          ↓
-Structural and content-quality checks
-          ↓
-Merged worldwide JSON / CSV report
-```
-
-The audit checks, among other things:
-
-- all expected country codes are covered;
-- required report sections are present;
-- optional deep sections are measured separately;
-- raw MediaWiki templates are not leaked into reports;
-- bibliography / references do not become fake timeline events;
-- sovereignty metadata is coherent;
-- report manifests are structurally valid;
-- critical pipeline exceptions are surfaced.
-
-GitHub Actions publishes:
-
-- per-shard JSON;
-- per-shard CSV;
-- merged worldwide JSON;
-- merged worldwide CSV;
-- section coverage statistics;
-- countries requiring correction.
-
-The audit uses retries, exponential backoff and reduced concurrency to limit false failures caused by public-source rate limits.
-
-The worldwide audit is a validation system, not a claim that all 250 reports are already equally complete.
+Coverage depth can vary by country, so worldwide quality validation remains part of the project.
 
 ---
 
 ## Recognition model
 
-The current worldwide visual reference remains a lightweight **MobileNetV3-Small** classifier.
+The current deployment model is a lightweight **MobileNetV3-Small** classifier.
 
 Why MobileNetV3-Small:
 
-- fast experimentation;
+- CPU-friendly;
 - modest model size;
-- CPU-friendly inference;
-- suitable for Streamlit deployment;
-- appropriate baseline for large-class flag recognition.
+- fast inference;
+- practical for Streamlit deployment;
+- suitable baseline for worldwide flag recognition.
 
-The deployment checkpoint is:
+Deployment checkpoint:
 
 ```text
 artifacts/models/worldwide_mobilenet_v3_small.pt
@@ -364,7 +380,7 @@ artifacts/models/worldwide_mobilenet_v3_small.pt
 
 ## Recognition evaluation
 
-The project evaluates more than raw Top-1 accuracy.
+The project evaluates more than Top-1 accuracy.
 
 ### Classification
 
@@ -397,7 +413,7 @@ The project evaluates more than raw Top-1 accuracy.
 
 ## Real-world robustness
 
-The current reference comparison on the human-reviewed real-world challenge set remains:
+Current human-reviewed real-world challenge results:
 
 | System | Top-1 | Top-5 |
 |---|---:|---:|
@@ -413,25 +429,7 @@ Flag-detector localization rate:
 
 The scene-aware model and detector-first pipeline were not promoted because they did not improve Top-1 accuracy over the V1 reference.
 
-This evaluation suggests that the dominant recognition limitation is real-world visual generalization, not only flag localization.
-
 The Wikimedia challenge set remains evaluation-only.
-
----
-
-## Similar-flag handling
-
-Special attention is given to visually similar or identical national / territorial flags.
-
-Examples include:
-
-- Côte d’Ivoire / Ireland;
-- Chad / Romania;
-- Indonesia / Monaco;
-- Netherlands / Luxembourg;
-- Australia / New Zealand.
-
-The application also merges known labels that share the same visible official flag where necessary to avoid misleading probability fragmentation.
 
 ---
 
@@ -454,23 +452,28 @@ The application also merges known labels that share the same visible official fl
                                      │
                                      ▼
                          ┌───────────────────────┐
-                         │ Country profile layer │
+                         │ Structured country    │
+                         │ profile + context     │
                          └───────────┬───────────┘
                                      │
                                      ▼
                          ┌───────────────────────┐
-                         │ Country Intelligence  │
-                         │ enrichment pipeline   │
+                         │ OpenAI report writer  │
                          └───────────┬───────────┘
                                      │
-                  ┌──────────────────┼──────────────────┐
-                  ▼                  ▼                  ▼
-            Interactive UI       JSON export       PDF report
+                                     ▼
+                         ┌───────────────────────┐
+                         │ Sanitization + QA     │
+                         └───────────┬───────────┘
+                                     │
+                    ┌────────────────┴────────────────┐
+                    ▼                                 ▼
+               JSON export                      PDF report
 ```
 
 ---
 
-## Main Country Intelligence modules
+## Main modules
 
 ```text
 src/flag_recognition/
@@ -480,6 +483,7 @@ src/flag_recognition/
 ├── flag_knowledge.py
 ├── learning.py
 ├── report_manifest.py
+├── report_writer.py
 ├── taxonomy.py
 ├── inference.py
 ├── model.py
@@ -490,16 +494,17 @@ src/flag_recognition/
 └── transforms.py
 ```
 
-Responsibilities:
+Main responsibilities:
 
 - `country_info.py` — structured country facts and source integration;
-- `country_intelligence.py` — canonical knowledge model;
-- `country_knowledge.py` — educational and topic-specific enrichment;
-- `flag_knowledge.py` — dedicated flag metadata and history;
-- `learning.py` — Ask Flag Intelligence retrieval;
-- `report_manifest.py` — official report section validation;
-- `taxonomy.py` — worldwide country-code and text-name resolution;
-- `inference.py` — visual prediction pipeline.
+- `country_intelligence.py` — normalized country-intelligence model;
+- `country_knowledge.py` — country learning context;
+- `flag_knowledge.py` — flag-specific metadata and history;
+- `report_writer.py` — final authored report generation and QA;
+- `report_manifest.py` — report-structure validation;
+- `taxonomy.py` — country-code and country-name resolution;
+- `inference.py` — visual flag prediction pipeline;
+- `learning.py` — Ask Flag Intelligence retrieval support.
 
 ---
 
@@ -517,23 +522,11 @@ country-flag-recognition/
 │   ├── metrics/
 │   └── figures/
 ├── scripts/
-│   ├── audit_country_intelligence_world.py
-│   ├── audit_taxonomy.py
-│   ├── prepare_splits.py
-│   ├── train.py
-│   ├── train_deployment.py
-│   ├── evaluate.py
-│   ├── evaluate_deployment.py
-│   ├── evaluate_real_world_challenge.py
-│   └── ...
 ├── src/
 │   └── flag_recognition/
 ├── tests/
 ├── .github/
 │   └── workflows/
-│       ├── tests.yml
-│       ├── country-intelligence-audit.yml
-│       └── worldwide-country-intelligence-audit.yml
 ├── pyproject.toml
 ├── requirements.txt
 └── README.md
@@ -548,22 +541,41 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-The Streamlit application is currently the most complete interface for:
+The Streamlit application is the main product interface for:
 
-- flag-image recognition;
+- image-based flag recognition;
 - direct country-name input;
 - Country Intelligence;
-- Ask Flag Intelligence;
+- report authoring;
 - JSON export;
-- PDF reports;
+- PDF export;
 - maps;
-- source-aware learning sections.
+- Ask Flag Intelligence.
+
+---
+
+## OpenAI configuration
+
+The report writer reads the OpenAI API key from the application environment.
+
+For Streamlit Community Cloud, the application also supports `st.secrets`.
+
+Expected configuration:
+
+```text
+OPENAI_API_KEY=...
+FLAG_INTELLIGENCE_WRITER_MODEL=...
+```
+
+The writer model defaults to the configured project model when no override is provided.
+
+API credentials must never be committed to the repository.
 
 ---
 
 ## Product web interface
 
-A separate FastAPI / responsive web interface also exists:
+A separate FastAPI-compatible web entry point also exists:
 
 ```bash
 pip install -r requirements.txt
@@ -576,7 +588,7 @@ Then open:
 http://127.0.0.1:8000
 ```
 
-The standalone web interface and Streamlit interface may not expose every experimental feature at exactly the same time.
+The Streamlit application remains the most complete interface for the current V0.1.0 workflow.
 
 ---
 
@@ -592,9 +604,8 @@ Tests cover areas including:
 
 - taxonomy;
 - country-name resolution;
-- country profile extraction;
-- sovereignty logic;
-- country knowledge extraction;
+- country-profile extraction;
+- country knowledge;
 - historical timelines;
 - flag metadata;
 - report manifests;
@@ -603,9 +614,22 @@ Tests cover areas including:
 
 ---
 
-## Worldwide audit
+## Worldwide Country Intelligence audit
 
-Run a local shard:
+The repository includes automated worldwide validation across the 250-class taxonomy.
+
+The audit checks areas such as:
+
+- expected country-code coverage;
+- report structure;
+- country-profile consistency;
+- historical-field coherence;
+- malformed content;
+- raw MediaWiki leakage;
+- report-manifest validity;
+- pipeline exceptions.
+
+A local shard can be run with:
 
 ```bash
 PYTHONPATH=src python scripts/audit_country_intelligence_world.py \
@@ -615,35 +639,45 @@ PYTHONPATH=src python scripts/audit_country_intelligence_world.py \
   --output-dir artifacts/world_audit
 ```
 
-GitHub Actions runs the full sharded worldwide audit and merges the results automatically.
-
 ---
 
 ## Current status
 
-Flag Intelligence currently has four major working layers:
+**Version 0.1.0** currently includes four main working layers:
 
 1. **Worldwide visual flag recognition**
-2. **Direct country-name / ISO lookup**
-3. **Source-aware Country Intelligence**
-4. **Automated worldwide quality auditing**
+2. **Direct country-name / ISO resolution**
+3. **Authored Country Intelligence reporting**
+4. **Automated quality validation and worldwide auditing**
 
-The project is under active validation.
+The reporting pipeline has already been validated on multiple countries including France, Côte d’Ivoire, India and Nigeria, while additional country-by-country testing continues.
 
-The vision model still has substantial room for improvement on uncontrolled real-world imagery, and deep country-information coverage is not yet uniform across all 250 classes.
-
-The goal is not to hide those gaps. The audit system is specifically designed to expose them so they can be corrected systematically.
+The visual model still has room for improvement on uncontrolled real-world imagery. Report depth can also vary when country context is incomplete, which is why deterministic QA and fallback behavior remain part of the architecture.
 
 ---
 
 ## Design principles
 
-- no fabricated country facts;
-- no fake recognition confidence for text-selected countries;
-- source-aware information;
-- historical models adapted to the country rather than forcing one template;
-- time-sensitive data treated as time-sensitive;
-- missing information preferred over incorrect information;
-- image and text inputs converge on the same Country Intelligence pipeline;
-- validation should happen across the full worldwide taxonomy, not only a few example countries.
+- no fake confidence score for text-selected countries;
+- no deliberate fabrication of unsupported numerical facts;
+- history adapted to the country rather than forced into one template;
+- practical emergency information presented clearly by service;
+- image and text inputs converge on the same report pipeline;
+- professional PDF and JSON outputs from one shared country result;
+- repair harmless formatting defects instead of failing unnecessarily;
+- keep a fallback path when external report generation is unavailable;
+- validate the complete worldwide taxonomy rather than only a few example countries.
 
+---
+
+## Project direction
+
+Flag Intelligence is evolving from a flag-recognition experiment into a compact country-intelligence product.
+
+The next priorities are:
+
+- broader country-by-country report validation;
+- stronger consistency across all 250 classes;
+- improved real-world visual recognition;
+- continued report-quality refinement;
+- production-grade reliability for V0.1.x.
