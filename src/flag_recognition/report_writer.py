@@ -18,10 +18,10 @@ from openai import OpenAI
 
 
 REPORT_GENERATION_BUDGET_SECONDS = min(
-    295.0,
+    300.0,
     max(
         120.0,
-        float(os.getenv("FLAG_INTELLIGENCE_REPORT_BUDGET_SECONDS", "295")),
+        float(os.getenv("FLAG_INTELLIGENCE_REPORT_BUDGET_SECONDS", "300")),
     ),
 )
 
@@ -29,9 +29,9 @@ REPORT_GENERATION_BUDGET_SECONDS = min(
 def _remaining_budget(deadline: float, *, cap: float) -> float:
     """Return a safe per-call timeout inside the shared report budget."""
     remaining = deadline - time.monotonic()
-    if remaining <= 8.0:
+    if remaining <= 4.0:
         return 0.0
-    return min(cap, max(8.0, remaining - 5.0))
+    return min(cap, max(4.0, remaining - 2.0))
 
 
 REPORT_SECTION_KEYS = (
@@ -639,7 +639,7 @@ def _generate_section_group(
     best: dict[str, str] = {}
     for candidate_model in _model_candidates(model):
         for _attempt in range(3):
-            timeout = _remaining_budget(deadline, cap=110.0)
+            timeout = _remaining_budget(deadline, cap=140.0)
             if timeout <= 0:
                 return best
             client = OpenAI(
@@ -704,8 +704,8 @@ def _generate_single_section(
     )
 
     for candidate_model in _model_candidates(model):
-        for _attempt in range(3):
-            timeout = _remaining_budget(deadline, cap=80.0)
+        for _attempt in range(4):
+            timeout = _remaining_budget(deadline, cap=100.0)
             if timeout <= 0:
                 return ""
             client = OpenAI(
@@ -762,11 +762,11 @@ def _recover_report_in_chunks(
     # Small independent calls are much less timeout-prone than one very long
     # response. Reserve part of the global budget for targeted rescue.
     group_phase_deadline = min(
-        deadline - 90.0,
-        time.monotonic() + 180.0,
+        deadline - 60.0,
+        time.monotonic() + 220.0,
     )
     if group_phase_deadline <= time.monotonic() + 5.0:
-        group_phase_deadline = min(deadline - 8.0, time.monotonic() + 75.0)
+        group_phase_deadline = min(deadline - 4.0, time.monotonic() + 100.0)
 
     executor = ThreadPoolExecutor(max_workers=min(2, len(jobs)))
     futures = {
