@@ -373,6 +373,35 @@ def _normalize_output(payload: Any) -> dict[str, str]:
     return result
 
 
+def _cross_section_duplicate_issues(report: dict[str, str]) -> list[str]:
+    """Reject reports that recycle the same prose across different sections."""
+    issues: list[str] = []
+    normalized: dict[str, str] = {}
+    for key in REPORT_SECTION_KEYS:
+        text = str(report.get(key, "") or "").strip()
+        if not text:
+            continue
+        compact = re.sub(r"[^a-z0-9]+", " ", text.casefold()).strip()
+        if len(compact) < 120:
+            continue
+        for previous_key, previous_text in normalized.items():
+            shorter = min(len(compact), len(previous_text))
+            if shorter < 120:
+                continue
+            # Exact/near-prefix reuse catches the stitched fallback pattern.
+            common = 0
+            for a, b in zip(compact, previous_text):
+                if a != b:
+                    break
+                common += 1
+            if common / shorter >= 0.72:
+                issues.append(
+                    f"{key}: excessive prose reuse from {previous_key}"
+                )
+        normalized[key] = compact
+    return list(dict.fromkeys(issues))
+
+
 def _report_completeness(draft: dict[str, str]) -> tuple[int, list[str]]:
     """Return substantial-section count and missing core sections."""
     substantial = [
@@ -514,7 +543,6 @@ SECTION_RECOVERY_GROUPS = (
 def _model_candidates(configured_model: str) -> tuple[str, ...]:
     candidates = [
         configured_model.strip(),
-        "gpt-5.6-terra",
         "gpt-5.6-luna",
     ]
     return tuple(dict.fromkeys(model for model in candidates if model))
@@ -540,10 +568,14 @@ def _generate_section_group(
 
     prompt = (
         "Generate ONLY the requested Flag Intelligence sections for this country. "
-        "Return one JSON object containing exactly the requested keys. Each applicable "
-        "section must contain useful, publication-ready educational prose. Use the "
-        "country evidence and your trained knowledge conservatively. Do not output "
-        "markdown, citations or source names.\n\n"
+        "Return one JSON object containing exactly the requested keys. WRITE each "
+        "section as original, coherent, publication-ready prose for that section's "
+        "specific subject. Do not copy evidence fragments verbatim, do not repeat the "
+        "same paragraph under different keys, do not preserve source labels such as "
+        "'Politics:', 'Art:', 'Economy:', or MediaWiki headings such as '=== ... ==='. "
+        "Use the evidence only as factual support and rewrite it completely. "
+        "Different keys must contain meaningfully different content. Do not output "
+        "markdown, citations, URLs or source names.\n\n"
         f"THEMATIC BLOCK: {group_name}\n"
         "REQUESTED KEYS:\n"
         + json.dumps(requested, ensure_ascii=False)
@@ -682,6 +714,8 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
         return {}
 
     mechanical = _deterministic_quality_issues(draft)
+    duplicate_issues = _cross_section_duplicate_issues(draft)
+    mechanical = list(dict.fromkeys(mechanical + duplicate_issues))
     substantial, missing_core = _report_completeness(draft)
 
     passed = (
