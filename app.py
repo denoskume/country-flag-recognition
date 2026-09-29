@@ -27,6 +27,8 @@ from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     HRFlowable,
     Image as PDFImage,
@@ -70,6 +72,25 @@ PDF_SNAPSHOT_LABEL_LEADING = 9.5
 PDF_SNAPSHOT_VALUE_FONT_SIZE = 10.0
 PDF_SNAPSHOT_VALUE_LEADING = 12.0
 PDF_COVER_MAP_HEIGHT_MM = 70.0
+
+PDF_FONT_REGULAR = "Helvetica"
+PDF_FONT_BOLD = "Helvetica-Bold"
+
+try:
+    _dejavu_regular = font_manager.findfont("DejaVu Sans")
+    _dejavu_bold = font_manager.findfont(
+        font_manager.FontProperties(
+            family="DejaVu Sans",
+            weight="bold",
+        )
+    )
+    pdfmetrics.registerFont(TTFont("FlagUnicode", _dejavu_regular))
+    pdfmetrics.registerFont(TTFont("FlagUnicode-Bold", _dejavu_bold))
+    PDF_FONT_REGULAR = "FlagUnicode"
+    PDF_FONT_BOLD = "FlagUnicode-Bold"
+except Exception:
+    # Helvetica remains a safe fallback if the runtime font registry fails.
+    pass
 
 ROOT_DIR = Path(__file__).resolve().parent
 SRC_DIR = ROOT_DIR / "src"
@@ -405,13 +426,13 @@ def draw_pdf_watermark(canvas, document) -> None:
         canvas.drawPath(path, stroke=1, fill=0)
 
     canvas.setFillColor(colors.white)
-    canvas.setFont("Helvetica-Bold", 9.6)
+    canvas.setFont(PDF_FONT_BOLD, 9.6)
     canvas.drawCentredString(
         cx,
         logo_y + 6.4 * mm,
         "FLAG",
     )
-    canvas.setFont("Helvetica-Bold", 4.5)
+    canvas.setFont(PDF_FONT_BOLD, 4.5)
     canvas.drawCentredString(
         cx,
         logo_y + 3.8 * mm,
@@ -425,10 +446,10 @@ def draw_pdf_watermark(canvas, document) -> None:
     contact_y = page_height - 23 * mm
 
     canvas.setFillColor(colors.HexColor("#111111"))
-    canvas.setFont("Helvetica", 9.3)
+    canvas.setFont(PDF_FONT_REGULAR, 9.3)
     canvas.drawRightString(right, contact_y, "Contact")
 
-    canvas.setFont("Helvetica", 8.6)
+    canvas.setFont(PDF_FONT_REGULAR, 8.6)
     canvas.drawRightString(
         right,
         contact_y - 5.0 * mm,
@@ -444,13 +465,13 @@ def draw_pdf_watermark(canvas, document) -> None:
     # Footer
     # ------------------------------------------------------------------
     canvas.setFillColor(colors.HexColor("#666666"))
-    canvas.setFont("Helvetica", 6.8)
+    canvas.setFont(PDF_FONT_REGULAR, 6.8)
     canvas.drawCentredString(
         (left + right) / 2,
         18 * mm,
         "Sources: World Bank · Wikidata · REST Countries · Wikipedia · EmergencyNumberAPI",
     )
-    canvas.setFont("Helvetica", 7.2)
+    canvas.setFont(PDF_FONT_REGULAR, 7.2)
     physical_page = int(getattr(document, "page", 1))
     if physical_page <= PDF_FRONT_MATTER_PAGES:
         footer_text = (
@@ -530,7 +551,7 @@ def _profile_card(
         Paragraph(title, ParagraphStyle(
             f"CardTitle_{title}",
             parent=value_style,
-            fontName="Helvetica-Bold",
+            fontName=PDF_FONT_BOLD,
             fontSize=10,
             leading=12,
             textColor=colors.HexColor("#1D4ED8"),
@@ -876,7 +897,7 @@ def _build_pdf_report_uncached(
     title_style = ParagraphStyle(
         "CountryReportTitle",
         parent=styles["Title"],
-        fontName="Helvetica-Bold",
+        fontName=PDF_FONT_BOLD,
         fontSize=16.5,
         leading=19,
         alignment=TA_CENTER,
@@ -887,7 +908,7 @@ def _build_pdf_report_uncached(
     meta_style = ParagraphStyle(
         "ReportMeta",
         parent=styles["Normal"],
-        fontName="Helvetica",
+        fontName=PDF_FONT_REGULAR,
         fontSize=7.0,
         leading=8.5,
         textColor=colors.HexColor("#444444"),
@@ -896,7 +917,7 @@ def _build_pdf_report_uncached(
     section_title_style = ParagraphStyle(
         "BoxSectionTitle",
         parent=styles["Heading2"],
-        fontName="Helvetica-Bold",
+        fontName=PDF_FONT_BOLD,
         fontSize=10.2,
         leading=12,
         textColor=colors.HexColor("#111111"),
@@ -906,7 +927,7 @@ def _build_pdf_report_uncached(
     label_style = ParagraphStyle(
         "CompactLabel",
         parent=styles["Normal"],
-        fontName="Helvetica-Bold",
+        fontName=PDF_FONT_BOLD,
         fontSize=7.4,
         leading=9.2,
         textColor=colors.HexColor("#333333"),
@@ -915,7 +936,7 @@ def _build_pdf_report_uncached(
     value_style = ParagraphStyle(
         "CompactValue",
         parent=styles["Normal"],
-        fontName="Helvetica",
+        fontName=PDF_FONT_REGULAR,
         fontSize=7.6,
         leading=9.4,
         textColor=colors.HexColor("#222222"),
@@ -924,7 +945,7 @@ def _build_pdf_report_uncached(
     body_style = ParagraphStyle(
         "CompactBody",
         parent=styles["BodyText"],
-        fontName="Helvetica",
+        fontName=PDF_FONT_REGULAR,
         fontSize=10.5,
         leading=14.0,
         alignment=TA_JUSTIFY,
@@ -935,7 +956,7 @@ def _build_pdf_report_uncached(
     narrative_heading_style = ParagraphStyle(
         "NarrativeSectionHeading",
         parent=styles["Heading2"],
-        fontName="Helvetica-Bold",
+        fontName=PDF_FONT_BOLD,
         fontSize=11.2,
         leading=13.5,
         textColor=colors.HexColor("#111111"),
@@ -947,7 +968,7 @@ def _build_pdf_report_uncached(
     chapter_title_style = ParagraphStyle(
         "ChapterTitle",
         parent=styles["Heading1"],
-        fontName="Helvetica-Bold",
+        fontName=PDF_FONT_BOLD,
         fontSize=14.5,
         leading=17.5,
         textColor=colors.HexColor("#111111"),
@@ -959,7 +980,7 @@ def _build_pdf_report_uncached(
     front_matter_title_style = ParagraphStyle(
         "FrontMatterTitle",
         parent=styles["Heading1"],
-        fontName="Helvetica-Bold",
+        fontName=PDF_FONT_BOLD,
         fontSize=14.5,
         leading=17.5,
         textColor=colors.HexColor("#111111"),
@@ -971,7 +992,7 @@ def _build_pdf_report_uncached(
     contents_item_style = ParagraphStyle(
         "ContentsItem",
         parent=styles["Normal"],
-        fontName="Helvetica",
+        fontName=PDF_FONT_REGULAR,
         fontSize=9.2,
         leading=14,
         leftIndent=4 * mm,
@@ -982,7 +1003,7 @@ def _build_pdf_report_uncached(
     narrative_subheading_style = ParagraphStyle(
         "NarrativeSubheading",
         parent=styles["Heading3"],
-        fontName="Helvetica-Bold",
+        fontName=PDF_FONT_BOLD,
         fontSize=8.5,
         leading=10.5,
         textColor=colors.HexColor("#333333"),
@@ -994,7 +1015,7 @@ def _build_pdf_report_uncached(
     small_style = ParagraphStyle(
         "CompactSmall",
         parent=styles["Normal"],
-        fontName="Helvetica",
+        fontName=PDF_FONT_REGULAR,
         fontSize=6.7,
         leading=8.2,
         textColor=colors.HexColor("#555555"),
@@ -1877,7 +1898,7 @@ def _build_pdf_report_uncached(
                 ParagraphStyle(
                     "FrontReportTitle",
                     parent=title_style,
-                    fontName="Helvetica-Bold",
+                    fontName=PDF_FONT_BOLD,
                     fontSize=23,
                     leading=27,
                     alignment=TA_CENTER,
@@ -1925,7 +1946,7 @@ def _build_pdf_report_uncached(
                                     ParagraphStyle(
                                         f"SnapshotLabel{label}",
                                         parent=small_style,
-                                        fontName="Helvetica-Bold",
+                                        fontName=PDF_FONT_BOLD,
                                         fontSize=8.0,
                                         leading=9.5,
                                         textColor=colors.HexColor("#6B7280"),
@@ -1939,7 +1960,7 @@ def _build_pdf_report_uncached(
                                     ParagraphStyle(
                                         f"SnapshotValue{label}",
                                         parent=value_style,
-                                        fontName="Helvetica-Bold",
+                                        fontName=PDF_FONT_BOLD,
                                         fontSize=10.0,
                                         leading=12.0,
                                         textColor=colors.HexColor("#111111"),
@@ -1963,7 +1984,7 @@ def _build_pdf_report_uncached(
                                 ParagraphStyle(
                                     "EmergencyLabelFront",
                                     parent=small_style,
-                                    fontName="Helvetica-Bold",
+                                    fontName=PDF_FONT_BOLD,
                                     fontSize=8.0,
                                     leading=9.5,
                                     textColor=colors.HexColor("#6B7280"),
@@ -1977,7 +1998,7 @@ def _build_pdf_report_uncached(
                                 ParagraphStyle(
                                     "EmergencyValueFront",
                                     parent=value_style,
-                                    fontName="Helvetica-Bold",
+                                    fontName=PDF_FONT_BOLD,
                                     fontSize=10.0,
                                     leading=12.0,
                                     textColor=colors.HexColor("#111111"),
@@ -2088,7 +2109,7 @@ def _build_pdf_report_uncached(
             ParagraphStyle(
                 "TOCLevel1",
                 parent=contents_item_style,
-                fontName="Helvetica",
+                fontName=PDF_FONT_REGULAR,
                 fontSize=10.5,
                 leading=14.5,
                 leftIndent=0,
@@ -3157,8 +3178,8 @@ def resolve_emergency_numbers(
     )
 
 
-COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-29-v20"
-COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-29-v23"
+COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-29-v21"
+COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-29-v24"
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_country_profile_v2(
