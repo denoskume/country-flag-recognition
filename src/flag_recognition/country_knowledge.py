@@ -1493,7 +1493,7 @@ def _collect_dedicated_topics(
     *,
     timeout: float,
     max_chars: int = 6000,
-    max_blocks_per_topic: int = 10,
+    max_blocks_per_topic: int = 5,
 ) -> tuple[str, str]:
     """Collect sourced educational context from dedicated country topic pages."""
     blocks: list[str] = []
@@ -1891,18 +1891,10 @@ def enrich_from_encyclopedia(
 
     # Public figures: enrich beyond the general culture article when a
     # dedicated country-specific people page exists.
-    _set_multi_topic_context(
-        record.culture,
-        "notable_people",
-        canonical_title,
-        (
-            "Notable people",
-            "List of people",
-            "List of people from",
-        ),
-        timeout=timeout,
-        max_chars=7000,
-    )
+    # Avoid broad "List of people from ..." searches: those can resolve to
+    # ancestry/diaspora lists rather than a country's representative figures.
+    # The culture article plus specialist sources (e.g. Nobel Prize) provide
+    # safer country-level notable-person evidence.
 
     # Science, discoveries and inventions: keep a separate teaching block.
     _set_multi_topic_context(
