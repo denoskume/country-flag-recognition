@@ -141,35 +141,36 @@ The authored report currently supports the following sections:
 1. Introduction
 2. Physical Geography
 3. Climate, Water & Natural Resources
-4. Flag Design, Adoption & Symbolism
-5. Origins & Early History
-6. Historical Journey
-7. Key Historical Timeline
-8. State Formation & National Identity
-9. Government & Administrative Structure
-10. Legal & Constitutional System
-11. Leadership Through Time
-12. People & Society
-13. Demographics & Population Structure
-14. Languages & Religion
-15. Health System & Public Health
-16. Culture, Cuisine, Music & Sport
-17. Festivals, Holidays & Traditions
-18. Heritage, UNESCO & Major Landmarks
-19. Major Cities & Regional Profiles
-20. National Symbols & Identity
-21. Literature, Philosophy & Thought
-22. Economy, Trade & Key Industries
-23. Infrastructure, Transport & Energy
-24. Education & Research
-25. Universities & Higher Education
-26. Science, Discovery & Invention
-27. Environment & Biodiversity
-28. Cost of Living & Everyday Prices
-29. Practical & Emergency Information
-30. International Relations
-31. Notable Public Figures
-32. Conclusion
+4. Seasons & Climate Calendar
+5. Flag Design, Adoption & Symbolism
+6. Origins & Early History
+7. Historical Journey
+8. Key Historical Timeline
+9. State Formation & National Identity
+10. Government & Administrative Structure
+11. Legal & Constitutional System
+12. Leadership Through Time
+13. People & Society
+14. Demographics & Population Structure
+15. Languages & Religion
+16. Health System & Public Health
+17. Culture, Cuisine, Music & Sport
+18. Festivals, Holidays & Traditions
+19. Heritage, UNESCO & Major Landmarks
+20. Major Cities & Regional Profiles
+21. National Symbols & Identity
+22. Literature, Philosophy & Thought
+23. Economy, Trade & Key Industries
+24. Infrastructure, Transport & Energy
+25. Education & Research
+26. Universities & Higher Education
+27. Science, Discovery & Invention
+28. Environment & Biodiversity
+29. Cost of Living & Everyday Prices
+30. Practical & Emergency Information
+31. International Relations
+32. Notable Public Figures
+33. Conclusion
 
 The exact depth of a section depends on the country and the reliability of the available context.
 
@@ -198,6 +199,24 @@ Police: 170 · Fire: 180 · Ambulance: 185
 ```
 
 The international calling code is not repeated inside emergency service numbers.
+
+---
+
+## Seasons & climate calendar
+
+Climate coverage includes the country's meaningful seasonal cycle rather than forcing one global template.
+
+Depending on the country, the report can describe:
+
+- spring, summer, autumn/fall and winter with their typical months;
+- reversed seasonal months in the Southern Hemisphere;
+- wet and dry seasons;
+- monsoon periods;
+- hot and cool seasons;
+- cyclone or hurricane seasons where relevant;
+- important regional differences caused by altitude, latitude, coastlines or continentality.
+
+For example, a temperate Northern Hemisphere country may use a March–May / June–August / September–November / December–February structure, while a tropical country may be better explained through wet and dry seasons instead.
 
 ---
 
