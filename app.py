@@ -394,7 +394,7 @@ def _cover_flag_image(
         else:
             return None
 
-        flag_image._restrictSize(52 * mm, 34 * mm)
+        flag_image._restrictSize(64 * mm, 42 * mm)
         return flag_image
     except Exception:
         return None
@@ -1173,7 +1173,7 @@ def _build_pdf_report_uncached(
                     ("LEFTPADDING", (0, 0), (-1, -1), 0),
                     ("RIGHTPADDING", (0, 0), (-1, -1), 0),
                     ("TOPPADDING", (0, 0), (-1, -1), 0),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4.0 * mm),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5.5 * mm),
                 ])
             )
             story.append(flag_holder)
@@ -1189,8 +1189,8 @@ def _build_pdf_report_uncached(
                     leading=27,
                     alignment=TA_CENTER,
                     textColor=colors.HexColor("#111111"),
-                    spaceBefore=1.5 * mm,
-                    spaceAfter=4.5 * mm,
+                    spaceBefore=0.5 * mm,
+                    spaceAfter=5.0 * mm,
                 ),
             )
         )
