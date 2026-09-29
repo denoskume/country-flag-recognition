@@ -327,8 +327,8 @@ def _profile_card(
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("LEFTPADDING", (0, 0), (-1, -1), 7),
             ("RIGHTPADDING", (0, 0), (-1, -1), 7),
-            ("TOPPADDING", (0, 0), (-1, -1), 6),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 7),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
         ])
     )
 
@@ -394,7 +394,7 @@ def _cover_flag_image(
         else:
             return None
 
-        flag_image._restrictSize(42 * mm, 28 * mm)
+        flag_image._restrictSize(52 * mm, 34 * mm)
         return flag_image
     except Exception:
         return None
@@ -1173,7 +1173,7 @@ def _build_pdf_report_uncached(
                     ("LEFTPADDING", (0, 0), (-1, -1), 0),
                     ("RIGHTPADDING", (0, 0), (-1, -1), 0),
                     ("TOPPADDING", (0, 0), (-1, -1), 0),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5 * mm),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4.0 * mm),
                 ])
             )
             story.append(flag_holder)
@@ -1185,27 +1185,12 @@ def _build_pdf_report_uncached(
                     "FrontReportTitle",
                     parent=title_style,
                     fontName="Helvetica-Bold",
-                    fontSize=21,
-                    leading=24,
+                    fontSize=23,
+                    leading=27,
                     alignment=TA_CENTER,
                     textColor=colors.HexColor("#111111"),
-                    spaceBefore=0,
-                    spaceAfter=1.0 * mm,
-                ),
-            )
-        )
-        story.append(
-            Paragraph(
-                "Country Intelligence Report",
-                ParagraphStyle(
-                    "FrontReportSubtitle",
-                    parent=meta_style,
-                    fontName="Helvetica",
-                    fontSize=9.2,
-                    leading=11.2,
-                    alignment=TA_CENTER,
-                    textColor=colors.HexColor("#555555"),
-                    spaceAfter=4.0 * mm,
+                    spaceBefore=1.5 * mm,
+                    spaceAfter=4.5 * mm,
                 ),
             )
         )
@@ -1318,9 +1303,9 @@ def _build_pdf_report_uncached(
         )
         snapshot_style = [
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#D5DAE1")),
-            ("INNERGRID", (0, 0), (-1, -2), 0.35, colors.HexColor("#E5E9EE")),
-            ("BACKGROUND", (0, 0), (-1, -2), colors.HexColor("#F8F9FB")),
+            ("BOX", (0, 0), (-1, -1), 0.65, colors.HexColor("#C8CED6")),
+            ("INNERGRID", (0, 0), (-1, -2), 0.25, colors.HexColor("#E3E7EC")),
+            ("BACKGROUND", (0, 0), (-1, -2), colors.HexColor("#FAFBFC")),
             ("LEFTPADDING", (0, 0), (-1, -1), 7),
             ("RIGHTPADDING", (0, 0), (-1, -1), 7),
             ("TOPPADDING", (0, 0), (-1, -1), 6),
