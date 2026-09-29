@@ -822,6 +822,46 @@ def _build_pdf_report_uncached(
         text = re.sub(r"\[\[(?:[^|\]]*\|)?([^\]]+)\]\]", r"\1", text)
         text = re.sub(r"<ref\b[^>]*>.*?</ref>", " ", text, flags=re.I | re.S)
         text = re.sub(r"<ref\b[^>]*/>", " ", text, flags=re.I)
+
+        # Remove HTML/entity and image-caption artefacts before report prose.
+        text = (
+            text.replace("&nbsp;", " ")
+            .replace("&#160;", " ")
+            .replace("&amp;", "&")
+            .replace("&quot;", '"')
+            .replace("&#39;", "'")
+        )
+        text = re.sub(
+            r"\balt\s*=\s*[^|.;]+(?:\||[.;])?",
+            " ",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(
+            r"\b\d+(?:\.\d+)?\s*px\b",
+            " ",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(
+            r"\bpx\b",
+            " ",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(
+            r"\b(?:thumb|thumbnail|upright)(?:\s*=\s*[^| ]+)?\b",
+            " ",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(
+            r"\bFile:[^|.;]+(?:\||[.;])?",
+            " ",
+            text,
+            flags=re.IGNORECASE,
+        )
+
         text = re.sub(r"\s*\|\s*", ", ", text)
         text = re.sub(r"\s+", " ", text).strip(" ;|")
         return text or "Not available"
