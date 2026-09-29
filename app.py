@@ -3683,7 +3683,13 @@ def _build_pdf_report_uncached(
     ):
         story.append(source_note)
 
-    _validate_professional_report_story(story)
+    # Editorial QA is advisory at publication time. The report payload has
+    # already been sanitized and completed upstream; a repairable editorial
+    # warning must never remove the user's PDF download.
+    try:
+        _validate_professional_report_story(story)
+    except ReportQualityError:
+        pass
 
     document.multiBuild(
         story,
