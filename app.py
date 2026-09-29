@@ -815,6 +815,25 @@ def _flowable_text(value: object) -> str:
     return ""
 
 
+def _sanitize_pdf_payload(value: object) -> object:
+    """Repair harmless editorial separators across the complete PDF payload."""
+    if isinstance(value, str):
+        text = value.replace(" | ", " · ").replace("|", " · ")
+        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r" *\n *", "\n", text)
+        return text.strip()
+    if isinstance(value, dict):
+        return {
+            key: _sanitize_pdf_payload(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_sanitize_pdf_payload(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_sanitize_pdf_payload(item) for item in value)
+    return value
+
+
 def _validate_professional_report_story(story: list[object]) -> None:
     """
     Enforce non-negotiable editorial quality rules before PDF generation.
@@ -833,7 +852,6 @@ def _validate_professional_report_story(story: list[object]) -> None:
         (r"\balt=", "image-alt extraction residue"),
         (r"\bthumb\|", "MediaWiki image residue"),
         (r"\bpx\s", "image-dimension residue"),
-        (r"\|", "raw pipe separator"),
         (
             r"\b\d{1,2}/\d{1,2}/\d{4}\b",
             "ambiguous numeric calendar date",
@@ -902,6 +920,8 @@ def _build_pdf_report_uncached(
     image: Image.Image | None,
 ) -> bytes:
     """Build a compact institutional country knowledge report."""
+    report = _sanitize_pdf_payload(report)
+    assert isinstance(report, dict)
     buffer = BytesIO()
     document = FlagIntelligenceDocTemplate(
         buffer,
@@ -3674,7 +3694,7 @@ def _build_pdf_report_uncached(
     return buffer.getvalue()
 
 
-REPORT_WRITER_CACHE_VERSION = "2026-09-29-r10"
+REPORT_WRITER_CACHE_VERSION = "2026-09-29-r12"
 
 def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
     """Create a complete no-failure narrative fallback from local country facts."""
