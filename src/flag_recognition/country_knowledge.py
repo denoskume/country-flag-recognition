@@ -1759,7 +1759,8 @@ def enrich_from_encyclopedia(
     record: CountryIntelligence,
     *,
     title: str | None = None,
-    timeout: float = 15.0,
+    timeout: float = 5.0,
+    fast_mode: bool = True,
 ) -> CountryIntelligence:
     """Enrich a record with concise, sourced educational context."""
     article_text, canonical_title = fetch_country_article(
@@ -1940,6 +1941,63 @@ def enrich_from_encyclopedia(
         item = _domain_evidence(domain_text, source_url)
         if item is not None:
             target.setdefault("context", item)
+
+    if fast_mode:
+        # The OpenAI writer performs the final synthesis. Avoid dozens of
+        # sequential optional Wikipedia/Nobel/person requests here: the main
+        # country article plus the dedicated history article already provide
+        # broad evidence and keep report generation responsive.
+        def _reuse_context(
+            section: dict[str, Evidence],
+            *keys: str,
+        ) -> None:
+            base = section.get("context")
+            if base is None:
+                return
+            for key in keys:
+                section.setdefault(key, base)
+
+        _reuse_context(
+            record.geography,
+            "rivers_lakes",
+            "mountains_relief",
+        )
+        _reuse_context(
+            record.environment,
+            "climate_seasons",
+            "natural_resources",
+        )
+        _reuse_context(
+            record.people_society,
+            "languages_religion",
+            "health_system",
+        )
+        _reuse_context(
+            record.culture,
+            "festivals_holidays",
+            "heritage_landmarks",
+            "notable_people",
+            "literature_thought",
+        )
+        _reuse_context(
+            record.government,
+            "administrative_divisions",
+            "leadership_history",
+        )
+        _reuse_context(
+            record.economy,
+            "economic_drivers",
+        )
+        _reuse_context(
+            record.infrastructure,
+            "transport_network",
+            "energy_connectivity",
+        )
+        _reuse_context(
+            record.education_science,
+            "science_inventions",
+        )
+        return record
 
     # Social detail: use a dedicated Demographics article when available.
     demographics_sections, demographics_url = _topic_sections(
