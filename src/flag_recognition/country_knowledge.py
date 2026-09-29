@@ -117,6 +117,7 @@ SOURCE_PRIORITY: dict[str, tuple[str, ...]] = {
 }
 
 NOBEL_API = "https://api.nobelprize.org/2.1/laureates"
+WIKIDATA_ENTITY_API = "https://www.wikidata.org/wiki/Special:EntityData/{qid}.json"
 
 SECTION_ALIASES: dict[str, tuple[str, ...]] = {
     "history": (
@@ -1333,6 +1334,163 @@ def _dedicated_topic_sections(
     return split_article_sections_detailed(text), source_url
 
 
+def _wikipedia_page_identity(
+    title: str,
+    *,
+    timeout: float = 10.0,
+) -> tuple[str, str, str]:
+    """Return canonical title, Wikidata QID and introductory extract."""
+    response = _get_with_retry(
+        WIKIPEDIA_API,
+        params={
+            "action": "query",
+            "prop": "pageprops|extracts",
+            "exintro": 1,
+            "explaintext": 1,
+            "redirects": 1,
+            "titles": title,
+            "format": "json",
+            "formatversion": 2,
+        },
+        headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    pages = response.json().get("query", {}).get("pages", [])
+    if not pages or pages[0].get("missing"):
+        return "", "", ""
+    page = pages[0]
+    canonical = str(page.get("title") or "").strip()
+    pageprops = page.get("pageprops") or {}
+    qid = str(pageprops.get("wikibase_item") or "").strip()
+    extract = str(page.get("extract") or "").strip()
+    return canonical, qid, extract
+
+
+def _wikidata_citizenship_qids(
+    qid: str,
+    *,
+    timeout: float = 10.0,
+) -> set[str]:
+    """Read country-of-citizenship claims for one Wikidata human entity."""
+    if not qid:
+        return set()
+    try:
+        response = _get_with_retry(
+            WIKIDATA_ENTITY_API.format(qid=qid),
+            headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        entity = response.json().get("entities", {}).get(qid, {})
+    except (requests.RequestException, ValueError, TypeError):
+        return set()
+
+    claims = entity.get("claims") or {}
+    citizenship = claims.get("P27") or []
+    result: set[str] = set()
+    for claim in citizenship:
+        try:
+            value = claim["mainsnak"]["datavalue"]["value"]["id"]
+        except (KeyError, TypeError):
+            continue
+        if value:
+            result.add(str(value))
+    return result
+
+
+def _candidate_people_from_text(text: str, *, limit: int = 24) -> list[str]:
+    """Extract likely person names from list-like country source material."""
+    value = str(text or "")
+    candidates: list[str] = []
+
+    patterns = (
+        r"([A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){1,4})\s*[-–—]\s*",
+        r"([A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){1,4})\s+received\s+the\s+Nobel\s+Prize",
+    )
+    for pattern in patterns:
+        for match in re.finditer(pattern, value):
+            name = " ".join(match.group(1).split()).strip(" ,.;:")
+            if (
+                name
+                and name not in candidates
+                and not any(
+                    token in name.casefold()
+                    for token in (
+                        "political parties", "national convention",
+                        "main export", "main import", "middle ages",
+                    )
+                )
+            ):
+                candidates.append(name)
+            if len(candidates) >= limit:
+                return candidates
+    return candidates
+
+
+def build_notable_person_profiles(
+    country_name: str,
+    source_text: str,
+    *,
+    timeout: float = 10.0,
+    max_people: int = 8,
+) -> tuple[str, str]:
+    """
+    Build short individual biographies for notable people.
+
+    A person is retained only when Wikipedia resolves an individual article and
+    Wikidata explicitly links that person to the country through citizenship.
+    """
+    try:
+        _, country_qid, _ = _wikipedia_page_identity(
+            country_name,
+            timeout=timeout,
+        )
+    except (requests.RequestException, ValueError, LookupError):
+        return "", ""
+    if not country_qid:
+        return "", ""
+
+    candidates = _candidate_people_from_text(source_text)
+    profiles: list[str] = []
+    source_urls: list[str] = []
+
+    for name in candidates:
+        if len(profiles) >= max_people:
+            break
+        try:
+            canonical, person_qid, intro = _wikipedia_page_identity(
+                name,
+                timeout=timeout,
+            )
+        except (requests.RequestException, ValueError, LookupError):
+            continue
+        if not canonical or not person_qid or not intro:
+            continue
+
+        citizenship = _wikidata_citizenship_qids(
+            person_qid,
+            timeout=timeout,
+        )
+        if country_qid not in citizenship:
+            continue
+
+        sentences = _sentences(intro)
+        summary = " ".join(sentences[:3]).strip()
+        if not summary:
+            continue
+        if len(summary) > 850:
+            summary = summary[:850].rsplit(" ", 1)[0].rstrip() + "…"
+
+        profiles.append(f"{canonical}: {summary}")
+        source_urls.append(
+            WIKIPEDIA_PAGE
+            + quote(canonical.replace(" ", "_"), safe="()_-")
+        )
+
+    return "\n\n".join(profiles), "; ".join(dict.fromkeys(source_urls))
+
+
 def fetch_nobel_country_context(
     country_name: str,
     *,
@@ -1870,8 +2028,8 @@ def enrich_from_encyclopedia(
         culture_sections,
         "notable_people",
         culture_url,
-        max_chars=1400,
-        max_blocks=4,
+        max_chars=1800,
+        max_blocks=5,
     )
 
     # Leadership history: prefer dedicated lists/pages and keep provenance.
@@ -1959,6 +2117,30 @@ def enrich_from_encyclopedia(
         source_url="https://api.nobelprize.org/2.1/laureates",
         confidence=0.95,
     )
+
+
+    # Convert raw category/name lists into individual biographical profiles.
+    # This intentionally overwrites the list-style seed when enough verified
+    # profiles are available.
+    notable_seed = record.culture.get("notable_people")
+    if notable_seed is not None:
+        profiles_text, profile_urls = build_notable_person_profiles(
+            canonical_title,
+            str(notable_seed.value),
+            timeout=min(timeout, 10.0),
+            max_people=8,
+        )
+        if profiles_text:
+            profile_item = evidence(
+                profiles_text,
+                "Wikipedia biographies + Wikidata citizenship verification",
+                retrieved_at=datetime.now(timezone.utc).date().isoformat(),
+                confidence=0.90,
+                status=PARTIAL,
+                source_url=profile_urls or None,
+            )
+            if profile_item is not None:
+                record.culture["notable_people"] = profile_item
 
     # Government/territorial organization is normally present in the country
     # article and should remain distinct from institutions.
