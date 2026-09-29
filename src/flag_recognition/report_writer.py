@@ -19,6 +19,7 @@ REPORT_SECTION_KEYS = (
     "introduction",
     "physical_geography",
     "climate_water_resources",
+    "seasons_climate_calendar",
     "flag_design_symbolism",
     "origins_early_history",
     "historical_journey",
@@ -66,6 +67,13 @@ NON-NEGOTIABLE RULES
 - For time-sensitive facts, avoid unsupported precision when the supplied context
   does not establish a current value.
 - For historical facts, prioritize well-established facts and coherent chronology.
+- seasons_climate_calendar should explain the country's meaningful seasonal cycle.
+  Where four temperate seasons apply, identify spring, summer, autumn/fall and
+  winter with their typical months, while noting important regional differences.
+  In tropical, equatorial, monsoon, desert or southern-hemisphere climates, use
+  the locally relevant seasonal model instead: wet/dry seasons, monsoon periods,
+  cyclone seasons, hot/cool seasons or reversed southern-hemisphere months.
+  Avoid forcing a four-season template where it is climatologically inappropriate.
 - Rewrite everything in clean, natural, professional English.
 - Never copy source fragments, captions, tables, navigation text, bibliography
   residue, or malformed phrases.
@@ -369,8 +377,9 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
         "must provide substantial coverage of historically important and currently "
         "prominent universities where reliable knowledge exists. The key_historical_timeline, "
         "major_cities_regional_profiles, demographics_population_structure, "
-        "national_symbols_identity and legal_constitutional_system sections should "
-        "also be completed whenever reliable knowledge exists.\n\n"
+        "national_symbols_identity, legal_constitutional_system and "
+        "seasons_climate_calendar sections should also be completed whenever "
+        "reliable knowledge exists.\n\n"
         "Required JSON shape:\n"
         + json.dumps(schema_hint, ensure_ascii=False)
         + "\n\nEVIDENCE:\n"
