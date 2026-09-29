@@ -2008,6 +2008,13 @@ def _build_pdf_report_uncached(
                 ):
                     continue
 
+                # A source can collapse an entire catalogue into one
+                # punctuation-free "sentence". Never let that pass through.
+                if len(cleaned) > 520:
+                    shortened = cleaned[:520].rsplit(" ", 1)[0].rstrip(" ,;:")
+                    if shortened:
+                        cleaned = shortened + "."
+
                 projected = char_count + len(cleaned)
                 if selected and (
                     len(selected) >= max_sentences
