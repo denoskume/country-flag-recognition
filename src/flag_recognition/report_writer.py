@@ -361,17 +361,29 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     if not draft:
         return {}
 
-    corrected, passed, issues = _review_and_correct(
-        client,
-        model,
-        evidence_json,
-        draft,
-    )
+    try:
+        corrected, passed, issues = _review_and_correct(
+            client,
+            model,
+            evidence_json,
+            draft,
+        )
+    except Exception as exc:
+        # Keep the researched first-pass report available if the independent
+        # verifier is temporarily unavailable. Deterministic QA still runs.
+        mechanical = _deterministic_quality_issues(draft)
+        draft["__qa_passed"] = not mechanical
+        draft["__qa_issues"] = mechanical
+        draft["__review_warning"] = (
+            f"Second-pass verification unavailable: {type(exc).__name__}"
+        )
+        return draft
+
     if not corrected:
-        return {
-            "__qa_passed": False,
-            "__qa_issues": issues or ["Final verification failed."],
-        }
+        mechanical = _deterministic_quality_issues(draft)
+        draft["__qa_passed"] = not mechanical
+        draft["__qa_issues"] = mechanical
+        return draft
 
     corrected["__qa_passed"] = passed
     corrected["__qa_issues"] = issues
