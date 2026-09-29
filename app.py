@@ -3882,7 +3882,7 @@ def resolve_emergency_numbers(
 
 
 COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-29-v21"
-COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-29-v35"
+COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-29-v37"
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_country_profile_v2(
@@ -4532,6 +4532,7 @@ def show_result(
         and bool(authored_report.get("introduction"))
         and bool(authored_report.get("historical_journey"))
         and bool(authored_report.get("conclusion"))
+        and authored_report.get("__qa_passed") is True
     )
     report_ready = (
         accepted
@@ -4585,10 +4586,22 @@ def show_result(
                 use_container_width=True,
             )
             if accepted and not authored_ready:
-                st.warning(
-                    "The OpenAI report writer is not active yet. "
-                    "Configure OPENAI_API_KEY in the deployment secrets."
+                qa_issues = (
+                    authored_report.get("__qa_issues", [])
+                    if isinstance(authored_report, dict)
+                    else []
                 )
+                if qa_issues:
+                    st.warning(
+                        "Official PDF withheld: final factual/editorial "
+                        "verification did not pass. "
+                        + " | ".join(str(item) for item in qa_issues[:5])
+                    )
+                else:
+                    st.warning(
+                        "The OpenAI report writer is not active yet. "
+                        "Configure OPENAI_API_KEY in the deployment secrets."
+                    )
 
 
     st.markdown("</div>", unsafe_allow_html=True)
