@@ -2943,6 +2943,11 @@ def _build_pdf_report_uncached(
                         )
                     )
 
+            add_authored_section(
+                "Key Historical Timeline",
+                "key_historical_timeline",
+            )
+
         if any(
             report_manifest.get(key, False)
             for key in ("flag", "origins", "history")
@@ -3087,6 +3092,11 @@ def _build_pdf_report_uncached(
                 )
             )
 
+        add_authored_section(
+            "Legal & Constitutional System",
+            "legal_constitutional_system",
+        )
+
         leadership_text = context_value(
             "government",
             "leadership_history",
@@ -3123,6 +3133,10 @@ def _build_pdf_report_uncached(
                 context_value("people_society"),
                 max_paragraphs=4,
             )
+        add_authored_section(
+            "Demographics & Population Structure",
+            "demographics_population_structure",
+        )
         if not add_authored_section("Languages & Religion", "languages_religion"):
             add_editorial_section(
                 "Languages & Religion",
@@ -3175,6 +3189,15 @@ def _build_pdf_report_uncached(
                         _narrative_paragraph(heritage_sentences),
                     )
                 )
+
+        add_authored_section(
+            "Major Cities & Regional Profiles",
+            "major_cities_regional_profiles",
+        )
+        add_authored_section(
+            "National Symbols & Identity",
+            "national_symbols_identity",
+        )
 
         literature_text = context_value(
             "culture",
@@ -3680,11 +3703,13 @@ def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
         "flag_design_symbolism": "",
         "origins_early_history": "",
         "historical_journey": "",
+        "key_historical_timeline": "",
         "state_formation_identity": " ".join(state_bits),
         "government_structure": "",
         "legal_constitutional_system": "",
         "leadership_through_time": "",
         "people_society": "",
+        "demographics_population_structure": "",
         "languages_religion": f"{language} is the recorded official language information." if language else "",
         "health_public_health": "",
         "culture_cuisine_music_sport": "",
