@@ -562,7 +562,7 @@ SECTION_RECOVERY_GROUPS = (
         ),
     ),
     (
-        "notable_figures",
+        "notable_figures_intellectual_scientific",
         (
             "notable_figures_philosophy",
             "notable_figures_literature_poetry",
@@ -570,6 +570,11 @@ SECTION_RECOVERY_GROUPS = (
             "notable_figures_physics",
             "notable_figures_science_medicine",
             "notable_figures_invention_engineering",
+        ),
+    ),
+    (
+        "notable_figures_cultural_public",
+        (
             "notable_figures_arts_architecture",
             "notable_figures_music_cinema",
             "notable_figures_public_life",
@@ -589,6 +594,7 @@ SECTION_RECOVERY_GROUPS = (
 def _model_candidates(configured_model: str) -> tuple[str, ...]:
     candidates = [
         configured_model.strip(),
+        "gpt-5.6-terra",
         "gpt-5.6-luna",
     ]
     return tuple(dict.fromkeys(model for model in candidates if model))
@@ -653,7 +659,7 @@ def _generate_section_group(
                         tuple(requested.keys()),
                         name="flag_intelligence_report_block",
                     ),
-                    max_output_tokens=7000,
+                    max_output_tokens=12000,
                 )
                 parsed = _parse_writer_response(response.output_text or "")
                 block = {
@@ -762,7 +768,7 @@ def _recover_report_in_chunks(
     if group_phase_deadline <= time.monotonic() + 5.0:
         group_phase_deadline = min(deadline - 10.0, time.monotonic() + 45.0)
 
-    executor = ThreadPoolExecutor(max_workers=min(4, len(jobs)))
+    executor = ThreadPoolExecutor(max_workers=min(2, len(jobs)))
     futures = {
         executor.submit(
             _generate_section_group,
