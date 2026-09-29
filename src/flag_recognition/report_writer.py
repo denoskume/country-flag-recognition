@@ -926,6 +926,62 @@ def _repair_quality_issues(
     return repaired
 
 
+def _emergency_full_report_pass(
+    *,
+    api_key: str,
+    model: str,
+    country_name: str,
+    deadline: float,
+) -> dict[str, str]:
+    """Last model-authored pass reserved for the end of the five-minute budget."""
+    timeout = _remaining_budget(deadline, cap=40.0)
+    if timeout <= 0:
+        return {}
+
+    schema = {key: "" for key in REPORT_SECTION_KEYS}
+    prompt = (
+        f"Write a complete, concise Flag Intelligence report for {country_name}. "
+        "Populate every required section with distinct, factual, publication-ready "
+        "English prose. Keep each section compact enough to finish reliably. "
+        "Do not paste source fragments, do not repeat paragraphs, and do not include "
+        "citations, URLs, markdown, source labels, or MediaWiki syntax. "
+        "For notable-figure categories, include representative people where reliable. "
+        "Return exactly the required JSON object.\n\n"
+        "REQUIRED KEYS:\n"
+        + json.dumps(schema, ensure_ascii=False)
+    )
+
+    for candidate_model in _model_candidates(model):
+        timeout = _remaining_budget(deadline, cap=40.0)
+        if timeout <= 0:
+            break
+        client = OpenAI(
+            api_key=api_key,
+            timeout=timeout,
+            max_retries=0,
+        )
+        try:
+            response = client.responses.create(
+                model=candidate_model,
+                reasoning={"effort": "none"},
+                input=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                text=_structured_text_format(
+                    REPORT_SECTION_KEYS,
+                    name="flag_intelligence_emergency_report",
+                ),
+                max_output_tokens=24000,
+            )
+            parsed = _parse_writer_response(response.output_text or "")
+            if parsed:
+                return parsed
+        except Exception:
+            continue
+    return {}
+
+
 def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     """Author the complete report through independent model-written chapters."""
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -943,6 +999,7 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
         return {}
 
     deadline = time.monotonic() + REPORT_GENERATION_BUDGET_SECONDS
+    recovery_deadline = deadline - 45.0
     evidence_json = json.dumps(
         {
             "decision": country_name,
@@ -960,8 +1017,27 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
         model=model,
         evidence_json=evidence_json,
         draft={},
-        deadline=deadline,
+        deadline=recovery_deadline,
     )
+
+    substantial, missing_core = _report_completeness(draft)
+    if (
+        not draft
+        or substantial < 30
+        or missing_core
+    ) and deadline - time.monotonic() > 4.0:
+        emergency = _emergency_full_report_pass(
+            api_key=api_key,
+            model=model,
+            country_name=country_name,
+            deadline=deadline,
+        )
+        if emergency:
+            for key in REPORT_SECTION_KEYS:
+                value = str(emergency.get(key, "") or "").strip()
+                if value:
+                    draft[key] = value
+
     if not draft:
         return {}
 
