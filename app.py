@@ -3657,6 +3657,22 @@ st.markdown(
             box-shadow: 0 8px 18px rgba(37,99,235,.18);
         }
 
+        div[data-testid="stChatInput"] {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        div[data-testid="stChatInput"] > div {
+            border-radius: 28px !important;
+            border: 1px solid #d9dee7 !important;
+            background: #ffffff !important;
+            box-shadow: 0 2px 10px rgba(15,23,42,.05);
+        }
+
+        div[data-testid="stChatInput"] textarea {
+            font-size: 1rem !important;
+        }
+
         .stButton > button[kind="primary"]:hover {
             background: var(--blue-dark);
         }
@@ -3806,59 +3822,36 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-with st.container(border=True):
-    input_mode = st.radio(
-        "Choose input",
-        ("Flag image", "Country name"),
-        horizontal=True,
-        label_visibility="collapsed",
-    )
+prompt_submission = st.chat_input(
+    "Ask Flag Intelligence",
+    key="flag_intelligence_prompt",
+    accept_file=True,
+    file_type=["jpg", "jpeg", "png", "webp"],
+)
 
-    image = None
-    process = False
-    text_process = False
-    typed_country = ""
+image = None
+process = False
+text_process = False
+typed_country = ""
 
-    if input_mode == "Flag image":
-        if not MODEL_PATH.is_file():
-            st.error(f"Model checkpoint not found: {MODEL_PATH}")
+if prompt_submission is not None:
+    prompt_text = str(getattr(prompt_submission, "text", "") or "").strip()
+    prompt_files = list(getattr(prompt_submission, "files", []) or [])
 
-        upload_col, preview_col = st.columns([1.35, 0.65], gap="medium")
-
-        with upload_col:
-            uploaded_file = st.file_uploader(
-                "Select image",
-                type=["jpg", "jpeg", "png", "webp"],
-                label_visibility="collapsed",
-            )
-
-        with preview_col:
-            if uploaded_file is not None:
-                image = Image.open(uploaded_file).convert("RGB")
-
-            render_fixed_upload_preview(image)
-
-        process = st.button(
-            "Process image",
-            type="primary",
-            use_container_width=True,
-            disabled=(image is None or not MODEL_PATH.is_file()),
-        )
-    else:
-        typed_country = st.text_input(
-            "Country name",
-            placeholder="Example: France, Côte d’Ivoire, Japan, BRA, XK",
-        ).strip()
-        st.caption(
-            "Enter a country name or ISO alpha-2/alpha-3 code. "
-            "The knowledge report opens directly without image recognition."
-        )
-        text_process = st.button(
-            "Explore country",
-            type="primary",
-            use_container_width=True,
-            disabled=not bool(typed_country),
-        )
+    if prompt_files:
+        uploaded_image = prompt_files[0]
+        try:
+            image = Image.open(uploaded_image).convert("RGB")
+        except Exception:
+            st.error("The selected file could not be read as an image.")
+        else:
+            if not MODEL_PATH.is_file():
+                st.error(f"Model checkpoint not found: {MODEL_PATH}")
+            else:
+                process = True
+    elif prompt_text:
+        typed_country = prompt_text
+        text_process = True
 
 
 @st.dialog("Country result", width="small")
