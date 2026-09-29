@@ -47,6 +47,16 @@ REPORT_SECTION_KEYS = (
     "cost_of_living",
     "practical_emergency",
     "international_relations",
+    "notable_figures_philosophy",
+    "notable_figures_literature_poetry",
+    "notable_figures_mathematics",
+    "notable_figures_physics",
+    "notable_figures_science_medicine",
+    "notable_figures_invention_engineering",
+    "notable_figures_arts_architecture",
+    "notable_figures_music_cinema",
+    "notable_figures_public_life",
+    "notable_figures_sport",
     "notable_public_figures",
     "conclusion",
 )
@@ -89,10 +99,27 @@ NON-NEGOTIABLE RULES
   duplicate, the longer historical_journey prose.
 - For historical events, explain what happened and why it mattered rather than
   listing dates mechanically.
-- For notable people, write mini-biographies. For each person retained, explain
-  who they are/were, their period or lifespan when supported, their field, why
-  they became notable, and a major contribution or achievement. Never output a
-  raw name-role list.
+- Notable people must be organized by field rather than reduced to a short
+  generic list. Use the dedicated notable_figures_* sections for applicable
+  categories: philosophy; literature/poetry; mathematics; physics; science and
+  medicine; invention/engineering; arts/architecture; music/cinema; public life;
+  and sport.
+- For countries with a rich documented intellectual or cultural history, aim for
+  several representative figures per applicable category rather than only three
+  or four people overall. A typical broad report may contain roughly 15-30
+  figures across all categories, but relevance and factual reliability are more
+  important than reaching a quota.
+- For each retained person, write a compact mini-biography explaining who they
+  are/were, their period or lifespan when well established, their precise field,
+  why they became notable, and at least one major contribution, work, discovery,
+  achievement or institutional role.
+- Do not duplicate the same person across multiple categories unless their work
+  genuinely spans fields and the repetition adds distinct educational value.
+- Do not invent figures to fill a category. Leave a category empty when the
+  country has no reliably established representative for it.
+- notable_public_figures is reserved only for important figures who do not fit
+  naturally into the dedicated categories, or for a concise cross-field synthesis.
+  Never output a raw name-role list.
 - The universities_higher_education section is mandatory whenever reliable
   knowledge exists. Distinguish historically significant institutions from
   currently prominent or internationally recognized universities. For each
@@ -379,7 +406,9 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
         "major_cities_regional_profiles, demographics_population_structure, "
         "national_symbols_identity, legal_constitutional_system and "
         "seasons_climate_calendar sections should also be completed whenever "
-        "reliable knowledge exists.\n\n"
+        "reliable knowledge exists. Populate the dedicated notable_figures_* "
+        "categories comprehensively where the country has well-established "
+        "figures, rather than limiting the report to a few famous names.\n\n"
         "Required JSON shape:\n"
         + json.dumps(schema_hint, ensure_ascii=False)
         + "\n\nEVIDENCE:\n"
@@ -393,7 +422,7 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
-        max_output_tokens=12000,
+        max_output_tokens=16000,
     )
 
     raw = _strip_code_fence(response.output_text or "")
