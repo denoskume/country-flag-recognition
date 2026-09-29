@@ -31,6 +31,7 @@ from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
+    CondPageBreak,
     HRFlowable,
     Image as PDFImage,
     KeepTogether,
@@ -2545,7 +2546,7 @@ def _build_pdf_report_uncached(
             report_manifest.get(key, False)
             for key in ("flag", "origins", "history")
         ):
-            story.append(PageBreak())
+            story.append(CondPageBreak(45 * mm))
 
         # 3. Flag & Historical Journey
         story.extend(chapter_heading(3, "Flag & Historical Journey"))
@@ -2853,7 +2854,7 @@ def _build_pdf_report_uncached(
                 "literature_thought",
             )
         ):
-            story.append(PageBreak())
+            story.append(CondPageBreak(45 * mm))
 
         # 5. People, Society & Culture
         story.extend(chapter_heading(5, "People, Society & Culture"))
@@ -2922,7 +2923,7 @@ def _build_pdf_report_uncached(
                 "environment",
             )
         ):
-            story.append(PageBreak())
+            story.append(CondPageBreak(45 * mm))
 
         story.extend(chapter_heading(6, "Economy, Infrastructure & Innovation"))
         gdp_source = fact_value(profile.get("gdp_source"))
@@ -2989,7 +2990,7 @@ def _build_pdf_report_uncached(
             report_manifest.get(key, False)
             for key in ("practical", "international", "notable_people")
         ):
-            story.append(PageBreak())
+            story.append(CondPageBreak(45 * mm))
 
         story.extend(chapter_heading(7, "International & Practical Information"))
 
@@ -3133,7 +3134,10 @@ def _build_pdf_report_uncached(
         )
 
         # 8. Conclusion
-        story.append(PageBreak())
+        # Never force an empty page when the previous chapter already ended
+        # naturally at a page boundary. Start a new page only if there is not
+        # enough room for the heading and a useful amount of conclusion text.
+        story.append(CondPageBreak(55 * mm))
         story.extend(chapter_heading(8, "Conclusion"))
         conclusion_sentences = [
             (
