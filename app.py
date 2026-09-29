@@ -3700,7 +3700,7 @@ def _build_pdf_report_uncached(
     return buffer.getvalue()
 
 
-REPORT_WRITER_CACHE_VERSION = "2026-09-29-r20"
+REPORT_WRITER_CACHE_VERSION = "2026-09-29-r21"
 
 def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
     """Build a complete local report when the external writer is unavailable."""
@@ -4849,9 +4849,9 @@ def show_result(
             # The writer authors the report directly from the resolved country
             # identity. No encyclopedia/context payload is injected into the prose.
             writer_input = {
-                "decision": decision,
+                "decision": country,
                 "country_code": decision_code.upper(),
-                "input_mode": input_mode,
+                "input_mode": input_mode_used,
             }
 
             try:
@@ -4892,7 +4892,7 @@ def show_result(
                     f"{type(exc).__name__}: {str(exc)[:240]}"
                 )
                 report["country_profile"] = {
-                    "name": decision,
+                    "name": country,
                     "code": decision_code.upper(),
                 }
 
