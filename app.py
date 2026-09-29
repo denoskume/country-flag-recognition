@@ -846,7 +846,33 @@ def _build_pdf_report_uncached(
             repl,
             text,
         )
+
+        month_lookup = {
+            month.lower(): month
+            for month in months
+        }
+
+        def month_day_repl(match: re.Match) -> str:
+            month_name = month_lookup[match.group(1).lower()]
+            day = int(match.group(2))
+            return f"{day} {month_name}"
+
+        text = re.sub(
+            r"\b(" + "|".join(months) + r")\s+(\d{1,2})\b",
+            month_day_repl,
+            text,
+            flags=re.IGNORECASE,
+        )
         return text
+
+    def professional_inline(value: object) -> str:
+        """Normalize compact inline facts for polished report display."""
+        text = clean(value)
+        if text == "Not available":
+            return text
+        text = re.sub(r"\s*\|\s*", " · ", text)
+        text = re.sub(r"\s*;\s*", "; ", text)
+        return re.sub(r"\s+", " ", text).strip()
 
     def paragraph(value: object, style=body_style) -> Paragraph:
         return Paragraph(xml_escape(clean(value)), style)
@@ -1557,7 +1583,7 @@ def _build_pdf_report_uncached(
                 )
             snapshot_data.append(cells)
 
-        emergency_value = clean(profile.get("emergency_numbers"))
+        emergency_value = professional_inline(profile.get("emergency_numbers"))
         if emergency_value != "Not available":
             snapshot_data.append([
                 Table(
@@ -2045,7 +2071,12 @@ def _build_pdf_report_uncached(
                 f"A key figure associated with this transition is "
                 f"{independence_figure}."
             )
-        national_day = fact_value(profile.get("national_day"))
+        national_day_raw = fact_value(profile.get("national_day"))
+        national_day = (
+            professional_date(national_day_raw)
+            if national_day_raw
+            else None
+        )
         national_motto = fact_value(profile.get("national_motto"))
         national_anthem = fact_value(profile.get("national_anthem"))
         demonym = fact_value(profile.get("demonym"))
@@ -2253,7 +2284,12 @@ def _build_pdf_report_uncached(
         story.extend(chapter_heading(7, "International & Practical Information"))
 
         calling_code = fact_value(profile.get("calling_code"))
-        emergency_numbers = fact_value(profile.get("emergency_numbers"))
+        emergency_numbers_raw = fact_value(profile.get("emergency_numbers"))
+        emergency_numbers = (
+            professional_inline(emergency_numbers_raw)
+            if emergency_numbers_raw
+            else None
+        )
         driving_side = fact_value(profile.get("driving_side"))
         internet_domain = fact_value(profile.get("internet_domain"))
         time_zones = fact_value(profile.get("timezones"))
