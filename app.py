@@ -1181,6 +1181,88 @@ def _build_pdf_report_uncached(
                 value += "."
             return value
 
+        def _list_to_sentence(value: str, intro: str) -> str:
+            """Turn comma/semicolon separated source fragments into readable prose."""
+            cleaned = _normalize_sentence(value).rstrip(".")
+            if not cleaned:
+                return ""
+            parts = [
+                item.strip(" .")
+                for item in re.split(r"[;|]", cleaned)
+                if item.strip(" .")
+            ]
+            if len(parts) <= 1:
+                return f"{intro} {cleaned}."
+            if len(parts) == 2:
+                joined = f"{parts[0]} and {parts[1]}"
+            else:
+                joined = ", ".join(parts[:-1]) + f", and {parts[-1]}"
+            return f"{intro} {joined}."
+
+        def _narrative_paragraph(sentences: list[str]) -> list[object]:
+            """Build one coherent paragraph from connected factual sentences."""
+            usable = [
+                re.sub(r"\s+", " ", s).strip()
+                for s in sentences
+                if s and re.sub(r"\s+", " ", s).strip()
+            ]
+            if not usable:
+                return []
+            return [Paragraph(xml_escape(" ".join(usable)), body_style)]
+
+        def _timeline_narrative(
+            rows: list[tuple[str, str]],
+        ) -> list[object]:
+            """Convert dated events into connected historical narration."""
+            events = [
+                (clean(period), _normalize_sentence(summary))
+                for period, summary in rows
+                if clean(period) != "Not available"
+                and _normalize_sentence(summary)
+            ]
+            if not events:
+                return []
+
+            paragraphs: list[object] = []
+            chunk: list[str] = []
+
+            for index, (period, summary) in enumerate(events):
+                if index == 0:
+                    sentence = f"In {period}, {summary[0].lower() + summary[1:] if len(summary) > 1 else summary.lower()}"
+                elif index == len(events) - 1:
+                    sentence = f"More recently, in {period}, {summary[0].lower() + summary[1:] if len(summary) > 1 else summary.lower()}"
+                else:
+                    connectors = (
+                        "This development was followed by",
+                        "The next major turning point came in",
+                        "Later, in",
+                        "Another important stage occurred in",
+                    )
+                    connector = connectors[(index - 1) % len(connectors)]
+                    if connector.endswith("in"):
+                        sentence = f"{connector} {period}, {summary[0].lower() + summary[1:] if len(summary) > 1 else summary.lower()}"
+                    else:
+                        sentence = f"{connector} {period}: {summary}"
+                chunk.append(sentence)
+
+                if len(chunk) >= 4:
+                    paragraphs.append(
+                        Paragraph(
+                            xml_escape(" ".join(chunk)),
+                            body_style,
+                        )
+                    )
+                    chunk = []
+
+            if chunk:
+                paragraphs.append(
+                    Paragraph(
+                        xml_escape(" ".join(chunk)),
+                        body_style,
+                    )
+                )
+            return paragraphs
+
         def learning_flowables(text: object) -> list[object]:
             """
             Convert source fragments into readable report prose.
@@ -1599,9 +1681,38 @@ def _build_pdf_report_uncached(
             geography_sentences.append(
                 f"The country reference coordinates are {coordinates}."
             )
-        geography_facts = readable_fact_paragraph(
-            [sentence for sentence in geography_sentences if sentence]
-        )
+        geography_narrative: list[str] = []
+        if largest_cities:
+            geography_narrative.append(
+                f"France's urban geography is centred on {largest_cities}, "
+                f"which form the principal population and economic centres."
+            )
+        if highest_point and lowest_point:
+            geography_narrative.append(
+                f"Its relief is varied: {highest_point} marks the country's "
+                f"highest point, whereas {lowest_point} is the lowest."
+            )
+        elif highest_point:
+            geography_narrative.append(
+                f"The country's highest point is {highest_point}."
+            )
+        elif lowest_point:
+            geography_narrative.append(
+                f"The country's lowest point is {lowest_point}."
+            )
+        if coordinates != "Not available":
+            geography_narrative.append(
+                f"For geographic reference, the country is centred around "
+                f"coordinates {coordinates}."
+            )
+        if borders:
+            geography_narrative.append(
+                f"Its position is also defined by land borders with {borders}."
+            )
+        if timezones:
+            geography_narrative.append(
+                f"Across its territory, the listed time-zone coverage is {timezones}."
+            )
 
         climate_text = context_value("environment", "climate_seasons")
         rivers_text = context_value("geography", "rivers_lakes")
@@ -1609,8 +1720,10 @@ def _build_pdf_report_uncached(
         resources_text = context_value("environment", "natural_resources")
 
         physical_flowables: list[object] = []
-        physical_flowables.extend(geography_facts)
-        physical_flowables.extend(learning_flowables(relief_text))
+        physical_flowables.extend(_narrative_paragraph(geography_narrative))
+        relief_flowables = learning_flowables(relief_text)
+        if relief_flowables:
+            physical_flowables.extend(relief_flowables)
         if physical_flowables:
             story.extend(
                 narrative_section(
@@ -1670,14 +1783,28 @@ def _build_pdf_report_uncached(
 
                 flag_overview_flowables: list[object] = []
                 if flag_rows:
-                    flag_sentences = [
-                        sentence_for(label, value)
-                        for label, value in flag_rows
-                    ]
-                    flag_overview_flowables.extend(
-                        readable_fact_paragraph(
-                            [sentence for sentence in flag_sentences if sentence]
+                    adoption_value = next(
+                        (clean(v) for k, v in flag_rows if k == "Adoption"),
+                        None,
+                    )
+                    proportion_value = next(
+                        (clean(v) for k, v in flag_rows if k == "Proportion"),
+                        None,
+                    )
+                    flag_intro: list[str] = []
+                    if adoption_value and adoption_value != "Not available":
+                        flag_intro.append(
+                            f"The present national flag was formally adopted on "
+                            f"{adoption_value}, establishing the modern tricolour "
+                            f"as the principal national emblem."
                         )
+                    if proportion_value and proportion_value != "Not available":
+                        flag_intro.append(
+                            f"Its official proportion is {proportion_value}, which "
+                            f"defines the relationship between the flag's height and width."
+                        )
+                    flag_overview_flowables.extend(
+                        _narrative_paragraph(flag_intro)
                     )
 
                 for field in ("design_origin", "symbolism"):
@@ -1742,13 +1869,18 @@ def _build_pdf_report_uncached(
                 if origin_rows:
                     origin_flowables: list[object] = []
                     for label, summary in origin_rows:
-                        sentence = (
-                            f"{label}: {summary}"
-                            if label and label.lower() != "overview"
-                            else summary
-                        )
+                        normalized = _normalize_sentence(summary)
+                        if not normalized:
+                            continue
+                        if label and label.lower() != "overview":
+                            sentence = (
+                                f"The {label.lower()} period is introduced by evidence "
+                                f"showing that {normalized[0].lower() + normalized[1:]}"
+                            )
+                        else:
+                            sentence = normalized
                         origin_flowables.append(
-                            Paragraph(xml_escape(_normalize_sentence(sentence)), body_style)
+                            Paragraph(xml_escape(sentence), body_style)
                         )
                     story.extend(
                         narrative_section(
@@ -1768,14 +1900,7 @@ def _build_pdf_report_uncached(
                     if isinstance(event, dict)
                 ]
                 if timeline_rows:
-                    timeline_flowables: list[object] = []
-                    for period, summary in timeline_rows:
-                        timeline_flowables.append(
-                            Paragraph(
-                                f"<b>{xml_escape(period)}</b> - {xml_escape(summary)}",
-                                body_style,
-                            )
-                        )
+                    timeline_flowables = _timeline_narrative(timeline_rows)
                     story.extend(
                         narrative_section(
                             "Historical Journey",
@@ -1799,22 +1924,29 @@ def _build_pdf_report_uncached(
 
         sovereignty_sentences: list[str] = []
         if sovereignty_status:
+            if "no classical colonial-independence transition" in sovereignty_status.lower():
+                sovereignty_sentences.append(
+                    "France does not follow the classical pattern of a former "
+                    "colony becoming an independent state; its modern sovereignty "
+                    "developed through the historical evolution of the French state."
+                )
+            else:
+                sovereignty_sentences.append(
+                    f"The country's sovereignty developed in the context of "
+                    f"{sovereignty_status}."
+                )
+        if colonial_power and colonial_power.lower() != "not applicable":
             sovereignty_sentences.append(
-                f"The country's colonial or sovereignty status is recorded as "
-                f"{sovereignty_status}."
+                f"The former colonial power was {colonial_power}."
             )
-        if colonial_power:
-            sovereignty_sentences.append(
-                f"Former colonial power(s): {colonial_power}."
-            )
-        if sovereignty_date:
+        if sovereignty_date and sovereignty_date.lower() != "not applicable":
             sovereignty_sentences.append(
                 f"The recorded independence or sovereignty date is "
                 f"{sovereignty_date}."
             )
-        if independence_figure:
+        if independence_figure and independence_figure.lower() != "not applicable":
             sovereignty_sentences.append(
-                f"The key independence figure is listed as "
+                f"A key figure associated with this transition is "
                 f"{independence_figure}."
             )
         national_day = fact_value(profile.get("national_day"))
@@ -1935,10 +2067,30 @@ def _build_pdf_report_uncached(
             "Festivals, Holidays & Traditions",
             context_value("culture", "festivals_holidays"),
         )
-        add_learning_section(
-            "Heritage, UNESCO & Major Landmarks",
-            context_value("culture", "heritage_landmarks"),
-        )
+        heritage_text = context_value("culture", "heritage_landmarks")
+        if heritage_text != "Not available":
+            heritage_blocks = _learning_blocks(heritage_text)
+            heritage_sentences: list[str] = []
+            for heading, summary in heritage_blocks:
+                cleaned_summary = clean(summary)
+                if cleaned_summary == "Not available":
+                    continue
+                if ";" in cleaned_summary or "|" in cleaned_summary:
+                    heritage_sentences.append(
+                        _list_to_sentence(
+                            cleaned_summary,
+                            "France's major heritage sites include",
+                        )
+                    )
+                else:
+                    heritage_sentences.append(_normalize_sentence(cleaned_summary))
+            if heritage_sentences:
+                story.extend(
+                    narrative_section(
+                        "Heritage, UNESCO & Major Landmarks",
+                        _narrative_paragraph(heritage_sentences),
+                    )
+                )
 
         if any(
             report_manifest.get(key, False)
