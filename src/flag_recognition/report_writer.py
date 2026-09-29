@@ -48,30 +48,26 @@ REPORT_SECTION_KEYS = (
 SYSTEM_PROMPT = """You are the senior editorial writer for Flag Intelligence.
 
 You receive the identity of one country plus optional locally collected evidence.
-Write the final English-language educational country report after independently
-researching and verifying the country using web search. The local evidence is
-secondary context only and must never constrain you when it is incomplete,
-outdated, malformed or contradictory.
+Write the final English-language educational country report yourself from your
+knowledge and the supplied context. The local evidence is supporting context only
+and must never be copied blindly when it is incomplete, outdated, malformed or
+contradictory.
 
 NON-NEGOTIABLE RULES
 - Treat supplied local data as optional supporting evidence, not as the primary
   authority and never as prose to copy.
-- Use web search to independently verify important facts and to fill gaps.
-- Prefer official government, national statistics, international organizations,
-  universities, museums, recognized research institutions and other authoritative
-  primary or high-quality sources.
-- For time-sensitive facts, search for current information before writing.
-- For historical facts, prefer authoritative institutional or scholarly sources
-  where available.
+- Use your own trained knowledge and reasoning to fill gaps carefully.
+- For time-sensitive facts, avoid unsupported precision when the supplied context
+  does not establish a current value.
+- For historical facts, prioritize well-established facts and coherent chronology.
 - Rewrite everything in clean, natural, professional English.
 - Never copy source fragments, captions, tables, navigation text, bibliography
   residue, or malformed phrases.
 - Remove duplicates, repeated dates, repeated words, and repeated ideas.
 - Never produce constructions such as "for for", "in 1947 ... in 1947",
   "by 1801 ... in 1801", or duplicated sentences.
-- Do not invent numerical or current political facts. Verify them with web search.
-  If reliable sources conflict, use the strongest and most recent source or state
-  the uncertainty briefly.
+- Do not invent numerical or current political facts. When current precision is
+  uncertain, use cautious wording or omit the unsupported detail.
 - Keep history chronological and relevant to the country. Exclude unrelated
   global background unless it directly explains a national event.
 - For historical events, explain what happened and why it mattered rather than
@@ -89,8 +85,8 @@ NON-NEGOTIABLE RULES
   introduction or snapshot.
 - Do not include citations, URLs, markdown headings, bullets, tables, or source
   names in the prose.
-- If local evidence is insufficient, research the section independently. Return an
-  empty string only when reliable information genuinely cannot be established.
+- If local evidence is insufficient, use your own knowledge conservatively.
+  Return an empty string only when you cannot provide a reliable section.
 
 OUTPUT
 Return ONLY one valid JSON object. It must contain exactly the keys supplied in
@@ -105,13 +101,13 @@ You receive:
 1. the country identity and optional locally collected evidence;
 2. a drafted report with fixed section keys.
 
-Your task is to independently fact-check the entire report with web search and
+Your task is to independently fact-check the entire report using your knowledge and
 return a corrected report that is publishable. Local evidence is only supporting
 context and may be incomplete, stale or malformed.
 
 STRICT VERIFICATION RULES
-- Check EVERY factual assertion in the draft using web search and authoritative
-  sources.
+- Check EVERY factual assertion in the draft using your knowledge and the supplied
+  country context.
 - Do not invent missing facts.
 - If a statement cannot be verified from reliable sources, remove it.
 - Prefer official and primary sources, then major international institutions and
@@ -310,7 +306,7 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     model = os.getenv("FLAG_INTELLIGENCE_WRITER_MODEL", "gpt-5.6-sol").strip()
     client = OpenAI(
         api_key=api_key,
-        timeout=95.0,
+        timeout=90.0,
         max_retries=0,
     )
 
@@ -323,46 +319,23 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     )
 
     user_prompt = (
-        "Write the final country report from the evidence below.\n\n"
+        "Write, self-check and finalize the country report from the country identity "
+        "and supporting context below.\n\n"
         "Required JSON shape:\n"
         + json.dumps(schema_hint, ensure_ascii=False)
         + "\n\nEVIDENCE:\n"
         + evidence_json
     )
 
-    try:
-        response = client.responses.create(
-            model=model,
-            reasoning={"effort": "low"},
-            input=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            tools=[
-                {
-                    "type": "web_search",
-                    "search_context_size": "low",
-                }
-            ],
-            tool_choice="required",
-            max_output_tokens=8000,
-        )
-    except Exception as primary_exc:
-        # Keep report generation available if the hosted web-search tool has
-        # a transient failure. The same writer still authors the report from
-        # the supplied country context and its model knowledge.
-        try:
-            response = client.responses.create(
-                model=model,
-                reasoning={"effort": "low"},
-                input=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user_prompt},
-                ],
-                max_output_tokens=8000,
-            )
-        except Exception:
-            raise primary_exc
+    response = client.responses.create(
+        model=model,
+        reasoning={"effort": "low"},
+        input=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+        max_output_tokens=8000,
+    )
 
     raw = _strip_code_fence(response.output_text or "")
     if not raw:
