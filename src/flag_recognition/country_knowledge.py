@@ -71,6 +71,53 @@ USER_AGENT = (
     "(Flag Intelligence educational portfolio project)"
 )
 
+
+# Multi-source policy. The report is intentionally not tied to one provider.
+# Higher tiers should be preferred whenever an equivalent fact is available.
+SOURCE_PRIORITY: dict[str, tuple[str, ...]] = {
+    "identity_government": (
+        "National government / national statistics office",
+        "United Nations / UNdata",
+        "Wikidata",
+        "REST Countries",
+        "Wikipedia",
+    ),
+    "history": (
+        "National archives / official heritage institutions",
+        "UNESCO",
+        "Wikidata",
+        "Wikipedia dedicated history pages",
+    ),
+    "health": (
+        "WHO",
+        "National health authority",
+        "World Bank",
+        "Wikipedia",
+    ),
+    "economy_population": (
+        "World Bank",
+        "IMF / OECD / national statistics office",
+        "UNdata",
+        "Wikidata",
+        "Wikipedia",
+    ),
+    "heritage_culture": (
+        "UNESCO",
+        "National heritage institutions",
+        "Nobel Prize",
+        "Wikidata",
+        "Wikipedia",
+    ),
+    "science_literature": (
+        "Nobel Prize",
+        "National academies / universities",
+        "Wikidata",
+        "Wikipedia dedicated topic pages",
+    ),
+}
+
+NOBEL_API = "https://api.nobelprize.org/2.1/laureates"
+
 SECTION_ALIASES: dict[str, tuple[str, ...]] = {
     "history": (
         "history", "prehistory", "early history", "ancient history",
@@ -1286,6 +1333,160 @@ def _dedicated_topic_sections(
     return split_article_sections_detailed(text), source_url
 
 
+def fetch_nobel_country_context(
+    country_name: str,
+    *,
+    timeout: float = 12.0,
+) -> dict[str, str]:
+    """Return Nobel-backed science/literature context for a country.
+
+    This is supplementary evidence only: birthplace/national association can be
+    historically complex, so the wording explicitly says "born in" when that is
+    the field used for matching.
+    """
+    try:
+        response = _get_with_retry(
+            NOBEL_API,
+            params={"limit": 1000},
+            headers={
+                "User-Agent": USER_AGENT,
+                "Accept": "application/json",
+            },
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except (requests.RequestException, ValueError, TypeError):
+        return {}
+
+    laureates = payload.get("laureates", [])
+    if not isinstance(laureates, list):
+        return {}
+
+    target = country_name.casefold()
+    science: list[str] = []
+    literature: list[str] = []
+    public_figures: list[str] = []
+
+    for laureate in laureates:
+        if not isinstance(laureate, dict):
+            continue
+
+        birth = laureate.get("birth")
+        birth_place = birth.get("place") if isinstance(birth, dict) else {}
+        if not isinstance(birth_place, dict):
+            birth_place = {}
+
+        countries: list[str] = []
+        for key in ("countryNow", "country"):
+            value = birth_place.get(key)
+            if isinstance(value, dict):
+                label = str(value.get("en") or "").strip()
+                if label:
+                    countries.append(label)
+
+        if not any(target == item.casefold() for item in countries):
+            continue
+
+        name_data = (
+            laureate.get("knownName")
+            or laureate.get("fullName")
+            or laureate.get("orgName")
+            or {}
+        )
+        name = (
+            str(name_data.get("en") or "").strip()
+            if isinstance(name_data, dict)
+            else ""
+        )
+        if not name:
+            continue
+
+        prizes = laureate.get("nobelPrizes") or []
+        if not isinstance(prizes, list):
+            continue
+
+        for prize in prizes:
+            if not isinstance(prize, dict):
+                continue
+            category_data = prize.get("category") or {}
+            category = (
+                str(category_data.get("en") or "").strip()
+                if isinstance(category_data, dict)
+                else ""
+            )
+            year = str(prize.get("awardYear") or "").strip()
+            motivation_data = prize.get("motivation") or {}
+            motivation = (
+                str(motivation_data.get("en") or "").strip()
+                if isinstance(motivation_data, dict)
+                else ""
+            )
+
+            detail = name
+            if year and category:
+                detail += f" received the Nobel Prize in {category} in {year}"
+            elif category:
+                detail += f" received the Nobel Prize in {category}"
+            if motivation:
+                detail += f" for {motivation.strip('"')}"
+            detail += "."
+
+            lowered = category.casefold()
+            if lowered in {"physics", "chemistry", "physiology or medicine", "economic sciences"}:
+                if detail not in science:
+                    science.append(detail)
+            elif lowered == "literature":
+                if detail not in literature:
+                    literature.append(detail)
+            else:
+                if detail not in public_figures:
+                    public_figures.append(detail)
+
+    result: dict[str, str] = {}
+    if science:
+        result["science"] = " ".join(science[:12])
+    if literature:
+        result["literature"] = " ".join(literature[:12])
+    if public_figures:
+        result["public_figures"] = " ".join(public_figures[:8])
+    return result
+
+
+def _append_sourced_context(
+    target: dict[str, Evidence],
+    key: str,
+    text: str,
+    *,
+    source: str,
+    source_url: str,
+    confidence: float = 0.9,
+) -> None:
+    """Append supplementary evidence without erasing existing sourced context."""
+    if not text:
+        return
+
+    existing = target.get(key)
+    combined = text
+    if existing is not None and str(existing.value).strip():
+        combined = f"{existing.value}\n\n{text}"
+
+    item = evidence(
+        combined,
+        (
+            f"{existing.source}; {source}"
+            if existing is not None and existing.source
+            else source
+        ),
+        retrieved_at=datetime.now(timezone.utc).date().isoformat(),
+        confidence=confidence,
+        status=PARTIAL,
+        source_url=source_url,
+    )
+    if item is not None:
+        target[key] = item
+
+
 def _collect_dedicated_topics(
     country_name: str,
     topics: tuple[str, ...],
@@ -1733,6 +1934,38 @@ def enrich_from_encyclopedia(
         ),
         timeout=timeout,
         max_chars=8000,
+    )
+
+
+    # Add an independent specialist source so science/literature are not based
+    # solely on encyclopedia pages.
+    nobel_context = fetch_nobel_country_context(
+        canonical_title,
+        timeout=timeout,
+    )
+    _append_sourced_context(
+        record.education_science,
+        "science_inventions",
+        nobel_context.get("science", ""),
+        source="Nobel Prize API",
+        source_url="https://api.nobelprize.org/2.1/laureates",
+        confidence=0.95,
+    )
+    _append_sourced_context(
+        record.culture,
+        "literature_thought",
+        nobel_context.get("literature", ""),
+        source="Nobel Prize API",
+        source_url="https://api.nobelprize.org/2.1/laureates",
+        confidence=0.95,
+    )
+    _append_sourced_context(
+        record.culture,
+        "notable_people",
+        nobel_context.get("public_figures", ""),
+        source="Nobel Prize API",
+        source_url="https://api.nobelprize.org/2.1/laureates",
+        confidence=0.95,
     )
 
     # Government/territorial organization is normally present in the country
