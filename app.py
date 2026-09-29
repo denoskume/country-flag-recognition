@@ -955,7 +955,7 @@ def _build_pdf_report_uncached(
         leading=14.0,
         alignment=TA_JUSTIFY,
         textColor=colors.HexColor("#222222"),
-        spaceAfter=2.4 * mm,
+        spaceAfter=3.0 * mm,
     )
 
     narrative_heading_style = ParagraphStyle(
@@ -1750,7 +1750,7 @@ def _build_pdf_report_uncached(
             max_sentences: int = 3,
             max_chars: int = 560,
         ) -> list[object]:
-            """Render readable paragraphs instead of dense text walls."""
+            """Render short thematic paragraphs instead of dense text walls."""
             normalized = [
                 re.sub(r"\s+", " ", sentence).strip()
                 for sentence in sentences
@@ -1758,6 +1758,16 @@ def _build_pdf_report_uncached(
             ]
             if not normalized:
                 return []
+
+            topic_breaks = re.compile(
+                r"^(?:In\s+\d{3,4}|By\s+\d{3,4}|Later\b|Subsequently\b|"
+                r"Thereafter\b|More recently\b|A major shift\b|A turning point\b|"
+                r"The next decisive moment\b|A new chapter\b|Against this background\b|"
+                r"Within this evolving context\b|In this broader context\b|"
+                r"Politically\b|Economically\b|Culturally\b|Scientifically\b|"
+                r"Administratively\b|Institutionally\b)",
+                flags=re.IGNORECASE,
+            )
 
             flowables: list[object] = []
             chunk: list[str] = []
@@ -1773,17 +1783,22 @@ def _build_pdf_report_uncached(
                         body_style,
                     )
                 )
-                flowables.append(Spacer(1, 1.8 * mm))
+                flowables.append(Spacer(1, 2.2 * mm))
                 chunk = []
                 char_count = 0
 
             for sentence in normalized:
                 projected = char_count + len(sentence) + (1 if chunk else 0)
+
+                # Start a new paragraph when a sentence clearly introduces a
+                # new period, theme or institutional topic.
                 if chunk and (
-                    len(chunk) >= max_sentences
+                    topic_breaks.search(sentence)
+                    or len(chunk) >= max_sentences
                     or projected > max_chars
                 ):
                     flush()
+
                 chunk.append(sentence)
                 char_count += len(sentence) + (1 if chunk else 0)
 
