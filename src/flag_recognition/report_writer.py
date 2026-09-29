@@ -310,7 +310,7 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     model = os.getenv("FLAG_INTELLIGENCE_WRITER_MODEL", "gpt-5.6-sol").strip()
     client = OpenAI(
         api_key=api_key,
-        timeout=105.0,
+        timeout=95.0,
         max_retries=0,
     )
 
@@ -330,17 +330,39 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
         + evidence_json
     )
 
-    response = client.responses.create(
-        model=model,
-        reasoning={"effort": "medium"},
-        input=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
-        tools=[{"type": "web_search"}],
-        tool_choice="auto",
-        max_output_tokens=14000,
-    )
+    try:
+        response = client.responses.create(
+            model=model,
+            reasoning={"effort": "low"},
+            input=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            tools=[
+                {
+                    "type": "web_search",
+                    "search_context_size": "low",
+                }
+            ],
+            tool_choice="required",
+            max_output_tokens=8000,
+        )
+    except Exception as primary_exc:
+        # Keep report generation available if the hosted web-search tool has
+        # a transient failure. The same writer still authors the report from
+        # the supplied country context and its model knowledge.
+        try:
+            response = client.responses.create(
+                model=model,
+                reasoning={"effort": "low"},
+                input=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt},
+                ],
+                max_output_tokens=8000,
+            )
+        except Exception:
+            raise primary_exc
 
     raw = _strip_code_fence(response.output_text or "")
     if not raw:
