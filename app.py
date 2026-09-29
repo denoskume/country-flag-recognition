@@ -3735,11 +3735,12 @@ def evaluate_production_decision(
 bundle = None
 deployment_threshold = None
 
-brand_logo_bytes = base64.b64decode(PDF_LOGO_BASE64)
+BRAND_LOGO_PATH = ROOT_DIR / "assets" / "flag_intelligence_logo.svg"
+
 brand_col, _ = st.columns([0.12, 0.88])
 with brand_col:
     st.image(
-        brand_logo_bytes,
+        str(BRAND_LOGO_PATH),
         width=72,
     )
 
