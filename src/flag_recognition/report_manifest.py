@@ -46,6 +46,7 @@ OFFICIAL_REPORT_SECTIONS: tuple[ReportSectionSpec, ...] = (
     ReportSectionSpec("energy", "Energy & Connectivity"),
     ReportSectionSpec("education", "Education, Science & Innovation"),
     ReportSectionSpec("science_inventions", "Science, Discovery & Invention"),
+    ReportSectionSpec("literature_thought", "Literature, Philosophy & Thought"),
     ReportSectionSpec("environment", "Environment & Biodiversity"),
     ReportSectionSpec("practical", "Practical & Emergency Information", True),
     ReportSectionSpec("international", "International Relations"),
@@ -142,6 +143,9 @@ def build_report_manifest(
         "education": bool(_value(intelligence, "education_science")),
         "science_inventions": bool(
             _value(intelligence, "education_science", "science_inventions")
+        ),
+        "literature_thought": bool(
+            _value(intelligence, "culture", "literature_thought")
         ),
         "environment": bool(_value(intelligence, "environment")),
         "practical": any(
