@@ -643,7 +643,9 @@ def _build_pdf_report_uncached(
         rightMargin=PDF_MARGIN_MM * mm,
         leftMargin=PDF_MARGIN_MM * mm,
         topMargin=44 * mm,
-        bottomMargin=18 * mm,
+        # Reserve a dedicated footer band so narrative text can never
+        # overlap sources, copyright or logical page numbering.
+        bottomMargin=28 * mm,
         title="Flag Intelligence - Country Knowledge Report",
         author="Denos Kume",
         subject="Country knowledge report generated from flag recognition",
