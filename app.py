@@ -1687,6 +1687,8 @@ def _build_pdf_report_uncached(
             gdp_value += f" ({profile.get('gdp_year')})"
 
         intelligence = report.get("country_intelligence_v2")
+        if not isinstance(intelligence, dict):
+            intelligence = {}
         completion = report.get("country_intelligence_completion")
         authored_report = report.get("authored_report")
         if not isinstance(authored_report, dict):
@@ -3621,7 +3623,7 @@ def _build_pdf_report_uncached(
     return buffer.getvalue()
 
 
-REPORT_WRITER_CACHE_VERSION = "2026-09-29-r4"
+REPORT_WRITER_CACHE_VERSION = "2026-09-29-r5"
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def _cached_authored_report(
@@ -4510,45 +4512,25 @@ def show_result(
     }
 
     if accepted:
-        # Local collectors provide optional supporting context only. They must
-        # never prevent the independently researched OpenAI report from running.
+        # Keep local preparation deliberately light so the complete UX stays
+        # inside the 120-second generation budget. The OpenAI writer performs
+        # the actual research and authors the report.
         try:
-            with st.spinner("Preparing country context..."):
-                knowledge = get_country_intelligence_v2(
-                    decision_code,
-                    tuple(
-                        display_country_name(code)
-                        for code, _ in display_candidates[1:5]
-                    ),
-                    schema_version=COUNTRY_INTELLIGENCE_SCHEMA_VERSION,
-                )
-
-            report["country_profile"] = knowledge["profile"]
-            report["country_intelligence_v2"] = knowledge["intelligence"]
-            report["country_intelligence_completion"] = knowledge["completion"]
-            report["country_intelligence_validation"] = knowledge["validation"]
-            report["official_report_manifest"] = knowledge["report_manifest"]
-            report["official_report_missing_required"] = (
-                knowledge["missing_required_report_sections"]
+            profile = get_country_profile_v2(
+                decision_code,
+                schema_version=COUNTRY_PROFILE_SCHEMA_VERSION,
+            )
+            historical_profile = get_fresh_historical_profile(decision_code)
+            report["country_profile"] = _country_profile_payload(
+                decision_code,
+                profile,
+                historical_profile,
             )
         except Exception as exc:
             report["local_context_error"] = (
                 f"{type(exc).__name__}: {str(exc)[:240]}"
             )
 
-        # Living-cost enrichment is also optional.
-        try:
-            report["current_living_cost"] = fetch_current_living_cost(
-                decision_code,
-                display_country_name(decision_code),
-            )
-        except Exception as exc:
-            report["living_cost_error"] = (
-                f"{type(exc).__name__}: {str(exc)[:240]}"
-            )
-
-        # The OpenAI writer researches the country independently on the web,
-        # using any local context above only as supplementary evidence.
         try:
             evidence_json = json.dumps(
                 report,
@@ -4556,7 +4538,7 @@ def show_result(
                 ensure_ascii=False,
                 default=str,
             )
-            with st.spinner("Researching and writing the report..."):
+            with st.spinner("Researching, verifying and writing the report..."):
                 report["authored_report"] = _cached_authored_report(
                     evidence_json,
                     REPORT_WRITER_CACHE_VERSION,
