@@ -3628,7 +3628,7 @@ def _build_pdf_report_uncached(
     return buffer.getvalue()
 
 
-REPORT_WRITER_CACHE_VERSION = "2026-09-29-r8"
+REPORT_WRITER_CACHE_VERSION = "2026-09-29-r9"
 
 def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
     """Create a complete no-failure narrative fallback from local country facts."""
@@ -3682,6 +3682,7 @@ def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
         "historical_journey": "",
         "state_formation_identity": " ".join(state_bits),
         "government_structure": "",
+        "legal_constitutional_system": "",
         "leadership_through_time": "",
         "people_society": "",
         "languages_religion": f"{language} is the recorded official language information." if language else "",
@@ -3689,6 +3690,8 @@ def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
         "culture_cuisine_music_sport": "",
         "festivals_holidays_traditions": "",
         "heritage_landmarks": "",
+        "major_cities_regional_profiles": "",
+        "national_symbols_identity": "",
         "literature_philosophy_thought": "",
         "economy_trade_industries": "",
         "infrastructure_transport_energy": "",
