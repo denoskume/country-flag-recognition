@@ -4677,6 +4677,43 @@ def show_result(
         # the same user-visible status as report authoring.
         with st.spinner("Researching, verifying and writing the report..."):
             try:
+                intelligence_bundle = get_country_intelligence_v2(
+                    decision_code,
+                    tuple(
+                        display_country_name(code)
+                        for code in VISUAL_EQUIVALENCE_GROUPS.get(
+                            decision_code,
+                            {decision_code},
+                        )
+                        if code != decision_code
+                    ),
+                    schema_version=COUNTRY_INTELLIGENCE_SCHEMA_VERSION,
+                )
+                report["country_profile"] = intelligence_bundle.get("profile", {})
+                report["country_intelligence_v2"] = intelligence_bundle.get(
+                    "intelligence",
+                    {},
+                )
+                report["country_intelligence_completion"] = intelligence_bundle.get(
+                    "completion",
+                    {},
+                )
+                report["country_intelligence_validation"] = intelligence_bundle.get(
+                    "validation",
+                    [],
+                )
+                report["official_report_manifest"] = intelligence_bundle.get(
+                    "report_manifest",
+                    {},
+                )
+                report["official_report_missing_required"] = intelligence_bundle.get(
+                    "missing_required_report_sections",
+                    [],
+                )
+            except Exception as exc:
+                report["local_context_error"] = (
+                    f"{type(exc).__name__}: {str(exc)[:240]}"
+                )
                 profile = get_country_profile_v2(
                     decision_code,
                     schema_version=COUNTRY_PROFILE_SCHEMA_VERSION,
@@ -4686,10 +4723,6 @@ def show_result(
                     decision_code,
                     profile,
                     historical_profile,
-                )
-            except Exception as exc:
-                report["local_context_error"] = (
-                    f"{type(exc).__name__}: {str(exc)[:240]}"
                 )
 
             try:
