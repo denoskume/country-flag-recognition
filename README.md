@@ -144,27 +144,32 @@ The authored report currently supports the following sections:
 4. Flag Design, Adoption & Symbolism
 5. Origins & Early History
 6. Historical Journey
-7. State Formation & National Identity
-8. Government & Administrative Structure
-9. Leadership Through Time
-10. People & Society
-11. Languages & Religion
-12. Health System & Public Health
-13. Culture, Cuisine, Music & Sport
-14. Festivals, Holidays & Traditions
-15. Heritage, UNESCO & Major Landmarks
-16. Literature, Philosophy & Thought
-17. Economy, Trade & Key Industries
-18. Infrastructure, Transport & Energy
-19. Education & Research
-20. Universities & Higher Education
-21. Science, Discovery & Invention
-22. Environment & Biodiversity
-23. Cost of Living & Everyday Prices
-24. Practical & Emergency Information
-25. International Relations
-26. Notable Public Figures
-27. Conclusion
+7. Key Historical Timeline
+8. State Formation & National Identity
+9. Government & Administrative Structure
+10. Legal & Constitutional System
+11. Leadership Through Time
+12. People & Society
+13. Demographics & Population Structure
+14. Languages & Religion
+15. Health System & Public Health
+16. Culture, Cuisine, Music & Sport
+17. Festivals, Holidays & Traditions
+18. Heritage, UNESCO & Major Landmarks
+19. Major Cities & Regional Profiles
+20. National Symbols & Identity
+21. Literature, Philosophy & Thought
+22. Economy, Trade & Key Industries
+23. Infrastructure, Transport & Energy
+24. Education & Research
+25. Universities & Higher Education
+26. Science, Discovery & Invention
+27. Environment & Biodiversity
+28. Cost of Living & Everyday Prices
+29. Practical & Emergency Information
+30. International Relations
+31. Notable Public Figures
+32. Conclusion
 
 The exact depth of a section depends on the country and the reliability of the available context.
 
@@ -277,6 +282,20 @@ The report can include:
 - notable public figures.
 
 Notable figures are written as short explanatory biographies rather than raw name lists.
+
+---
+
+## Additional country-reference coverage
+
+The report also includes dedicated coverage for:
+
+- **Key Historical Timeline** — a concise chronology of major national milestones;
+- **Major Cities & Regional Profiles** — capital, leading cities, economic and cultural roles, and meaningful regional differences;
+- **Demographics & Population Structure** — population distribution, urbanization, age structure when reliable, migration and diaspora context;
+- **National Symbols & Identity** — coat of arms, motto, anthem and other officially recognized symbols where relevant;
+- **Legal & Constitutional System** — constitutional framework, legal tradition, court structure and relevant civil, common, religious or customary-law context.
+
+These sections are country-sensitive. The system avoids inventing demographic percentages, legal details or symbolic status when reliable information is not available.
 
 ---
 
