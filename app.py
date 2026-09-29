@@ -3471,22 +3471,15 @@ def get_country_intelligence_v2(
     }
 
 
-def build_flag_banner_html() -> str:
-    flags_html = "".join(
-        f'<img src="https://flagcdn.com/w80/{code}.png" loading="lazy" alt="{code} flag">'
-        for code in BANNER_FLAG_CODES
-    )
+def build_brand_header_html() -> str:
+    """Render a compact professional brand logo at the top-left."""
     return f"""
-    <div class="shell">
-        <div class="flag-banner">
-            <div class="flag-strip">
-                {flags_html}
-            </div>
-        </div>
-        <div class="intro">
-            <div class="app-title">Flag Intelligence</div>
-            <div class="app-subtitle">Select an image and run recognition.</div>
-        </div>
+    <div class="brand-header">
+        <img
+            src="data:image/jpeg;base64,{PDF_LOGO_BASE64}"
+            class="brand-logo"
+            alt="Flag Intelligence logo"
+        >
     </div>
     """
 
@@ -3519,61 +3512,24 @@ st.markdown(
 
         .block-container {
             max-width: 900px;
-            padding-top: 2.6rem;
+            padding-top: 1rem;
             padding-bottom: 2rem;
         }
 
-        .shell {
-            overflow: hidden;
-            border: 1px solid var(--line);
-            border-radius: 20px;
-            background: #fff;
-            box-shadow: 0 18px 50px rgba(15,23,42,.08);
-            margin-bottom: 1rem;
-        }
-
-        .flag-banner {
-            position: relative;
-            height: auto;
-            overflow: hidden;
-            background: #ffffff;
-            border-bottom: 1px solid #eef2f7;
-        }
-
-        .flag-strip {
-            display: grid;
-            grid-template-columns: repeat(20, 1fr);
-            grid-auto-rows: 28px;
-            gap: 3px;
-            padding: 10px 10px 8px;
-            align-content: start;
-            background: #ffffff;
-        }
-
-        .flag-strip img {
+        .brand-header {
             width: 100%;
-            height: 100%;
-            object-fit: cover;
-            border-radius: 2px;
+            display: flex;
+            align-items: flex-start;
+            justify-content: flex-start;
+            margin: .15rem 0 1rem 0;
+        }
+
+        .brand-logo {
+            width: 72px;
+            height: 72px;
+            object-fit: contain;
             display: block;
-        }
-
-        .intro {
-            text-align: center;
-            padding: 1rem 1.5rem 1.35rem;
-        }
-
-        .app-title {
-            font-size: 1.9rem;
-            font-weight: 900;
-            letter-spacing: -.04em;
-            color: var(--text);
-            margin-bottom: .3rem;
-        }
-
-        .app-subtitle {
-            color: var(--muted);
-            font-size: .94rem;
+            border-radius: 50%;
         }
 
         div[data-testid="stVerticalBlockBorderWrapper"] {
@@ -3724,14 +3680,9 @@ st.markdown(
                 padding-right: .75rem;
             }
 
-            .flag-banner {
-                height: auto;
-            }
-            .flag-strip {
-                grid-template-columns: repeat(10, 1fr);
-                grid-auto-rows: 22px;
-                gap: 2px;
-                padding: 8px;
+            .brand-logo {
+                width: 58px;
+                height: 58px;
             }
         }
     </style>
@@ -3818,7 +3769,7 @@ bundle = None
 deployment_threshold = None
 
 st.markdown(
-    build_flag_banner_html(),
+    build_brand_header_html(),
     unsafe_allow_html=True,
 )
 
