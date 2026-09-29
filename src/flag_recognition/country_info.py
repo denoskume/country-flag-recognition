@@ -75,6 +75,14 @@ WORLD_BANK_OVERRIDES = {
 # Verified fallbacks for fields that are inconsistently exposed by Wikidata.
 # These values are used only when the live source is missing or ambiguous.
 COUNTRY_PROFILE_OVERRIDES = {
+    "in": {
+        # Verified against the Government of India / Ministry of Home Affairs.
+        # 112 is the unified national emergency number. Legacy secondary
+        # numbers remain in use for individual services.
+        "emergency_numbers": (
+            "General: 112 | Police: 100 | Ambulance: 102, 108 | Fire: 101"
+        ),
+    },
     "fr": {
         "currency": "Euro (EUR)",
         "national_day": "July 14",
