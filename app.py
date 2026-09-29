@@ -4758,8 +4758,8 @@ def show_result(
                     use_container_width=True,
                 )
                 st.warning(
-                    "Official PDF withheld: the professional report quality "
-                    f"gate detected an editorial issue. {exc}"
+                    "Report publication blocked: the generated report failed "
+                    f"the final editorial quality check. {exc}"
                 )
             else:
                 st.download_button(
@@ -4773,13 +4773,14 @@ def show_result(
                 )
         else:
             st.button(
-                "PDF unavailable",
+                "Report unavailable",
                 disabled=True,
                 use_container_width=True,
             )
             if accepted and not authored_ready:
                 st.warning(
-                    "The report is being prepared with the available country context."
+                    "The full country report could not be completed. "
+                    "A PDF is not generated from an incomplete fallback."
                 )
 
 
