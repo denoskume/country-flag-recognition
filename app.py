@@ -17,6 +17,7 @@ from time import strftime
 from xml.sax.saxutils import escape as xml_escape
 
 import pandas as pd
+from matplotlib import font_manager
 import pydeck as pdk
 from PIL import Image, ImageDraw
 import requests
