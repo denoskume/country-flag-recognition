@@ -22,7 +22,7 @@ import requests
 import streamlit as st
 import yaml
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
@@ -707,6 +707,7 @@ def _build_pdf_report_uncached(
         fontName="Helvetica",
         fontSize=8.4,
         leading=12.0,
+        alignment=TA_JUSTIFY,
         textColor=colors.HexColor("#222222"),
         spaceAfter=2.2 * mm,
     )
