@@ -128,6 +128,7 @@ from flag_recognition.report_manifest import (
     build_report_manifest,
     missing_required_sections,
 )
+from flag_recognition.report_writer import generate_authored_report
 
 
 DISPLAY_NAME_OVERRIDES = {
@@ -1686,6 +1687,37 @@ def _build_pdf_report_uncached(
 
         intelligence = report.get("country_intelligence_v2")
         completion = report.get("country_intelligence_completion")
+        authored_report = report.get("authored_report")
+        if not isinstance(authored_report, dict):
+            authored_report = {}
+
+        def authored_text(key: str) -> str:
+            value = authored_report.get(key)
+            if not isinstance(value, str):
+                return ""
+            return value.strip()
+
+        def authored_flowables(key: str) -> list[object]:
+            value = authored_text(key)
+            if not value:
+                return []
+            paragraphs = [
+                re.sub(r"\s+", " ", part).strip()
+                for part in re.split(r"\n\s*\n+", value)
+                if part.strip()
+            ]
+            return [
+                Paragraph(xml_escape(part), body_style)
+                for part in paragraphs
+            ]
+
+        def add_authored_section(title: str, key: str) -> bool:
+            flowables = authored_flowables(key)
+            if not flowables:
+                return False
+            story.extend(narrative_section(title, flowables))
+            return True
+
         report_manifest = report.get("official_report_manifest")
         if not isinstance(report_manifest, dict):
             report_manifest = build_report_manifest(
@@ -2600,23 +2632,10 @@ def _build_pdf_report_uncached(
 
         overview = clean(profile.get("overview"))
         story.extend(chapter_heading(1, "Introduction"))
-        intro_parts: list[object] = []
-        if overview != "Not available":
-            intro_parts.append(Paragraph(xml_escape(overview), body_style))
-        intro_parts.append(
-            Paragraph(
-                xml_escape(
-                    "This report provides a structured country profile based on "
-                    "public, source-aware information. It brings together national "
-                    "identity, physical geography, historical development, "
-                    "institutions, society, culture, economy, infrastructure and "
-                    "practical information. Reference years may differ between "
-                    "datasets, and time-sensitive facts should be read together "
-                    "with the source information provided in the report."
-                ),
-                body_style,
-            )
-        )
+        intro_parts = authored_flowables("introduction")
+        if not intro_parts:
+            if overview != "Not available":
+                intro_parts.append(Paragraph(xml_escape(overview), body_style))
         story.extend(intro_parts)
         story.append(Spacer(1, 3 * mm))
 
@@ -2697,11 +2716,12 @@ def _build_pdf_report_uncached(
         relief_text = context_value("geography", "mountains_relief")
         resources_text = context_value("environment", "natural_resources")
 
-        physical_flowables: list[object] = []
-        physical_flowables.extend(_narrative_paragraph(geography_narrative))
-        relief_flowables = learning_flowables(relief_text)
-        if relief_flowables:
-            physical_flowables.extend(relief_flowables)
+        physical_flowables = authored_flowables("physical_geography")
+        if not physical_flowables:
+            physical_flowables.extend(_narrative_paragraph(geography_narrative))
+            relief_flowables = learning_flowables(relief_text)
+            if relief_flowables:
+                physical_flowables.extend(relief_flowables)
         if physical_flowables:
             story.extend(
                 narrative_section(
@@ -2710,16 +2730,20 @@ def _build_pdf_report_uncached(
                 )
             )
 
-        combined_environment_evidence = "\n\n".join(
-            str(value)
-            for value in (climate_text, rivers_text, resources_text)
-            if value != "Not available"
-        )
-        add_editorial_section(
+        if not add_authored_section(
             "Climate, Water & Natural Resources",
-            combined_environment_evidence,
-            max_paragraphs=4,
-        )
+            "climate_water_resources",
+        ):
+            combined_environment_evidence = "\n\n".join(
+                str(value)
+                for value in (climate_text, rivers_text, resources_text)
+                if value != "Not available"
+            )
+            add_editorial_section(
+                "Climate, Water & Natural Resources",
+                combined_environment_evidence,
+                max_paragraphs=4,
+            )
 
         if (
             not physical_flowables
@@ -2746,6 +2770,10 @@ def _build_pdf_report_uncached(
 
         # 3. Flag & Historical Journey
         story.extend(chapter_heading(3, "Flag & Historical Journey"))
+        flag_authored = add_authored_section(
+            "Flag Design, Adoption & Symbolism",
+            "flag_design_symbolism",
+        )
         if isinstance(intelligence, dict):
             flag_info = intelligence.get("flag")
             if isinstance(flag_info, dict):
@@ -2809,7 +2837,7 @@ def _build_pdf_report_uncached(
                                 learning_flowables("\n\n".join(values))
                             )
 
-                if flag_overview_flowables:
+                if flag_overview_flowables and not flag_authored:
                     story.extend(
                         narrative_section(
                             "Flag Design, Adoption & Symbolism",
@@ -2818,7 +2846,11 @@ def _build_pdf_report_uncached(
                     )
 
                 flag_history = flag_info.get("historical_flags")
-                if isinstance(flag_history, (list, tuple)) and flag_history:
+                if (
+                    not authored_report
+                    and isinstance(flag_history, (list, tuple))
+                    and flag_history
+                ):
                     rows = [
                         (
                             clean(item.get("period")),
@@ -2841,7 +2873,15 @@ def _build_pdf_report_uncached(
 
             # 4. Origins and Historical Journey
             origins = intelligence.get("origins")
-            if isinstance(origins, (list, tuple)) and origins:
+            origins_authored = add_authored_section(
+                "Origins & Early History",
+                "origins_early_history",
+            )
+            if (
+                not origins_authored
+                and isinstance(origins, (list, tuple))
+                and origins
+            ):
                 origin_rows = [
                     (
                         clean(event.get("label")),
@@ -2874,7 +2914,15 @@ def _build_pdf_report_uncached(
                     )
 
             timeline = intelligence.get("historical_timeline")
-            if isinstance(timeline, (list, tuple)) and timeline:
+            history_authored = add_authored_section(
+                "Historical Journey",
+                "historical_journey",
+            )
+            if (
+                not history_authored
+                and isinstance(timeline, (list, tuple))
+                and timeline
+            ):
                 timeline_rows = [
                     (
                         clean(event.get("period")),
@@ -2965,9 +3013,13 @@ def _build_pdf_report_uncached(
             identity_sentences.append(
                 f"The demonym is {demonym}."
             )
-        state_identity_flowables = readable_fact_paragraph(
-            sovereignty_sentences + identity_sentences
+        state_identity_flowables = authored_flowables(
+            "state_formation_identity"
         )
+        if not state_identity_flowables:
+            state_identity_flowables = readable_fact_paragraph(
+                sovereignty_sentences + identity_sentences
+            )
         if state_identity_flowables:
             story.extend(
                 narrative_section(
@@ -3016,12 +3068,14 @@ def _build_pdf_report_uncached(
                 f"The head of government office is "
                 f"{head_of_government_office}."
             )
-        government_flowables = readable_fact_paragraph(government_sentences)
-        government_flowables.extend(
-            learning_flowables(
-                context_value("government", "administrative_divisions")
+        government_flowables = authored_flowables("government_structure")
+        if not government_flowables:
+            government_flowables = readable_fact_paragraph(government_sentences)
+            government_flowables.extend(
+                learning_flowables(
+                    context_value("government", "administrative_divisions")
+                )
             )
-        )
         if government_flowables:
             story.extend(
                 narrative_section(
@@ -3034,7 +3088,10 @@ def _build_pdf_report_uncached(
             "government",
             "leadership_history",
         )
-        if leadership_text != "Not available":
+        if not add_authored_section(
+            "Leadership Through Time",
+            "leadership_through_time",
+        ) and leadership_text != "Not available":
             story.extend(
                 narrative_section(
                     "Leadership Through Time",
@@ -3057,33 +3114,42 @@ def _build_pdf_report_uncached(
 
         # 5. People, Society & Culture
         story.extend(chapter_heading(5, "People, Society & Culture"))
-        add_editorial_section(
-            "People & Society",
-            context_value("people_society"),
-            max_paragraphs=4,
-        )
-        add_editorial_section(
-            "Languages & Religion",
-            context_value("people_society", "languages_religion"),
-            max_paragraphs=3,
-        )
-        add_editorial_section(
-            "Health System & Public Health",
-            context_value("people_society", "health_system"),
-            max_paragraphs=4,
-        )
-        add_editorial_section(
-            "Culture, Cuisine, Music & Sport",
-            context_value("culture"),
-            max_paragraphs=5,
-        )
-        add_editorial_section(
-            "Festivals, Holidays & Traditions",
-            context_value("culture", "festivals_holidays"),
-            max_paragraphs=3,
-        )
+        if not add_authored_section("People & Society", "people_society"):
+            add_editorial_section(
+                "People & Society",
+                context_value("people_society"),
+                max_paragraphs=4,
+            )
+        if not add_authored_section("Languages & Religion", "languages_religion"):
+            add_editorial_section(
+                "Languages & Religion",
+                context_value("people_society", "languages_religion"),
+                max_paragraphs=3,
+            )
+        if not add_authored_section("Health System & Public Health", "health_public_health"):
+            add_editorial_section(
+                "Health System & Public Health",
+                context_value("people_society", "health_system"),
+                max_paragraphs=4,
+            )
+        if not add_authored_section("Culture, Cuisine, Music & Sport", "culture_cuisine_music_sport"):
+            add_editorial_section(
+                "Culture, Cuisine, Music & Sport",
+                context_value("culture"),
+                max_paragraphs=5,
+            )
+        if not add_authored_section("Festivals, Holidays & Traditions", "festivals_holidays_traditions"):
+            add_editorial_section(
+                "Festivals, Holidays & Traditions",
+                context_value("culture", "festivals_holidays"),
+                max_paragraphs=3,
+            )
         heritage_text = context_value("culture", "heritage_landmarks")
-        if heritage_text != "Not available":
+        heritage_authored = add_authored_section(
+            "Heritage, UNESCO & Major Landmarks",
+            "heritage_landmarks",
+        )
+        if not heritage_authored and heritage_text != "Not available":
             heritage_blocks = _learning_blocks(heritage_text)
             heritage_sentences: list[str] = []
             for heading, summary in heritage_blocks:
@@ -3111,7 +3177,10 @@ def _build_pdf_report_uncached(
             "culture",
             "literature_thought",
         )
-        if literature_text != "Not available":
+        if not add_authored_section(
+            "Literature, Philosophy & Thought",
+            "literature_philosophy_thought",
+        ) and literature_text != "Not available":
             story.extend(
                 narrative_section(
                     "Literature, Philosophy & Thought",
@@ -3134,6 +3203,7 @@ def _build_pdf_report_uncached(
 
         story.extend(chapter_heading(6, "Economy, Infrastructure & Innovation"))
         gdp_source = fact_value(profile.get("gdp_source"))
+        economy_authored = authored_flowables("economy_trade_industries")
         economy_sentences: list[str] = []
         if gdp_value != "Not available":
             if gdp_source:
@@ -3145,15 +3215,17 @@ def _build_pdf_report_uncached(
                 economy_sentences.append(
                     f"GDP (current US$) is {gdp_value}."
                 )
-        economy_flowables = readable_fact_paragraph(economy_sentences)
-        economy_flowables.extend(
-            learning_flowables(context_value("economy"))
-        )
-        economy_flowables.extend(
-            learning_flowables(
-                context_value("economy", "economic_drivers")
+        economy_flowables = economy_authored
+        if not economy_flowables:
+            economy_flowables = readable_fact_paragraph(economy_sentences)
+            economy_flowables.extend(
+                learning_flowables(context_value("economy"))
             )
-        )
+            economy_flowables.extend(
+                learning_flowables(
+                    context_value("economy", "economic_drivers")
+                )
+            )
         if economy_flowables:
             story.extend(
                 narrative_section(
@@ -3162,26 +3234,34 @@ def _build_pdf_report_uncached(
                 )
             )
 
-        add_combined_learning_section(
+        if not add_authored_section(
             "Infrastructure, Transport & Energy",
-            [
-                context_value("infrastructure"),
-                context_value("infrastructure", "transport_network"),
-                context_value("infrastructure", "energy_connectivity"),
-            ],
-        )
+            "infrastructure_transport_energy",
+        ):
+            add_combined_learning_section(
+                "Infrastructure, Transport & Energy",
+                [
+                    context_value("infrastructure"),
+                    context_value("infrastructure", "transport_network"),
+                    context_value("infrastructure", "energy_connectivity"),
+                ],
+            )
 
-        add_editorial_section(
-            "Education & Research",
-            context_value("education_science"),
-            max_paragraphs=4,
-        )
+        if not add_authored_section("Education & Research", "education_research"):
+            add_editorial_section(
+                "Education & Research",
+                context_value("education_science"),
+                max_paragraphs=4,
+            )
 
         science_text = context_value(
             "education_science",
             "science_inventions",
         )
-        if science_text != "Not available":
+        if not add_authored_section(
+            "Science, Discovery & Invention",
+            "science_discovery_invention",
+        ) and science_text != "Not available":
             story.extend(
                 narrative_section(
                     "Science, Discovery & Invention",
@@ -3192,11 +3272,12 @@ def _build_pdf_report_uncached(
                 )
             )
 
-        add_editorial_section(
-            "Environment & Biodiversity",
-            context_value("environment"),
-            max_paragraphs=4,
-        )
+        if not add_authored_section("Environment & Biodiversity", "environment_biodiversity"):
+            add_editorial_section(
+                "Environment & Biodiversity",
+                context_value("environment"),
+                max_paragraphs=4,
+            )
 
         if any(
             report_manifest.get(key, False)
@@ -3206,8 +3287,12 @@ def _build_pdf_report_uncached(
 
         story.extend(chapter_heading(7, "International & Practical Information"))
 
+        cost_authored = add_authored_section(
+            "Cost of Living & Everyday Prices",
+            "cost_of_living",
+        )
         living_cost = report.get("current_living_cost")
-        if isinstance(living_cost, dict):
+        if not cost_authored and isinstance(living_cost, dict):
             cost_sentences: list[str] = []
             monthly_with_rent = living_cost.get("monthly_one_person_with_rent_usd")
             monthly_without_rent = living_cost.get("monthly_one_person_without_rent_usd")
@@ -3328,7 +3413,15 @@ def _build_pdf_report_uncached(
             practical_sentences.append(
                 f"The listed time zone information is {time_zones}."
             )
-        if practical_sentences:
+        practical_authored = authored_flowables("practical_emergency")
+        if practical_authored:
+            story.extend(
+                narrative_section(
+                    "Practical & Emergency Information",
+                    practical_authored,
+                )
+            )
+        elif practical_sentences:
             story.extend(
                 narrative_section(
                     "Practical & Emergency Information",
@@ -3336,18 +3429,23 @@ def _build_pdf_report_uncached(
                 )
             )
 
-        add_editorial_section(
-            "International Relations",
-            context_value("international_relations"),
-            max_paragraphs=4,
-        )
+        if not add_authored_section("International Relations", "international_relations"):
+            add_editorial_section(
+                "International Relations",
+                context_value("international_relations"),
+                max_paragraphs=4,
+            )
         notable_people_text = context_value(
             "culture",
             "notable_people",
         )
-        notable_people_flowables = person_profile_flowables(
-            notable_people_text
+        notable_people_flowables = authored_flowables(
+            "notable_public_figures"
         )
+        if not notable_people_flowables:
+            notable_people_flowables = person_profile_flowables(
+                notable_people_text
+            )
         if notable_people_flowables:
             story.extend(
                 narrative_section(
@@ -3362,6 +3460,7 @@ def _build_pdf_report_uncached(
         # enough room for the heading and a useful amount of conclusion text.
         story.append(CondPageBreak(55 * mm))
         story.extend(chapter_heading(8, "Conclusion"))
+        conclusion_authored = authored_flowables("conclusion")
         conclusion_sentences: list[str] = []
 
         capital_value = clean(profile.get("capital"))
@@ -3429,13 +3528,16 @@ def _build_pdf_report_uncached(
             "interact to form the country as it exists today."
         )
 
-        story.extend(
-            _paragraphize_sentences(
-                conclusion_sentences,
-                max_sentences=2,
-                max_chars=520,
+        if conclusion_authored:
+            story.extend(conclusion_authored)
+        else:
+            story.extend(
+                _paragraphize_sentences(
+                    conclusion_sentences,
+                    max_sentences=2,
+                    max_chars=520,
+                )
             )
-        )
 
         # 9. Sources & Methodology
         story.extend(chapter_heading(9, "Sources & Methodology"))
@@ -3516,6 +3618,12 @@ def _build_pdf_report_uncached(
     )
     buffer.seek(0)
     return buffer.getvalue()
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def _cached_authored_report(evidence_json: str) -> dict[str, str]:
+    """Write the final narrative once per evidence payload."""
+    return generate_authored_report(json.loads(evidence_json))
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -3774,7 +3882,7 @@ def resolve_emergency_numbers(
 
 
 COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-29-v21"
-COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-29-v31"
+COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-29-v35"
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_country_profile_v2(
@@ -4401,14 +4509,32 @@ def show_result(
                 decision_code,
                 display_country_name(decision_code),
             )
+            evidence_json = json.dumps(
+                report,
+                sort_keys=True,
+                ensure_ascii=False,
+                default=str,
+            )
+            with st.spinner("Writing the report..."):
+                report["authored_report"] = _cached_authored_report(
+                    evidence_json
+                )
         except (requests.RequestException, LookupError, ValueError):
             pass
 
     missing_required = report.get("official_report_missing_required")
+    authored_report = report.get("authored_report")
+    authored_ready = (
+        isinstance(authored_report, dict)
+        and bool(authored_report.get("introduction"))
+        and bool(authored_report.get("historical_journey"))
+        and bool(authored_report.get("conclusion"))
+    )
     report_ready = (
         accepted
         and isinstance(missing_required, list)
         and not missing_required
+        and authored_ready
     )
 
 
