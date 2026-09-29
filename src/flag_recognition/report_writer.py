@@ -18,7 +18,7 @@ from openai import OpenAI
 
 
 REPORT_GENERATION_BUDGET_SECONDS = min(
-    285.0,
+    270.0,
     max(
         120.0,
         float(os.getenv("FLAG_INTELLIGENCE_REPORT_BUDGET_SECONDS", "270")),
@@ -718,39 +718,47 @@ def _recover_report_in_chunks(
         return merged
 
     # Small independent calls are much less timeout-prone than one very long
-    # response. Parallelism keeps the recovery path acceptable for end users.
-    with ThreadPoolExecutor(max_workers=min(4, len(jobs))) as executor:
-        futures = {
-            executor.submit(
-                _generate_section_group,
-                api_key=api_key,
-                model=model,
-                evidence_json=evidence_json,
-                group_name=group_name,
-                keys=keys,
-                existing=merged,
-                deadline=deadline,
-            ): group_name
-            for group_name, keys in jobs
-        }
-        try:
-            completed = as_completed(
-                futures,
-                timeout=max(1.0, deadline - time.monotonic()),
-            )
-            for future in completed:
-                try:
-                    block = future.result()
-                except Exception:
-                    block = {}
-                for key, value in block.items():
-                    if value and not str(merged.get(key, "") or "").strip():
-                        merged[key] = value
-        except TimeoutError:
-            pass
-        finally:
-            for future in futures:
-                future.cancel()
+    # response. Reserve part of the global budget for targeted rescue.
+    group_phase_deadline = min(
+        deadline - 110.0,
+        time.monotonic() + 120.0,
+    )
+    if group_phase_deadline <= time.monotonic() + 5.0:
+        group_phase_deadline = min(deadline - 10.0, time.monotonic() + 45.0)
+
+    executor = ThreadPoolExecutor(max_workers=min(4, len(jobs)))
+    futures = {
+        executor.submit(
+            _generate_section_group,
+            api_key=api_key,
+            model=model,
+            evidence_json=evidence_json,
+            group_name=group_name,
+            keys=keys,
+            existing=merged,
+            deadline=group_phase_deadline,
+        ): group_name
+        for group_name, keys in jobs
+    }
+    try:
+        completed = as_completed(
+            futures,
+            timeout=max(1.0, group_phase_deadline - time.monotonic()),
+        )
+        for future in completed:
+            try:
+                block = future.result()
+            except Exception:
+                block = {}
+            for key, value in block.items():
+                if value and not str(merged.get(key, "") or "").strip():
+                    merged[key] = value
+    except TimeoutError:
+        pass
+    finally:
+        for future in futures:
+            future.cancel()
+        executor.shutdown(wait=False, cancel_futures=True)
 
     # Final targeted rescue: retry only the groups that still contain missing
     # core content. This keeps failure isolation narrow and prevents one bad
@@ -784,37 +792,39 @@ def _recover_report_in_chunks(
         key for key in REPORT_SECTION_KEYS
         if not str(merged.get(key, "") or "").strip()
     ]
-    if missing_keys:
-        with ThreadPoolExecutor(max_workers=min(5, len(missing_keys))) as executor:
-            futures = {
-                executor.submit(
-                    _generate_single_section,
-                    api_key=api_key,
-                    model=model,
-                    evidence_json=evidence_json,
-                    key=key,
-                    deadline=deadline,
-                ): key
-                for key in missing_keys
-            }
-            try:
-                completed = as_completed(
-                    futures,
-                    timeout=max(1.0, deadline - time.monotonic()),
-                )
-                for future in completed:
-                    key = futures[future]
-                    try:
-                        value = future.result()
-                    except Exception:
-                        value = ""
-                    if value:
-                        merged[key] = value
-            except TimeoutError:
-                pass
-            finally:
-                for future in futures:
-                    future.cancel()
+    if missing_keys and deadline - time.monotonic() > 8.0:
+        executor = ThreadPoolExecutor(max_workers=min(5, len(missing_keys)))
+        futures = {
+            executor.submit(
+                _generate_single_section,
+                api_key=api_key,
+                model=model,
+                evidence_json=evidence_json,
+                key=key,
+                deadline=deadline,
+            ): key
+            for key in missing_keys
+        }
+        try:
+            completed = as_completed(
+                futures,
+                timeout=max(1.0, deadline - time.monotonic()),
+            )
+            for future in completed:
+                key = futures[future]
+                try:
+                    value = future.result()
+                except Exception:
+                    value = ""
+                if value:
+                    merged[key] = value
+        except TimeoutError:
+            pass
+        finally:
+            for future in futures:
+                future.cancel()
+            executor.shutdown(wait=False, cancel_futures=True)
+
 
     return merged
 
@@ -851,7 +861,7 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     substantial, missing_core = _report_completeness(draft)
 
     passed = (
-        substantial >= 24
+        substantial >= 30
         and not missing_core
         and not mechanical
         and bool(draft.get("introduction"))
@@ -860,7 +870,7 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     )
 
     issues = list(mechanical)
-    if substantial < 24:
+    if substantial < 30:
         issues.append(
             f"report incomplete: only {substantial} substantive sections"
         )
