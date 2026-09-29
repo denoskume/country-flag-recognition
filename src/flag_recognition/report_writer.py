@@ -511,6 +511,15 @@ SECTION_RECOVERY_GROUPS = (
 )
 
 
+def _model_candidates(configured_model: str) -> tuple[str, ...]:
+    candidates = [
+        configured_model.strip(),
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
+    ]
+    return tuple(dict.fromkeys(model for model in candidates if model))
+
+
 def _generate_section_group(
     *,
     api_key: str,
