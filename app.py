@@ -1156,107 +1156,184 @@ def _build_pdf_report_uncached(
             if flowables:
                 story.extend(narrative_section(title, flowables))
 
-        # Front page - executive country snapshot
+        # Front page - validated executive layout
         cover_flag = _cover_flag_image(country_code, image)
 
-        cover_title = Paragraph(
-            f"<b>{xml_escape(decision)}</b><br/>"
-            '<font size="10">Country Intelligence Report</font>',
-            ParagraphStyle(
-                "CoverCountryTitle",
-                parent=title_style,
-                fontSize=20,
-                leading=24,
-                alignment=0,
-                textColor=colors.HexColor("#111111"),
-                spaceAfter=0,
-            ),
+        if cover_flag is not None:
+            # Centered national flag with balanced proportions.
+            flag_holder = Table(
+                [[cover_flag]],
+                colWidths=[REPORT_WIDTH_MM * mm],
+                hAlign="CENTER",
+            )
+            flag_holder.setStyle(
+                TableStyle([
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                    ("TOPPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5 * mm),
+                ])
+            )
+            story.append(flag_holder)
+
+        story.append(
+            Paragraph(
+                f"REPORT ({xml_escape(decision.upper())})",
+                ParagraphStyle(
+                    "FrontReportTitle",
+                    parent=title_style,
+                    fontName="Helvetica-Bold",
+                    fontSize=21,
+                    leading=24,
+                    alignment=TA_CENTER,
+                    textColor=colors.HexColor("#111111"),
+                    spaceBefore=0,
+                    spaceAfter=1.0 * mm,
+                ),
+            )
+        )
+        story.append(
+            Paragraph(
+                "Country Intelligence Report",
+                ParagraphStyle(
+                    "FrontReportSubtitle",
+                    parent=meta_style,
+                    fontName="Helvetica",
+                    fontSize=9.2,
+                    leading=11.2,
+                    alignment=TA_CENTER,
+                    textColor=colors.HexColor("#555555"),
+                    spaceAfter=4.0 * mm,
+                ),
+            )
         )
 
-        cover_identity_rows = [
-            ("Capital", profile.get("capital")),
-            ("Population", population_value),
-            ("Area", area_value),
-            ("Language(s)", profile.get("official_languages")),
-            ("Currency", profile.get("currency")),
-            ("National Day", profile.get("national_day")),
+        snapshot_rows = [
+            [
+                ("CAPITAL", profile.get("capital")),
+                ("POPULATION", population_value),
+                ("AREA", area_value),
+            ],
+            [
+                ("LANGUAGE(S)", profile.get("official_languages")),
+                ("CURRENCY", profile.get("currency")),
+                ("NATIONAL DAY", profile.get("national_day")),
+            ],
+            [
+                ("CALLING CODE", profile.get("calling_code")),
+                ("DRIVING SIDE", profile.get("driving_side")),
+                ("INTERNET DOMAIN", profile.get("internet_domain")),
+            ],
         ]
 
-        identity_cards: list[list[object]] = []
-        for idx in range(0, len(cover_identity_rows), 2):
-            pair = cover_identity_rows[idx:idx + 2]
-            row: list[object] = []
-            for label, value in pair:
-                row.append(
+        snapshot_data: list[list[object]] = []
+        for row in snapshot_rows:
+            cells: list[object] = []
+            for label, value in row:
+                cells.append(
                     Table(
-                        [[
+                        [
+                            [
+                                Paragraph(
+                                    xml_escape(label),
+                                    ParagraphStyle(
+                                        f"SnapshotLabel{label}",
+                                        parent=small_style,
+                                        fontName="Helvetica-Bold",
+                                        fontSize=6.5,
+                                        leading=7.5,
+                                        textColor=colors.HexColor("#6B7280"),
+                                        spaceAfter=0.8 * mm,
+                                    ),
+                                )
+                            ],
+                            [
+                                Paragraph(
+                                    xml_escape(clean(value)),
+                                    ParagraphStyle(
+                                        f"SnapshotValue{label}",
+                                        parent=value_style,
+                                        fontName="Helvetica-Bold",
+                                        fontSize=8.4,
+                                        leading=10.2,
+                                        textColor=colors.HexColor("#111111"),
+                                    ),
+                                )
+                            ],
+                        ],
+                        colWidths=[(REPORT_WIDTH_MM / 3.0 - 2.0) * mm],
+                    )
+                )
+            snapshot_data.append(cells)
+
+        emergency_value = clean(profile.get("emergency_numbers"))
+        if emergency_value != "Not available":
+            snapshot_data.append([
+                Table(
+                    [
+                        [
                             Paragraph(
-                                xml_escape(label.upper()),
+                                "EMERGENCY NUMBERS",
                                 ParagraphStyle(
-                                    f"CoverLabel{idx}{label}",
+                                    "EmergencyLabelFront",
                                     parent=small_style,
                                     fontName="Helvetica-Bold",
-                                    fontSize=6.6,
-                                    leading=8,
+                                    fontSize=6.5,
+                                    leading=7.5,
                                     textColor=colors.HexColor("#6B7280"),
+                                    spaceAfter=0.8 * mm,
                                 ),
                             )
-                        ], [
+                        ],
+                        [
                             Paragraph(
-                                xml_escape(clean(value)),
+                                xml_escape(emergency_value),
                                 ParagraphStyle(
-                                    f"CoverValue{idx}{label}",
+                                    "EmergencyValueFront",
                                     parent=value_style,
                                     fontName="Helvetica-Bold",
-                                    fontSize=9.0,
-                                    leading=11,
+                                    fontSize=8.6,
+                                    leading=10.5,
                                     textColor=colors.HexColor("#111111"),
                                 ),
                             )
-                        ]],
-                        colWidths=[57 * mm],
-                    )
-                )
-            if len(row) == 1:
-                row.append("")
-            identity_cards.append(row)
+                        ],
+                    ],
+                    colWidths=[(REPORT_WIDTH_MM - 4.0) * mm],
+                ),
+                "",
+                "",
+            ])
 
-        facts_table = Table(
-            identity_cards,
-            colWidths=[59 * mm, 59 * mm],
+        snapshot_table = Table(
+            snapshot_data,
+            colWidths=[
+                (REPORT_WIDTH_MM / 3.0) * mm,
+                (REPORT_WIDTH_MM / 3.0) * mm,
+                (REPORT_WIDTH_MM / 3.0) * mm,
+            ],
             hAlign="LEFT",
         )
-        facts_table.setStyle(
-            TableStyle([
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F7F8FA")),
-                ("BOX", (0, 0), (-1, -1), 0.35, colors.HexColor("#E1E5EA")),
-                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#E8EBEF")),
-                ("LEFTPADDING", (0, 0), (-1, -1), 7),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 7),
-                ("TOPPADDING", (0, 0), (-1, -1), 6),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        snapshot_style = [
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#D5DAE1")),
+            ("INNERGRID", (0, 0), (-1, -2), 0.35, colors.HexColor("#E5E9EE")),
+            ("BACKGROUND", (0, 0), (-1, -2), colors.HexColor("#F8F9FB")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 7),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ]
+        if emergency_value != "Not available":
+            last_row = len(snapshot_data) - 1
+            snapshot_style.extend([
+                ("SPAN", (0, last_row), (2, last_row)),
+                ("BACKGROUND", (0, last_row), (2, last_row), colors.HexColor("#FFF8E8")),
+                ("LINEABOVE", (0, last_row), (2, last_row), 0.55, colors.HexColor("#DDBB62")),
             ])
-        )
-
-        if cover_flag is not None:
-            hero = Table(
-                [[cover_flag, cover_title]],
-                colWidths=[50 * mm, (REPORT_WIDTH_MM - 50.0) * mm],
-                hAlign="LEFT",
-            )
-            hero.setStyle(
-                TableStyle([
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                    ("TOPPADDING", (0, 0), (-1, -1), 0),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-                ])
-            )
-            story.extend([hero, Spacer(1, 2.5 * mm)])
-        else:
-            story.extend([cover_title, Spacer(1, 2.5 * mm)])
+        snapshot_table.setStyle(TableStyle(snapshot_style))
 
         story.extend([
             Paragraph("Country Snapshot", narrative_heading_style),
@@ -1267,68 +1344,9 @@ def _build_pdf_report_uncached(
                 spaceBefore=0,
                 spaceAfter=1.5 * mm,
             ),
-            facts_table,
-            Spacer(1, 2.5 * mm),
+            snapshot_table,
+            Spacer(1, 3.0 * mm),
         ])
-
-        emergency_value = clean(profile.get("emergency_numbers"))
-        practical_summary = [
-            ("Emergency", emergency_value),
-            ("Calling code", profile.get("calling_code")),
-            ("Driving side", profile.get("driving_side")),
-            ("Internet domain", profile.get("internet_domain")),
-        ]
-        practical_cells: list[object] = []
-        for label, value in practical_summary:
-            cleaned = clean(value)
-            if cleaned == "Not available":
-                continue
-            practical_cells.append(
-                Paragraph(
-                    f"<b>{xml_escape(label)}:</b> {xml_escape(cleaned)}",
-                    ParagraphStyle(
-                        f"CoverPractical{label}",
-                        parent=small_style,
-                        fontSize=7.4,
-                        leading=9.2,
-                        textColor=colors.HexColor("#222222"),
-                    ),
-                )
-            )
-
-        if practical_cells:
-            practical_table = Table(
-                [practical_cells],
-                colWidths=[
-                    (REPORT_WIDTH_MM / len(practical_cells)) * mm
-                    for _ in practical_cells
-                ],
-                hAlign="LEFT",
-            )
-            practical_table.setStyle(
-                TableStyle([
-                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FFF8E8")),
-                    ("BOX", (0, 0), (-1, -1), 0.45, colors.HexColor("#E2C46F")),
-                    ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#EAD99D")),
-                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                    ("TOPPADDING", (0, 0), (-1, -1), 5),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-                ])
-            )
-            story.extend([
-                Paragraph("Emergency & Practical", narrative_heading_style),
-                HRFlowable(
-                    width="100%",
-                    thickness=0.7,
-                    color=colors.HexColor("#B8BEC7"),
-                    spaceBefore=0,
-                    spaceAfter=1.5 * mm,
-                ),
-                practical_table,
-                Spacer(1, 2.5 * mm),
-            ])
 
         location_map = _build_pdf_location_map(
             profile.get("latitude"),
@@ -1339,7 +1357,8 @@ def _build_pdf_report_uncached(
             country_code=country_code,
         )
         if location_map is not None:
-            location_map.drawHeight = 78 * mm
+            # Use remaining cover space efficiently while keeping the map readable.
+            location_map.drawHeight = 86 * mm
             location_content = Table(
                 [[location_map]],
                 colWidths=[REPORT_WIDTH_MM * mm],
