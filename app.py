@@ -4581,7 +4581,7 @@ def show_result(
                 )
         else:
             st.button(
-                "Download PDF",
+                "PDF unavailable",
                 disabled=True,
                 use_container_width=True,
             )
@@ -4599,8 +4599,8 @@ def show_result(
                     )
                 else:
                     st.warning(
-                        "The OpenAI report writer is not active yet. "
-                        "Configure OPENAI_API_KEY in the deployment secrets."
+                        "Report generation is temporarily unavailable. "
+                        "Please try again shortly."
                     )
 
 
