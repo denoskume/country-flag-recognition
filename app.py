@@ -3694,7 +3694,7 @@ def _build_pdf_report_uncached(
     return buffer.getvalue()
 
 
-REPORT_WRITER_CACHE_VERSION = "2026-09-29-r13"
+REPORT_WRITER_CACHE_VERSION = "2026-09-29-r14"
 
 def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
     """Create a complete no-failure narrative fallback from local country facts."""
