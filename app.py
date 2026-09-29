@@ -2364,7 +2364,7 @@ def _build_pdf_report_uncached(
         if sovereignty_status:
             if "no classical colonial-independence transition" in sovereignty_status.lower():
                 sovereignty_sentences.append(
-                    "France does not follow the classical pattern of a former "
+                    f"{decision} does not follow the classical pattern of a former "
                     "colony becoming an independent state; its modern sovereignty "
                     "developed through the historical evolution of the French state."
                 )
