@@ -860,6 +860,10 @@ def _validate_professional_report_story(story: list[object]) -> None:
         flags=re.IGNORECASE,
     ):
         violations.append("source markup residue")
+    if re.search(r"https?://|www\.", normalized, flags=re.IGNORECASE):
+        violations.append("raw URL exposed in narrative")
+    if re.search(r"\+Adults|::", normalized):
+        violations.append("table/list extraction residue")
     if re.search(r"\bNot available\b", normalized, flags=re.IGNORECASE):
         violations.append("unresolved missing value exposed to reader")
 
@@ -1162,6 +1166,27 @@ def _build_pdf_report_uncached(
             " ",
             text,
         )
+
+        # Remove raw URLs and citation-link residue from narrative text.
+        text = re.sub(
+            r"https?://\S+",
+            " ",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(
+            r"\b(?:www\.)\S+",
+            " ",
+            text,
+            flags=re.IGNORECASE,
+        )
+
+        # Remove leftover table/list punctuation and pseudo-headings that
+        # commonly survive encyclopedia extraction.
+        text = re.sub(r"\s*\+Adults\b", " Adults", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s*:+\s*:+\s*", " ", text)
+        text = re.sub(r"\s*:\s*;", "; ", text)
+        text = re.sub(r"\s*;\s*:", "; ", text)
 
         text = re.sub(r"\s*\|\s*", ", ", text)
         text = re.sub(r"\s+", " ", text).strip(" ;|")
@@ -1656,7 +1681,33 @@ def _build_pdf_report_uncached(
             value = re.sub(r"^[*•\-]+\s*", "", value)
             value = re.sub(r"\s*\|\s*", ", ", value)
             value = re.sub(r"\s*;\s*", "; ", value)
-            value = re.sub(r"\s+", " ", value).strip(" ;,")
+
+            # Convert encyclopedic inline labels into normal sentence flow.
+            value = re.sub(
+                r"\b(?:Forms|In children|In adults|Society|Religion|Languages|"
+                r"Education|Health|Cuisine|Sports|Music|Philosophy|Media|"
+                r"Agriculture|Tourism|Roads|Railways|Renewable energy|"
+                r"Solar energy)\s*:\s*",
+                "",
+                value,
+                flags=re.IGNORECASE,
+            )
+
+            # Remove source-introduction boilerplate left by linked citations.
+            value = re.sub(
+                r"According to\s+(?:the\s+)?(?:WHO\s+report|report)\s*,?\s*",
+                "",
+                value,
+                flags=re.IGNORECASE,
+            )
+            value = re.sub(
+                r"Global Oral Health Status Report[^.]*?2030\)?\s*",
+                "",
+                value,
+                flags=re.IGNORECASE,
+            )
+
+            value = re.sub(r"\s+", " ", value).strip(" ;,:")
             if value and value[-1] not in ".!?":
                 value += "."
             return value
@@ -3180,7 +3231,7 @@ def resolve_emergency_numbers(
 
 
 COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-29-v21"
-COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-29-v24"
+COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-29-v25"
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_country_profile_v2(
