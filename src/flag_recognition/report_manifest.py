@@ -32,6 +32,7 @@ OFFICIAL_REPORT_SECTIONS: tuple[ReportSectionSpec, ...] = (
     ReportSectionSpec("identity", "National Identity", True),
     ReportSectionSpec("government", "Government & Institutions", True),
     ReportSectionSpec("administration", "Administrative Divisions"),
+    ReportSectionSpec("leadership_history", "Leadership Through Time"),
     ReportSectionSpec("society", "People & Society", True),
     ReportSectionSpec("languages_religion", "Languages & Religion"),
     ReportSectionSpec("health", "Health System & Public Health"),
@@ -44,6 +45,7 @@ OFFICIAL_REPORT_SECTIONS: tuple[ReportSectionSpec, ...] = (
     ReportSectionSpec("transport", "Transport Network, Ports & Airports"),
     ReportSectionSpec("energy", "Energy & Connectivity"),
     ReportSectionSpec("education", "Education, Science & Innovation"),
+    ReportSectionSpec("science_inventions", "Science, Discovery & Invention"),
     ReportSectionSpec("environment", "Environment & Biodiversity"),
     ReportSectionSpec("practical", "Practical & Emergency Information", True),
     ReportSectionSpec("international", "International Relations"),
@@ -115,6 +117,9 @@ def build_report_manifest(
         "administration": bool(
             _value(intelligence, "government", "administrative_divisions")
         ),
+        "leadership_history": bool(
+            _value(intelligence, "government", "leadership_history")
+        ),
         "society": bool(_value(intelligence, "people_society")),
         "languages_religion": bool(
             _value(intelligence, "people_society", "languages_religion")
@@ -135,6 +140,9 @@ def build_report_manifest(
             _value(intelligence, "infrastructure", "energy_connectivity")
         ),
         "education": bool(_value(intelligence, "education_science")),
+        "science_inventions": bool(
+            _value(intelligence, "education_science", "science_inventions")
+        ),
         "environment": bool(_value(intelligence, "environment")),
         "practical": any(
             profile.get(key)
