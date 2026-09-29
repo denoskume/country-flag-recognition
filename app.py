@@ -3623,7 +3623,7 @@ def _build_pdf_report_uncached(
     return buffer.getvalue()
 
 
-REPORT_WRITER_CACHE_VERSION = "2026-09-29-r5"
+REPORT_WRITER_CACHE_VERSION = "2026-09-29-r6"
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def _cached_authored_report(
