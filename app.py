@@ -2418,7 +2418,7 @@ def _build_pdf_report_uncached(
                         clean(event.get("label")),
                         clean(event.get("summary")),
                     )
-                    for event in origins[:6]
+                    for event in origins[:10]
                     if isinstance(event, dict)
                 ]
                 if origin_rows:
@@ -2451,7 +2451,7 @@ def _build_pdf_report_uncached(
                         clean(event.get("period")),
                         clean(event.get("summary")),
                     )
-                    for event in timeline[:18]
+                    for event in timeline[:30]
                     if isinstance(event, dict)
                 ]
                 if timeline_rows:
@@ -2488,7 +2488,7 @@ def _build_pdf_report_uncached(
                 sovereignty_sentences.append(
                     f"{decision} does not follow the classical pattern of a former "
                     "colony becoming an independent state; its modern sovereignty "
-                    "developed through the historical evolution of the French state."
+                    "developed through the historical evolution of the state itself."
                 )
             else:
                 sovereignty_sentences.append(
@@ -2601,11 +2601,24 @@ def _build_pdf_report_uncached(
                 )
             )
 
+        leadership_text = context_value(
+            "government",
+            "leadership_history",
+        )
+        if leadership_text != "Not available":
+            story.extend(
+                narrative_section(
+                    "Leadership Through Time",
+                    learning_flowables(leadership_text),
+                )
+            )
+
         if any(
             report_manifest.get(key, False)
             for key in (
                 "society", "languages_religion", "health",
-                "culture", "festivals", "heritage",
+                "culture", "festivals", "heritage", "notable_people",
+                "literature_thought",
             )
         ):
             story.append(PageBreak())
@@ -2657,11 +2670,24 @@ def _build_pdf_report_uncached(
                     )
                 )
 
+        literature_text = context_value(
+            "culture",
+            "literature_thought",
+        )
+        if literature_text != "Not available":
+            story.extend(
+                narrative_section(
+                    "Literature, Philosophy & Thought",
+                    learning_flowables(literature_text),
+                )
+            )
+
         if any(
             report_manifest.get(key, False)
             for key in (
                 "economy", "economic_drivers", "infrastructure",
-                "transport", "energy", "education", "environment",
+                "transport", "energy", "education", "science_inventions",
+                "environment",
             )
         ):
             story.append(PageBreak())
@@ -2705,12 +2731,26 @@ def _build_pdf_report_uncached(
             ],
         )
 
-        add_combined_learning_section(
-            "Education, Innovation & Environment",
-            [
-                context_value("education_science"),
-                context_value("environment"),
-            ],
+        add_learning_section(
+            "Education & Research",
+            context_value("education_science"),
+        )
+
+        science_text = context_value(
+            "education_science",
+            "science_inventions",
+        )
+        if science_text != "Not available":
+            story.extend(
+                narrative_section(
+                    "Science, Discovery & Invention",
+                    learning_flowables(science_text),
+                )
+            )
+
+        add_learning_section(
+            "Environment & Biodiversity",
+            context_value("environment"),
         )
 
         if any(
@@ -3231,7 +3271,7 @@ def resolve_emergency_numbers(
 
 
 COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-29-v21"
-COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-29-v25"
+COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-29-v27"
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_country_profile_v2(
