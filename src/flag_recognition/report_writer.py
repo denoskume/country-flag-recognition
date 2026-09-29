@@ -86,6 +86,159 @@ paragraphs. No markdown fences.
 """
 
 
+REVIEW_PROMPT = """You are the final factual and editorial verifier for Flag Intelligence.
+
+You receive:
+1. the complete structured evidence payload collected for one country;
+2. a drafted report with fixed section keys.
+
+Your task is to return a corrected report that is publishable.
+
+STRICT VERIFICATION RULES
+- Check EVERY factual assertion in the draft against the supplied evidence.
+- Do not use outside knowledge and do not invent missing facts.
+- If a statement is not supported by the evidence, remove it.
+- If two evidence items conflict, omit the disputed claim unless the stronger
+  source or more recent dated evidence clearly resolves the conflict.
+- Time-sensitive statements (current leaders, prices, population, GDP,
+  infrastructure status, memberships, health statistics, etc.) must retain a
+  reference year/date when the evidence provides one. Do not silently present
+  old measurements as current.
+- Historical dates must be chronologically coherent and internally consistent.
+- Remove unrelated global background that is not directly about the country.
+- Remove duplicate facts across sections unless repetition is essential for
+  comprehension.
+- Remove repeated sentences, repeated dates, repeated words, malformed source
+  fragments, captions, bibliography residue and list/navigation artefacts.
+- Notable people must be genuinely tied to the country by the supplied evidence.
+  If that connection is weak or ambiguous, omit the person.
+- Mini-biographies must explain why the person is notable, but only using
+  supported evidence.
+- Do not preserve a sentence merely because it sounds plausible.
+- If evidence is insufficient for a section, return an empty string.
+- Keep prose concise, natural and professional.
+
+OUTPUT
+Return ONLY one JSON object with this exact shape:
+{
+  "passed": true_or_false,
+  "issues": ["short issue descriptions"],
+  "report": { ...exact report section keys... }
+}
+
+Set passed=true only if the corrected report contains no unsupported,
+contradictory, duplicated, malformed or misleading factual statements.
+No markdown fences.
+"""
+
+
+def _deterministic_quality_issues(report: dict[str, str]) -> list[str]:
+    """Catch mechanical defects after model-based verification."""
+    issues: list[str] = []
+    seen_sentences: dict[str, str] = {}
+
+    repeated_word = re.compile(
+        r"\b(for|in|on|by|the|a|an|to|of|and|or|is|was|were|with)\s+\1\b",
+        flags=re.IGNORECASE,
+    )
+    repeated_year = re.compile(
+        r"\b(?:in|by|on)\s+(\d{3,4})\b[^.!?]{0,120}"
+        r"\b(?:in|by|on)\s+\1\b",
+        flags=re.IGNORECASE,
+    )
+    residue = re.compile(
+        r"\b(?:thumb|upright|rowspan|colspan|wikitable|further reading|"
+        r"references|see also|image size|plot area|published as|\d+pp\b)\b",
+        flags=re.IGNORECASE,
+    )
+
+    for section, text in report.items():
+        if section not in REPORT_SECTION_KEYS or not text:
+            continue
+
+        if repeated_word.search(text):
+            issues.append(f"{section}: duplicated word/preposition")
+        if repeated_year.search(text):
+            issues.append(f"{section}: duplicated year construction")
+        if residue.search(text):
+            issues.append(f"{section}: source/navigation residue")
+
+        sentences = [
+            part.strip()
+            for part in re.split(r"(?<=[.!?])\s+", text)
+            if part.strip()
+        ]
+        for sentence in sentences:
+            key = re.sub(r"[^a-z0-9]+", " ", sentence.casefold()).strip()
+            if len(key) < 35:
+                continue
+            previous = seen_sentences.get(key)
+            if previous is not None:
+                issues.append(
+                    f"{section}: sentence duplicated from {previous}"
+                )
+            else:
+                seen_sentences[key] = section
+
+    return list(dict.fromkeys(issues))
+
+
+def _review_and_correct(
+    client: OpenAI,
+    model: str,
+    evidence_json: str,
+    draft: dict[str, str],
+) -> tuple[dict[str, str], bool, list[str]]:
+    schema_hint = {key: "" for key in REPORT_SECTION_KEYS}
+    prompt = (
+        "Verify and correct the drafted report against the evidence.\n\n"
+        "Required report keys:\n"
+        + json.dumps(schema_hint, ensure_ascii=False)
+        + "\n\nEVIDENCE:\n"
+        + evidence_json
+        + "\n\nDRAFT REPORT:\n"
+        + json.dumps(draft, ensure_ascii=False, sort_keys=True)
+    )
+
+    response = client.responses.create(
+        model=model,
+        reasoning={"effort": "high"},
+        input=[
+            {"role": "system", "content": REVIEW_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        max_output_tokens=16000,
+    )
+
+    raw = _strip_code_fence(response.output_text or "")
+    if not raw:
+        return {}, False, ["Verifier returned no output."]
+
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", raw, flags=re.DOTALL)
+        if not match:
+            return {}, False, ["Verifier returned invalid JSON."]
+        try:
+            payload = json.loads(match.group(0))
+        except json.JSONDecodeError:
+            return {}, False, ["Verifier returned invalid JSON."]
+
+    if not isinstance(payload, dict):
+        return {}, False, ["Verifier response was not an object."]
+
+    corrected = _normalize_output(payload.get("report"))
+    model_issues = payload.get("issues", [])
+    if not isinstance(model_issues, list):
+        model_issues = []
+    model_issues = [str(item).strip() for item in model_issues if str(item).strip()]
+
+    mechanical = _deterministic_quality_issues(corrected)
+    passed = bool(payload.get("passed")) and not mechanical
+    return corrected, passed, model_issues + mechanical
+
+
 def _strip_code_fence(value: str) -> str:
     text = value.strip()
     if text.startswith("```"):
@@ -165,4 +318,22 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
         except json.JSONDecodeError:
             return {}
 
-    return _normalize_output(parsed)
+    draft = _normalize_output(parsed)
+    if not draft:
+        return {}
+
+    corrected, passed, issues = _review_and_correct(
+        client,
+        model,
+        evidence_json,
+        draft,
+    )
+    if not corrected:
+        return {
+            "__qa_passed": False,
+            "__qa_issues": issues or ["Final verification failed."],
+        }
+
+    corrected["__qa_passed"] = passed
+    corrected["__qa_issues"] = issues
+    return corrected
