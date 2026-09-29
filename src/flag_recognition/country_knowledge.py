@@ -134,6 +134,11 @@ SECTION_ALIASES: dict[str, tuple[str, ...]] = {
         "science and technology", "science", "technology", "inventions",
         "discoveries", "inventors", "scientists", "research", "innovation",
     ),
+    "literature_thought": (
+        "literature", "writers", "authors", "poetry", "poets",
+        "philosophy", "philosophers", "thought", "drama", "playwrights",
+        "essays", "intellectual history",
+    ),
     "economy": (
         "economy", "agriculture", "industry", "trade", "tourism",
     ),
@@ -1708,6 +1713,23 @@ def enrich_from_encyclopedia(
             "Inventions and discoveries",
             "List of inventions and discoveries",
             "Scientists and inventors",
+        ),
+        timeout=timeout,
+        max_chars=8000,
+    )
+
+    # Literature, philosophy and intellectual traditions.
+    _set_multi_topic_context(
+        record.culture,
+        "literature_thought",
+        canonical_title,
+        (
+            "Literature",
+            "Writers",
+            "Poets",
+            "Philosophy",
+            "Philosophers",
+            "Intellectual history",
         ),
         timeout=timeout,
         max_chars=8000,
