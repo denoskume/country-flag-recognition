@@ -3471,19 +3471,6 @@ def get_country_intelligence_v2(
     }
 
 
-def build_brand_header_html() -> str:
-    """Render a compact professional brand logo at the top-left."""
-    return f"""
-    <div class="brand-header">
-        <img
-            src="data:image/jpeg;base64,{PDF_LOGO_BASE64}"
-            class="brand-logo"
-            alt="Flag Intelligence logo"
-        >
-    </div>
-    """
-
-
 st.markdown(
     """
     <style>
@@ -3514,22 +3501,6 @@ st.markdown(
             max-width: 900px;
             padding-top: 1rem;
             padding-bottom: 2rem;
-        }
-
-        .brand-header {
-            width: 100%;
-            display: flex;
-            align-items: flex-start;
-            justify-content: flex-start;
-            margin: .15rem 0 1rem 0;
-        }
-
-        .brand-logo {
-            width: 72px;
-            height: 72px;
-            object-fit: contain;
-            display: block;
-            border-radius: 50%;
         }
 
         div[data-testid="stVerticalBlockBorderWrapper"] {
@@ -3680,10 +3651,6 @@ st.markdown(
                 padding-right: .75rem;
             }
 
-            .brand-logo {
-                width: 58px;
-                height: 58px;
-            }
         }
     </style>
     """,
@@ -3768,10 +3735,15 @@ def evaluate_production_decision(
 bundle = None
 deployment_threshold = None
 
-st.markdown(
-    build_brand_header_html(),
-    unsafe_allow_html=True,
-)
+brand_logo_bytes = base64.b64decode(PDF_LOGO_BASE64)
+brand_col, _ = st.columns([0.12, 0.88])
+with brand_col:
+    st.image(
+        brand_logo_bytes,
+        width=72,
+    )
+
+st.markdown("<div style='height:0.2rem'></div>", unsafe_allow_html=True)
 
 prompt_submission = st.chat_input(
     "Ask Flag Intelligence",
