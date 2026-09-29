@@ -220,36 +220,26 @@ def draw_pdf_watermark(canvas, document) -> None:
     )
 
     # ------------------------------------------------------------------
-    # Contact is shown only on the first page; later pages use a compact
-    # document marker so educational content gets more visual space.
+    # Page header contact - repeated on every page and right-aligned to
+    # the same outer content margin as the rest of the report.
     # ------------------------------------------------------------------
-    contact_x = right - 68 * mm
     contact_y = page_height - 23 * mm
 
-    if getattr(document, "page", 1) == 1:
-        canvas.setFillColor(colors.HexColor("#111111"))
-        canvas.setFont("Helvetica", 9.3)
-        canvas.drawString(contact_x, contact_y, "Contact")
+    canvas.setFillColor(colors.HexColor("#111111"))
+    canvas.setFont("Helvetica", 9.3)
+    canvas.drawRightString(right, contact_y, "Contact")
 
-        canvas.setFont("Helvetica", 8.6)
-        canvas.drawString(
-            contact_x,
-            contact_y - 5.0 * mm,
-            "+33 (0)6 62 91 94 68",
-        )
-        canvas.drawString(
-            contact_x,
-            contact_y - 10.2 * mm,
-            "denoskume@yahoo.com",
-        )
-    else:
-        canvas.setFillColor(colors.HexColor("#555555"))
-        canvas.setFont("Helvetica-Bold", 8.2)
-        canvas.drawRightString(
-            right,
-            contact_y,
-            "FLAG INTELLIGENCE · COUNTRY INTELLIGENCE",
-        )
+    canvas.setFont("Helvetica", 8.6)
+    canvas.drawRightString(
+        right,
+        contact_y - 5.0 * mm,
+        "+33 (0)6 62 91 94 68",
+    )
+    canvas.drawRightString(
+        right,
+        contact_y - 10.2 * mm,
+        "denoskume@yahoo.com",
+    )
 
     # ------------------------------------------------------------------
     # Footer
