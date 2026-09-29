@@ -37,6 +37,7 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
+from reportlab.platypus.tableofcontents import TableOfContents
 
 
 PDF_LOGO_BASE64 = "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"
@@ -261,14 +262,38 @@ def draw_pdf_watermark(canvas, document) -> None:
         "Sources: World Bank · Wikidata · REST Countries · Wikipedia · EmergencyNumberAPI",
     )
     canvas.setFont("Helvetica", 7.2)
+    physical_page = int(getattr(document, "page", 1))
+    if physical_page <= 2:
+        footer_text = "© 2026 Flag Intelligence. All rights reserved."
+    else:
+        logical_page = physical_page - 2
+        footer_text = (
+            "© 2026 Flag Intelligence. All rights reserved. "
+            f"· Page {logical_page}"
+        )
     canvas.drawCentredString(
         (left + right) / 2,
         13.5 * mm,
-        f"© 2026 Flag Intelligence. All rights reserved. · Page {document.page}",
+        footer_text,
     )
 
     canvas.restoreState()
 
+
+
+class FlagIntelligenceDocTemplate(SimpleDocTemplate):
+    """Report document with a generated TOC and logical page numbering."""
+
+    def afterFlowable(self, flowable) -> None:
+        if isinstance(flowable, Paragraph):
+            style_name = getattr(flowable.style, "name", "")
+            if style_name == "ChapterTitle":
+                # Front page + Contents are unnumbered front matter.
+                logical_page = max(int(self.page) - 2, 1)
+                self.notify(
+                    "TOCEntry",
+                    (0, flowable.getPlainText(), logical_page),
+                )
 
 
 def _pdf_value(value: object, style: ParagraphStyle) -> Paragraph:
@@ -500,7 +525,7 @@ def _build_pdf_report_uncached(
 ) -> bytes:
     """Build a compact institutional country knowledge report."""
     buffer = BytesIO()
-    document = SimpleDocTemplate(
+    document = FlagIntelligenceDocTemplate(
         buffer,
         pagesize=A4,
         rightMargin=PDF_MARGIN_MM * mm,
@@ -588,6 +613,18 @@ def _build_pdf_report_uncached(
 
     chapter_title_style = ParagraphStyle(
         "ChapterTitle",
+        parent=styles["Heading1"],
+        fontName="Helvetica-Bold",
+        fontSize=14.5,
+        leading=17.5,
+        textColor=colors.HexColor("#111111"),
+        spaceBefore=2.0 * mm,
+        spaceAfter=2.0 * mm,
+        keepWithNext=True,
+    )
+
+    front_matter_title_style = ParagraphStyle(
+        "FrontMatterTitle",
         parent=styles["Heading1"],
         fontName="Helvetica-Bold",
         fontSize=14.5,
@@ -1086,22 +1123,68 @@ def _build_pdf_report_uncached(
             Spacer(1, 3 * mm),
         ])
 
-        # Contents follows the cover snapshot and establishes the report order.
+        location_map = _build_pdf_location_map(
+            profile.get("latitude"),
+            profile.get("longitude"),
+            profile.get("area_km2"),
+            country_name=decision,
+            capital=clean(profile.get("capital")),
+            country_code=country_code,
+        )
+        if location_map is not None:
+            # The front page introduces both identity and geographic position.
+            location_map.drawHeight = 68 * mm
+            location_content = Table(
+                [[location_map]],
+                colWidths=[REPORT_WIDTH_MM * mm],
+                hAlign="CENTER",
+            )
+            location_content.setStyle(
+                TableStyle([
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ])
+            )
+            story.extend(
+                narrative_section(
+                    "Geographic Location",
+                    [location_content],
+                )
+            )
+
+        # Contents is unnumbered front matter. Page references are populated
+        # automatically during the multi-pass PDF build.
         story.append(PageBreak())
-        story.extend(chapter_heading(0, "Contents"))
-        contents_entries = [
-            "1. Introduction",
-            "2. Geography & Environment",
-            "3. Flag & Historical Journey",
-            "4. State, Government & Institutions",
-            "5. People, Society & Culture",
-            "6. Economy, Infrastructure & Innovation",
-            "7. International & Practical Information",
-            "8. Conclusion",
-            "9. Sources & Methodology",
+        story.append(Paragraph("Contents", front_matter_title_style))
+        story.append(
+            HRFlowable(
+                width="100%",
+                thickness=1.15,
+                color=colors.HexColor("#111111"),
+                spaceBefore=0,
+                spaceAfter=4.0 * mm,
+            )
+        )
+        toc = TableOfContents()
+        toc.levelStyles = [
+            ParagraphStyle(
+                "TOCLevel1",
+                parent=contents_item_style,
+                fontName="Helvetica",
+                fontSize=9.2,
+                leading=14,
+                leftIndent=0,
+                firstLineIndent=0,
+                spaceBefore=1.0 * mm,
+                spaceAfter=1.0 * mm,
+            )
         ]
-        for entry in contents_entries:
-            story.append(Paragraph(xml_escape(entry), contents_item_style))
+        toc.dotsMinLevel = 0
+        story.append(toc)
 
         story.append(PageBreak())
 
@@ -1129,31 +1212,6 @@ def _build_pdf_report_uncached(
 
         # 2. Geography & Environment
         story.extend(chapter_heading(2, "Geography & Environment"))
-        location_map = _build_pdf_location_map(
-            profile.get("latitude"),
-            profile.get("longitude"),
-            profile.get("area_km2"),
-            country_name=decision,
-            capital=clean(profile.get("capital")),
-            country_code=country_code,
-        )
-        if location_map is not None:
-            location_content = Table(
-                [[location_map]],
-                colWidths=[REPORT_WIDTH_MM * mm],
-                hAlign="CENTER",
-            )
-            location_content.setStyle(
-                TableStyle([
-                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 4),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-                    ("TOPPADDING", (0, 0), (-1, -1), 4),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-                ])
-            )
-            story.extend(narrative_section("Geographic Location", [location_content]))
 
         geography_facts = labeled_paragraphs([
             ("Largest cities", profile.get("largest_cities")),
@@ -1592,7 +1650,7 @@ def _build_pdf_report_uncached(
     ):
         story.append(source_note)
 
-    document.build(
+    document.multiBuild(
         story,
         onFirstPage=draw_pdf_watermark,
         onLaterPages=draw_pdf_watermark,
