@@ -4593,42 +4593,42 @@ def show_result(
     }
 
     if accepted:
-        # Keep local preparation deliberately light so the complete UX stays
-        # inside the 120-second generation budget. The OpenAI writer performs
-        # the actual research and authors the report.
-        try:
-            profile = get_country_profile_v2(
-                decision_code,
-                schema_version=COUNTRY_PROFILE_SCHEMA_VERSION,
-            )
-            historical_profile = get_fresh_historical_profile(decision_code)
-            report["country_profile"] = _country_profile_payload(
-                decision_code,
-                profile,
-                historical_profile,
-            )
-        except Exception as exc:
-            report["local_context_error"] = (
-                f"{type(exc).__name__}: {str(exc)[:240]}"
-            )
+        # Show progress immediately after recognition. Local country-context
+        # collection can itself take several seconds, so it must be covered by
+        # the same user-visible status as report authoring.
+        with st.spinner("Researching, verifying and writing the report..."):
+            try:
+                profile = get_country_profile_v2(
+                    decision_code,
+                    schema_version=COUNTRY_PROFILE_SCHEMA_VERSION,
+                )
+                historical_profile = get_fresh_historical_profile(decision_code)
+                report["country_profile"] = _country_profile_payload(
+                    decision_code,
+                    profile,
+                    historical_profile,
+                )
+            except Exception as exc:
+                report["local_context_error"] = (
+                    f"{type(exc).__name__}: {str(exc)[:240]}"
+                )
 
-        try:
-            evidence_json = json.dumps(
-                report,
-                sort_keys=True,
-                ensure_ascii=False,
-                default=str,
-            )
-            with st.spinner("Researching, verifying and writing the report..."):
+            try:
+                evidence_json = json.dumps(
+                    report,
+                    sort_keys=True,
+                    ensure_ascii=False,
+                    default=str,
+                )
                 report["authored_report"] = _cached_authored_report(
                     evidence_json,
                     REPORT_WRITER_CACHE_VERSION,
                 )
-        except Exception as exc:
-            report["authored_report_error"] = (
-                f"{type(exc).__name__}: {str(exc)[:240]}"
-            )
-            report["authored_report"] = _fallback_authored_report(report)
+            except Exception as exc:
+                report["authored_report_error"] = (
+                    f"{type(exc).__name__}: {str(exc)[:240]}"
+                )
+                report["authored_report"] = _fallback_authored_report(report)
 
     missing_required = report.get("official_report_missing_required")
     authored_report = report.get("authored_report")
