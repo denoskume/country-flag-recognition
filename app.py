@@ -602,7 +602,7 @@ def _validate_professional_report_story(story: list[object]) -> None:
 
     forbidden_patterns = (
         (r"\{\{|\}\}", "MediaWiki template residue"),
-        (r"&nbsp;|&amp;|&quot;", "HTML entity residue"),
+        (r"&nbsp;|&#160;|&#x0*a0;", "non-breaking-space HTML residue"),
         (r"\balt=", "image-alt extraction residue"),
         (r"\bthumb\|", "MediaWiki image residue"),
         (r"\bpx\s", "image-dimension residue"),
@@ -827,24 +827,23 @@ def _build_pdf_report_uncached(
         text = (
             text.replace("&nbsp;", " ")
             .replace("&#160;", " ")
+            .replace("&#xA0;", " ")
+            .replace("&#xa0;", " ")
             .replace("&amp;", "&")
             .replace("&quot;", '"')
             .replace("&#39;", "'")
         )
+
+        # Wikipedia image captions can be embedded directly inside prose.
+        # Remove metadata spans rather than letting fragments reach the report.
         text = re.sub(
-            r"\balt\s*=\s*[^|.;]+(?:\||[.;])?",
+            r"\balt\s*=\s*.*?(?=\||(?:\s+[A-Z][a-z]+(?:\s+[a-z]+){0,3}:)|$)",
             " ",
             text,
             flags=re.IGNORECASE,
         )
         text = re.sub(
-            r"\b\d+(?:\.\d+)?\s*px\b",
-            " ",
-            text,
-            flags=re.IGNORECASE,
-        )
-        text = re.sub(
-            r"\bpx\b",
+            r"\b(?:File|Image):[^|\n]+(?:\||$)",
             " ",
             text,
             flags=re.IGNORECASE,
@@ -855,8 +854,30 @@ def _build_pdf_report_uncached(
             text,
             flags=re.IGNORECASE,
         )
+
+        # Remove image-size residue both as '300 px' and orphaned leading 'px'.
         text = re.sub(
-            r"\bFile:[^|.;]+(?:\||[.;])?",
+            r"\b\d+(?:\.\d+)?\s*px\b",
+            " ",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(
+            r"(?:(?<=^)|(?<=[.!?;]))\s*px\b\s*",
+            " ",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(
+            r"\bpx\b(?=\s+[A-Z])",
+            " ",
+            text,
+            flags=re.IGNORECASE,
+        )
+
+        # Strip common image-caption lead-ins that survive encyclopedia extraction.
+        text = re.sub(
+            r"\b(?:map|chart|photo|image|illustration)\s+of\b[^.]{0,180}\.",
             " ",
             text,
             flags=re.IGNORECASE,
