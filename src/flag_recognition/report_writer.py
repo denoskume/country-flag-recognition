@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from openai import OpenAI
@@ -428,6 +429,199 @@ def _parse_writer_response(raw: str) -> dict[str, str]:
     return _normalize_output(parsed)
 
 
+SECTION_RECOVERY_GROUPS = (
+    (
+        "geography_climate",
+        (
+            "introduction",
+            "physical_geography",
+            "climate_water_resources",
+            "seasons_climate_calendar",
+            "major_cities_regional_profiles",
+            "environment_biodiversity",
+        ),
+    ),
+    (
+        "flag_history",
+        (
+            "flag_design_symbolism",
+            "origins_early_history",
+            "historical_journey",
+            "key_historical_timeline",
+            "state_formation_identity",
+            "national_symbols_identity",
+        ),
+    ),
+    (
+        "institutions",
+        (
+            "government_structure",
+            "legal_constitutional_system",
+            "leadership_through_time",
+            "international_relations",
+        ),
+    ),
+    (
+        "society_culture",
+        (
+            "people_society",
+            "demographics_population_structure",
+            "languages_religion",
+            "health_public_health",
+            "culture_cuisine_music_sport",
+            "festivals_holidays_traditions",
+            "heritage_landmarks",
+            "literature_philosophy_thought",
+        ),
+    ),
+    (
+        "economy_education_science",
+        (
+            "economy_trade_industries",
+            "infrastructure_transport_energy",
+            "education_research",
+            "universities_higher_education",
+            "science_discovery_invention",
+            "cost_of_living",
+            "practical_emergency",
+        ),
+    ),
+    (
+        "notable_figures",
+        (
+            "notable_figures_philosophy",
+            "notable_figures_literature_poetry",
+            "notable_figures_mathematics",
+            "notable_figures_physics",
+            "notable_figures_science_medicine",
+            "notable_figures_invention_engineering",
+            "notable_figures_arts_architecture",
+            "notable_figures_music_cinema",
+            "notable_figures_public_life",
+            "notable_figures_sport",
+            "notable_public_figures",
+        ),
+    ),
+    (
+        "conclusion",
+        (
+            "conclusion",
+        ),
+    ),
+)
+
+
+def _generate_section_group(
+    *,
+    api_key: str,
+    model: str,
+    evidence_json: str,
+    group_name: str,
+    keys: tuple[str, ...],
+    existing: dict[str, str],
+) -> dict[str, str]:
+    """Generate one small thematic report block with an internal retry."""
+    requested = {
+        key: ""
+        for key in keys
+        if not str(existing.get(key, "") or "").strip()
+    }
+    if not requested:
+        return {}
+
+    prompt = (
+        "Generate ONLY the requested Flag Intelligence sections for this country. "
+        "Return one JSON object containing exactly the requested keys. Each applicable "
+        "section must contain useful, publication-ready educational prose. Use the "
+        "country evidence and your trained knowledge conservatively. Do not output "
+        "markdown, citations or source names.\n\n"
+        f"THEMATIC BLOCK: {group_name}\n"
+        "REQUESTED KEYS:\n"
+        + json.dumps(requested, ensure_ascii=False)
+        + "\n\nCOUNTRY EVIDENCE:\n"
+        + evidence_json
+    )
+
+    last: dict[str, str] = {}
+    for _attempt in range(2):
+        client = OpenAI(
+            api_key=api_key,
+            timeout=120.0,
+            max_retries=0,
+        )
+        try:
+            response = client.responses.create(
+                model=model,
+                reasoning={"effort": "low"},
+                input=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                max_output_tokens=6500,
+            )
+            parsed = _parse_writer_response(response.output_text or "")
+            if parsed:
+                last = {
+                    key: parsed.get(key, "")
+                    for key in requested
+                    if str(parsed.get(key, "") or "").strip()
+                }
+                if len(last) == len(requested):
+                    return last
+        except Exception:
+            continue
+    return last
+
+
+def _recover_report_in_chunks(
+    *,
+    api_key: str,
+    model: str,
+    evidence_json: str,
+    draft: dict[str, str],
+) -> dict[str, str]:
+    """Repair an incomplete report through smaller parallel thematic calls."""
+    merged = {key: str(draft.get(key, "") or "") for key in REPORT_SECTION_KEYS}
+
+    jobs = []
+    for group_name, keys in SECTION_RECOVERY_GROUPS:
+        missing = [
+            key for key in keys
+            if not str(merged.get(key, "") or "").strip()
+        ]
+        if missing:
+            jobs.append((group_name, keys))
+
+    if not jobs:
+        return merged
+
+    # Small independent calls are much less timeout-prone than one very long
+    # response. Parallelism keeps the recovery path acceptable for end users.
+    with ThreadPoolExecutor(max_workers=min(4, len(jobs))) as executor:
+        futures = {
+            executor.submit(
+                _generate_section_group,
+                api_key=api_key,
+                model=model,
+                evidence_json=evidence_json,
+                group_name=group_name,
+                keys=keys,
+                existing=merged,
+            ): group_name
+            for group_name, keys in jobs
+        }
+        for future in as_completed(futures):
+            try:
+                block = future.result()
+            except Exception:
+                block = {}
+            for key, value in block.items():
+                if value and not str(merged.get(key, "") or "").strip():
+                    merged[key] = value
+
+    return merged
+
+
 def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     """Generate a complete publishable country report with one recovery pass."""
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -437,7 +631,7 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     model = os.getenv("FLAG_INTELLIGENCE_WRITER_MODEL", "gpt-5.6-sol").strip()
     client = OpenAI(
         api_key=api_key,
-        timeout=240.0,
+        timeout=150.0,
         max_retries=0,
     )
 
@@ -476,7 +670,7 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": base_prompt},
             ],
-            max_output_tokens=20000,
+            max_output_tokens=18000,
         )
         draft = _parse_writer_response(response.output_text or "")
     except Exception as exc:
@@ -484,49 +678,16 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
 
     substantial, missing_core = _report_completeness(draft) if draft else (0, [])
 
-    # Recovery pass: if the first response timed out, parsed badly, or omitted
-    # important sections, ask for a complete replacement rather than publishing
-    # a thin local fallback.
+    # Robust recovery path: generate only missing thematic blocks. This avoids
+    # repeating another very large request after a timeout.
     if substantial < 24 or missing_core:
-        recovery_prompt = (
-            "Produce a COMPLETE replacement report for the same country. The previous "
-            "attempt was incomplete or unavailable. Return one valid JSON object with "
-            "ALL required keys. Fill every applicable core section substantially. "
-            "Do not summarize the whole country into a few sections. Include the full "
-            "historical narrative, seasonal calendar, universities, major cities, "
-            "demographics, national symbols, legal system, science, economy, culture, "
-            "international relations, and categorized notable figures.\n\n"
-            "Required JSON shape:\n"
-            + json.dumps(schema_hint, ensure_ascii=False)
-            + "\n\nEVIDENCE:\n"
-            + evidence_json
+        draft = _recover_report_in_chunks(
+            api_key=api_key,
+            model=model,
+            evidence_json=evidence_json,
+            draft=draft,
         )
-        if draft:
-            recovery_prompt += (
-                "\n\nINCOMPLETE FIRST DRAFT (use only as a starting point; replace "
-                "and expand it):\n" + json.dumps(draft, ensure_ascii=False)
-            )
-        if first_error:
-            recovery_prompt += "\n\nFIRST ATTEMPT ERROR:\n" + first_error
-
-        try:
-            response = client.responses.create(
-                model=model,
-                reasoning={"effort": "low"},
-                input=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": recovery_prompt},
-                ],
-                max_output_tokens=22000,
-            )
-            recovered = _parse_writer_response(response.output_text or "")
-            recovered_count, recovered_missing = _report_completeness(recovered)
-            if recovered_count > substantial:
-                draft = recovered
-                substantial = recovered_count
-                missing_core = recovered_missing
-        except Exception:
-            pass
+        substantial, missing_core = _report_completeness(draft)
 
     if not draft:
         return {}
@@ -555,4 +716,7 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     draft["__qa_passed"] = passed
     draft["__qa_issues"] = issues
     draft["__substantial_sections"] = substantial
+    draft["__generation_mode"] = (
+        "complete" if not first_error and substantial >= 24 else "chunked_recovery"
+    )
     return draft
