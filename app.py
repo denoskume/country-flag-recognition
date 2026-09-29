@@ -254,11 +254,13 @@ def draw_pdf_watermark(canvas, document) -> None:
     canvas.setFont("Helvetica", 7.2)
     physical_page = int(getattr(document, "page", 1))
     if physical_page <= 2:
-        footer_text = "© 2026 Flag Intelligence. All rights reserved."
+        footer_text = (
+            "© 2026 Flag Intelligence · Version 0.1.0 · All rights reserved."
+        )
     else:
         logical_page = physical_page - 2
         footer_text = (
-            "© 2026 Flag Intelligence. All rights reserved. "
+            "© 2026 Flag Intelligence · Version 0.1.0 · All rights reserved. "
             f"· Page {logical_page}"
         )
     canvas.drawCentredString(
