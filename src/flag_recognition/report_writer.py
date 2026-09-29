@@ -659,19 +659,12 @@ def _recover_report_in_chunks(
 
 
 def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
-    """Generate a complete publishable country report with one recovery pass."""
+    """Generate the report through resilient thematic blocks from the start."""
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
         return {}
 
     model = os.getenv("FLAG_INTELLIGENCE_WRITER_MODEL", "gpt-5.6-sol").strip()
-    client = OpenAI(
-        api_key=api_key,
-        timeout=150.0,
-        max_retries=0,
-    )
-
-    schema_hint = {key: "" for key in REPORT_SECTION_KEYS}
     evidence_json = json.dumps(
         report,
         ensure_ascii=False,
@@ -679,52 +672,12 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
         default=str,
     )
 
-    base_prompt = (
-        "Write a comprehensive Flag Intelligence country report. Return every "
-        "required key in one JSON object. Do not shorten the report merely to fit "
-        "the schema: each applicable section must contain useful educational prose. "
-        "Preserve the breadth of the established report while adding the newer "
-        "sections for seasons, universities, cities, demographics, national symbols, "
-        "law, historical timeline and categorized notable figures.\n\n"
-        "Universities must cover historically important and currently prominent "
-        "institutions. Notable figures must be distributed across the dedicated "
-        "field categories with several representative figures where justified.\n\n"
-        "Required JSON shape:\n"
-        + json.dumps(schema_hint, ensure_ascii=False)
-        + "\n\nEVIDENCE:\n"
-        + evidence_json
+    draft = _recover_report_in_chunks(
+        api_key=api_key,
+        model=model,
+        evidence_json=evidence_json,
+        draft={},
     )
-
-    draft: dict[str, str] = {}
-    first_error = ""
-
-    try:
-        response = client.responses.create(
-            model=model,
-            reasoning={"effort": "low"},
-            input=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": base_prompt},
-            ],
-            max_output_tokens=18000,
-        )
-        draft = _parse_writer_response(response.output_text or "")
-    except Exception as exc:
-        first_error = f"{type(exc).__name__}: {str(exc)[:200]}"
-
-    substantial, missing_core = _report_completeness(draft) if draft else (0, [])
-
-    # Robust recovery path: generate only missing thematic blocks. This avoids
-    # repeating another very large request after a timeout.
-    if substantial < 24 or missing_core:
-        draft = _recover_report_in_chunks(
-            api_key=api_key,
-            model=model,
-            evidence_json=evidence_json,
-            draft=draft,
-        )
-        substantial, missing_core = _report_completeness(draft)
-
     if not draft:
         return {}
 
@@ -739,6 +692,7 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
         and bool(draft.get("historical_journey"))
         and bool(draft.get("conclusion"))
     )
+
     issues = list(mechanical)
     if substantial < 24:
         issues.append(
@@ -752,7 +706,5 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     draft["__qa_passed"] = passed
     draft["__qa_issues"] = issues
     draft["__substantial_sections"] = substantial
-    draft["__generation_mode"] = (
-        "complete" if not first_error and substantial >= 24 else "chunked_recovery"
-    )
+    draft["__generation_mode"] = "chunked_primary"
     return draft
