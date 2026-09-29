@@ -20,4 +20,4 @@ reportlab>=4.2
 pydeck>=0.9
 playwright>=1.50
 
-openai>=1.0
+openai>=3.19.2,<4
