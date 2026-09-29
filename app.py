@@ -2765,6 +2765,11 @@ def _build_pdf_report_uncached(
                 context_value("environment"),
             )
 
+        add_authored_section(
+            "Seasons & Climate Calendar",
+            "seasons_climate_calendar",
+        )
+
         if any(
             report_manifest.get(key, False)
             for key in ("flag", "origins", "history")
@@ -3651,7 +3656,7 @@ def _build_pdf_report_uncached(
     return buffer.getvalue()
 
 
-REPORT_WRITER_CACHE_VERSION = "2026-09-29-r9"
+REPORT_WRITER_CACHE_VERSION = "2026-09-29-r10"
 
 def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
     """Create a complete no-failure narrative fallback from local country facts."""
@@ -3700,6 +3705,7 @@ def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
         "introduction": " ".join(intro_bits),
         "physical_geography": "",
         "climate_water_resources": "",
+        "seasons_climate_calendar": "",
         "flag_design_symbolism": "",
         "origins_early_history": "",
         "historical_journey": "",
