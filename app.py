@@ -347,6 +347,59 @@ def _profile_card(
     ])
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def _fetch_official_flag_png(country_code: str) -> bytes | None:
+    """Fetch the canonical country flag image used on the PDF cover."""
+    code = str(country_code or "").strip().lower()
+    if len(code) != 2:
+        return None
+
+    try:
+        response = requests.get(
+            f"https://flagcdn.com/w320/{code}.png",
+            timeout=6,
+            headers={
+                "User-Agent": (
+                    "flag-intelligence/1.0 "
+                    "(country intelligence report generator)"
+                )
+            },
+        )
+        response.raise_for_status()
+        return response.content
+    except requests.RequestException:
+        return None
+
+
+def _cover_flag_image(
+    country_code: str,
+    fallback_image: Image.Image | None,
+) -> PDFImage | None:
+    """Return a report-ready official flag, falling back to the uploaded image."""
+    flag_bytes = _fetch_official_flag_png(country_code)
+
+    try:
+        if flag_bytes:
+            source = BytesIO(flag_bytes)
+            flag_image = PDFImage(source)
+        elif fallback_image is not None:
+            buffer = BytesIO()
+            fallback_image.convert("RGB").save(
+                buffer,
+                format="JPEG",
+                quality=90,
+            )
+            buffer.seek(0)
+            flag_image = PDFImage(buffer)
+        else:
+            return None
+
+        flag_image._restrictSize(42 * mm, 28 * mm)
+        return flag_image
+    except Exception:
+        return None
+
+
 def _report_filename_country(country_name: str) -> str:
     """Return a filesystem-safe country slug for report downloads."""
     normalized = (
@@ -978,7 +1031,36 @@ def _build_pdf_report_uncached(
             ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5 * mm),
         ])
     )
-    story.append(heading)
+    story.append(
+        Table(
+            [[
+                Paragraph(
+                    f"<b>Generated:</b> {report_date} · {report_time}",
+                    meta_style,
+                ),
+                Paragraph(
+                    f"<b>Country code:</b> {country_code}",
+                    ParagraphStyle(
+                        "CoverCodeMeta",
+                        parent=meta_style,
+                        alignment=2,
+                    ),
+                ),
+            ]],
+            colWidths=[
+                (REPORT_WIDTH_MM / 2) * mm,
+                (REPORT_WIDTH_MM / 2) * mm,
+            ],
+            hAlign="LEFT",
+            style=TableStyle([
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2.0 * mm),
+            ]),
+        )
+    )
 
     profile = report.get("country_profile")
 
@@ -1074,54 +1156,179 @@ def _build_pdf_report_uncached(
             if flowables:
                 story.extend(narrative_section(title, flowables))
 
-        # 1. Country at a Glance
-        glance_rows = [
+        # Front page - executive country snapshot
+        cover_flag = _cover_flag_image(country_code, image)
+
+        cover_title = Paragraph(
+            f"<b>{xml_escape(decision)}</b><br/>"
+            '<font size="10">Country Intelligence Report</font>',
+            ParagraphStyle(
+                "CoverCountryTitle",
+                parent=title_style,
+                fontSize=20,
+                leading=24,
+                alignment=0,
+                textColor=colors.HexColor("#111111"),
+                spaceAfter=0,
+            ),
+        )
+
+        cover_identity_rows = [
             ("Capital", profile.get("capital")),
-            ("Country code", country_code),
-            ("ISO alpha-3", profile.get("iso_alpha3")),
-            ("Region", profile.get("subregion") or profile.get("region")),
             ("Population", population_value),
             ("Area", area_value),
             ("Language(s)", profile.get("official_languages")),
             ("Currency", profile.get("currency")),
+            ("National Day", profile.get("national_day")),
         ]
 
-        if image is not None:
-            image_buffer = BytesIO()
-            preview_image = image.copy().convert("RGB")
-            preview_image.thumbnail((1000, 700))
-            preview_image.save(image_buffer, format="JPEG", quality=90)
-            image_buffer.seek(0)
+        identity_cards: list[list[object]] = []
+        for idx in range(0, len(cover_identity_rows), 2):
+            pair = cover_identity_rows[idx:idx + 2]
+            row: list[object] = []
+            for label, value in pair:
+                row.append(
+                    Table(
+                        [[
+                            Paragraph(
+                                xml_escape(label.upper()),
+                                ParagraphStyle(
+                                    f"CoverLabel{idx}{label}",
+                                    parent=small_style,
+                                    fontName="Helvetica-Bold",
+                                    fontSize=6.6,
+                                    leading=8,
+                                    textColor=colors.HexColor("#6B7280"),
+                                ),
+                            )
+                        ], [
+                            Paragraph(
+                                xml_escape(clean(value)),
+                                ParagraphStyle(
+                                    f"CoverValue{idx}{label}",
+                                    parent=value_style,
+                                    fontName="Helvetica-Bold",
+                                    fontSize=9.0,
+                                    leading=11,
+                                    textColor=colors.HexColor("#111111"),
+                                ),
+                            )
+                        ]],
+                        colWidths=[57 * mm],
+                    )
+                )
+            if len(row) == 1:
+                row.append("")
+            identity_cards.append(row)
 
-            preview = PDFImage(image_buffer)
-            preview._restrictSize(40 * mm, 28 * mm)
-            identity_table = info_grid(
-                glance_rows,
-                width_mm=REPORT_WIDTH_MM - 46.0,
-            )
-            identity_content = Table(
-                [[preview, identity_table]],
-                colWidths=[46 * mm, (REPORT_WIDTH_MM - 46.0) * mm],
-            )
-        else:
-            identity_content = info_grid(
-                glance_rows,
-                width_mm=REPORT_WIDTH_MM,
-            )
-        identity_content.setStyle(
+        facts_table = Table(
+            identity_cards,
+            colWidths=[59 * mm, 59 * mm],
+            hAlign="LEFT",
+        )
+        facts_table.setStyle(
             TableStyle([
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("ALIGN", (0, 0), (0, 0), "CENTER"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-                ("TOPPADDING", (0, 0), (-1, -1), 4),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F7F8FA")),
+                ("BOX", (0, 0), (-1, -1), 0.35, colors.HexColor("#E1E5EA")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#E8EBEF")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 7),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
             ])
         )
+
+        if cover_flag is not None:
+            hero = Table(
+                [[cover_flag, cover_title]],
+                colWidths=[50 * mm, (REPORT_WIDTH_MM - 50.0) * mm],
+                hAlign="LEFT",
+            )
+            hero.setStyle(
+                TableStyle([
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                    ("TOPPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ])
+            )
+            story.extend([hero, Spacer(1, 2.5 * mm)])
+        else:
+            story.extend([cover_title, Spacer(1, 2.5 * mm)])
+
         story.extend([
-            section_box("Country at a Glance", identity_content),
-            Spacer(1, 3 * mm),
+            Paragraph("Country Snapshot", narrative_heading_style),
+            HRFlowable(
+                width="100%",
+                thickness=0.7,
+                color=colors.HexColor("#B8BEC7"),
+                spaceBefore=0,
+                spaceAfter=1.5 * mm,
+            ),
+            facts_table,
+            Spacer(1, 2.5 * mm),
         ])
+
+        emergency_value = clean(profile.get("emergency_numbers"))
+        practical_summary = [
+            ("Emergency", emergency_value),
+            ("Calling code", profile.get("calling_code")),
+            ("Driving side", profile.get("driving_side")),
+            ("Internet domain", profile.get("internet_domain")),
+        ]
+        practical_cells: list[object] = []
+        for label, value in practical_summary:
+            cleaned = clean(value)
+            if cleaned == "Not available":
+                continue
+            practical_cells.append(
+                Paragraph(
+                    f"<b>{xml_escape(label)}:</b> {xml_escape(cleaned)}",
+                    ParagraphStyle(
+                        f"CoverPractical{label}",
+                        parent=small_style,
+                        fontSize=7.4,
+                        leading=9.2,
+                        textColor=colors.HexColor("#222222"),
+                    ),
+                )
+            )
+
+        if practical_cells:
+            practical_table = Table(
+                [practical_cells],
+                colWidths=[
+                    (REPORT_WIDTH_MM / len(practical_cells)) * mm
+                    for _ in practical_cells
+                ],
+                hAlign="LEFT",
+            )
+            practical_table.setStyle(
+                TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FFF8E8")),
+                    ("BOX", (0, 0), (-1, -1), 0.45, colors.HexColor("#E2C46F")),
+                    ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#EAD99D")),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ])
+            )
+            story.extend([
+                Paragraph("Emergency & Practical", narrative_heading_style),
+                HRFlowable(
+                    width="100%",
+                    thickness=0.7,
+                    color=colors.HexColor("#B8BEC7"),
+                    spaceBefore=0,
+                    spaceAfter=1.5 * mm,
+                ),
+                practical_table,
+                Spacer(1, 2.5 * mm),
+            ])
 
         location_map = _build_pdf_location_map(
             profile.get("latitude"),
@@ -1132,8 +1339,7 @@ def _build_pdf_report_uncached(
             country_code=country_code,
         )
         if location_map is not None:
-            # The front page introduces both identity and geographic position.
-            location_map.drawHeight = 68 * mm
+            location_map.drawHeight = 78 * mm
             location_content = Table(
                 [[location_map]],
                 colWidths=[REPORT_WIDTH_MM * mm],
@@ -1143,18 +1349,23 @@ def _build_pdf_report_uncached(
                 TableStyle([
                     ("ALIGN", (0, 0), (-1, -1), "CENTER"),
                     ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 4),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-                    ("TOPPADDING", (0, 0), (-1, -1), 4),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                    ("TOPPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
                 ])
             )
-            story.extend(
-                narrative_section(
-                    "Geographic Location",
-                    [location_content],
-                )
-            )
+            story.extend([
+                Paragraph("Geographic Location", narrative_heading_style),
+                HRFlowable(
+                    width="100%",
+                    thickness=0.7,
+                    color=colors.HexColor("#B8BEC7"),
+                    spaceBefore=0,
+                    spaceAfter=1.5 * mm,
+                ),
+                location_content,
+            ])
 
         # Contents is unnumbered front matter. Page references are populated
         # automatically during the multi-pass PDF build.
