@@ -2953,7 +2953,7 @@ def _build_pdf_report_uncached(
             Paragraph(
                 xml_escape(
                     "Source line: World Bank · Wikidata · REST Countries · "
-                    "Wikipedia/MediaWiki · Livingcost · Numbeo · "
+                    "Wikipedia/MediaWiki · Nobel Prize API · Livingcost · Numbeo · "
                     "GlobalPetrolPrices · EmergencyNumberAPI where available."
                 ),
                 small_style,
@@ -3271,7 +3271,7 @@ def resolve_emergency_numbers(
 
 
 COUNTRY_PROFILE_SCHEMA_VERSION = "2026-09-29-v21"
-COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-29-v27"
+COUNTRY_INTELLIGENCE_SCHEMA_VERSION = "2026-09-29-v28"
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_country_profile_v2(
