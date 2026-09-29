@@ -76,12 +76,26 @@ WORLD_BANK_OVERRIDES = {
 # These values are used only when the live source is missing or ambiguous.
 COUNTRY_PROFILE_OVERRIDES = {
     "in": {
-        # Verified against the Government of India / Ministry of Home Affairs.
-        # 112 is the unified national emergency number. Legacy secondary
-        # numbers remain in use for individual services.
+        # Verified against Government of India sources.
         "emergency_numbers": (
             "General: 112 | Police: 100 | Ambulance: 102, 108 | Fire: 101"
         ),
+        "national_day": "15 August (Independence Day)",
+        "independence_day": "15 August 1947",
+        "former_colonial_powers": "United Kingdom",
+        "colonial_period": (
+            "British colonial rule; independence achieved on 15 August 1947"
+        ),
+        "independence_leader": "Mahatma Gandhi",
+        "historical_context": (
+            "India was under British colonial rule before becoming independent "
+            "on 15 August 1947. The independence movement involved a broad range "
+            "of political leaders and organisations, with Mahatma Gandhi playing "
+            "a central role in the mass non-violent movement against British rule."
+        ),
+        # Use the official transliteration in the PDF because the default
+        # report font may not support Devanagari glyphs consistently.
+        "national_motto": "Satyameva Jayate",
     },
     "fr": {
         "currency": "Euro (EUR)",
