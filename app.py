@@ -3700,7 +3700,7 @@ def _build_pdf_report_uncached(
     return buffer.getvalue()
 
 
-REPORT_WRITER_CACHE_VERSION = "2026-09-29-r17"
+REPORT_WRITER_CACHE_VERSION = "2026-09-29-r18"
 
 def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
     """Build a complete local report when the external writer is unavailable."""
@@ -4845,48 +4845,38 @@ def show_result(
     }
 
     if accepted:
-        # Show progress immediately after recognition. Local country-context
-        # collection can itself take several seconds, so it must be covered by
-        # the same user-visible status as report authoring.
-        with st.spinner("Researching, verifying and writing the report..."):
+        with st.spinner("Writing the country report..."):
+            # The writer authors the report directly from the resolved country
+            # identity. No encyclopedia/context payload is injected into the prose.
+            writer_input = {
+                "decision": decision,
+                "country_code": decision_code.upper(),
+                "input_mode": input_mode,
+            }
+
             try:
-                intelligence_bundle = get_country_intelligence_v2(
-                    decision_code,
-                    tuple(
-                        display_country_name(code)
-                        for code in VISUAL_EQUIVALENCE_GROUPS.get(
-                            decision_code,
-                            {decision_code},
-                        )
-                        if code != decision_code
+                authored = _cached_authored_report(
+                    json.dumps(
+                        writer_input,
+                        sort_keys=True,
+                        ensure_ascii=False,
                     ),
-                    schema_version=COUNTRY_INTELLIGENCE_SCHEMA_VERSION,
+                    REPORT_WRITER_CACHE_VERSION,
                 )
-                report["country_profile"] = intelligence_bundle.get("profile", {})
-                report["country_intelligence_v2"] = intelligence_bundle.get(
-                    "intelligence",
-                    {},
-                )
-                report["country_intelligence_completion"] = intelligence_bundle.get(
-                    "completion",
-                    {},
-                )
-                report["country_intelligence_validation"] = intelligence_bundle.get(
-                    "validation",
-                    [],
-                )
-                report["official_report_manifest"] = intelligence_bundle.get(
-                    "report_manifest",
-                    {},
-                )
-                report["official_report_missing_required"] = intelligence_bundle.get(
-                    "missing_required_report_sections",
-                    [],
+                report["authored_report"] = (
+                    authored
+                    if isinstance(authored, dict)
+                    else {}
                 )
             except Exception as exc:
-                report["local_context_error"] = (
+                report["authored_report_error"] = (
                     f"{type(exc).__name__}: {str(exc)[:240]}"
                 )
+                report["authored_report"] = {}
+
+            # Snapshot metadata is collected only for the PDF cover/table.
+            # It is deliberately excluded from the writer input above.
+            try:
                 profile = get_country_profile_v2(
                     decision_code,
                     schema_version=COUNTRY_PROFILE_SCHEMA_VERSION,
@@ -4897,30 +4887,14 @@ def show_result(
                     profile,
                     historical_profile,
                 )
-
-            try:
-                evidence_json = json.dumps(
-                    report,
-                    sort_keys=True,
-                    ensure_ascii=False,
-                    default=str,
-                )
-                authored = _cached_authored_report(
-                    evidence_json,
-                    REPORT_WRITER_CACHE_VERSION,
-                )
-                if isinstance(authored, dict) and authored:
-                    report["authored_report"] = authored
-                else:
-                    report["authored_report_error"] = (
-                        "Writer returned no usable authored report."
-                    )
-                    report["authored_report"] = {}
             except Exception as exc:
-                report["authored_report_error"] = (
+                report["profile_metadata_error"] = (
                     f"{type(exc).__name__}: {str(exc)[:240]}"
                 )
-                report["authored_report"] = {}
+                report["country_profile"] = {
+                    "name": decision,
+                    "code": decision_code.upper(),
+                }
 
     missing_required = report.get("official_report_missing_required")
     authored_report = report.get("authored_report")
