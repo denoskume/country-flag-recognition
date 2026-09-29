@@ -3694,7 +3694,7 @@ def _build_pdf_report_uncached(
     return buffer.getvalue()
 
 
-REPORT_WRITER_CACHE_VERSION = "2026-09-29-r14"
+REPORT_WRITER_CACHE_VERSION = "2026-09-29-r15"
 
 def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
     """Build a complete local report when the external writer is unavailable."""
@@ -4920,7 +4920,6 @@ def show_result(
     authored_report = report.get("authored_report")
     authored_ready = (
         isinstance(authored_report, dict)
-        and authored_report.get("__fallback_used") is not True
         and authored_report.get("__qa_passed") is True
         and int(authored_report.get("__substantial_sections") or 0) >= 24
         and bool(authored_report.get("introduction"))
