@@ -14,7 +14,9 @@ from pathlib import Path
 from urllib.parse import quote_plus
 import sys
 import tempfile
+import threading
 from time import strftime
+import time
 from xml.sax.saxutils import escape as xml_escape
 
 import pandas as pd
@@ -3700,7 +3702,7 @@ def _build_pdf_report_uncached(
     return buffer.getvalue()
 
 
-REPORT_WRITER_CACHE_VERSION = "2026-09-29-r26"
+REPORT_WRITER_CACHE_VERSION = "2026-09-29-r27"
 
 def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
     """Build a complete local report when the external writer is unavailable."""
@@ -4765,6 +4767,29 @@ if prompt_submission is not None:
         text_process = True
 
 
+def _report_countdown(
+    placeholder,
+    *,
+    total_seconds: int = 295,
+    stop_event=None,
+) -> None:
+    """Update a visible report-generation countdown until completion."""
+    started = time.monotonic()
+    while True:
+        if stop_event is not None and stop_event.is_set():
+            break
+        elapsed = int(time.monotonic() - started)
+        remaining = max(0, total_seconds - elapsed)
+        minutes, seconds = divmod(remaining, 60)
+        placeholder.info(
+            f"Writing the full country report — estimated time remaining: "
+            f"{minutes:02d}:{seconds:02d}"
+        )
+        if remaining <= 0:
+            break
+        time.sleep(1)
+
+
 def show_result(
     image: Image.Image | None = None,
     direct_code: str | None = None,
@@ -4855,6 +4880,19 @@ def show_result(
             if secret_key:
                 os.environ["OPENAI_API_KEY"] = secret_key
 
+        countdown_slot = st.empty()
+        countdown_stop = threading.Event()
+        countdown_thread = threading.Thread(
+            target=_report_countdown,
+            kwargs={
+                "placeholder": countdown_slot,
+                "total_seconds": 295,
+                "stop_event": countdown_stop,
+            },
+            daemon=True,
+        )
+        countdown_thread.start()
+
         with st.spinner("Writing the country report..."):
             # The writer authors the report directly from the resolved country
             # identity. No encyclopedia/context payload is injected into the prose.
@@ -4883,6 +4921,10 @@ def show_result(
                     f"{type(exc).__name__}: {str(exc)[:240]}"
                 )
                 report["authored_report"] = {}
+            finally:
+                countdown_stop.set()
+                countdown_thread.join(timeout=1.5)
+                countdown_slot.empty()
 
             # Snapshot metadata is collected only for the PDF cover/table.
             # It is deliberately excluded from the writer input above.
