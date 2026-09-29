@@ -616,6 +616,58 @@ def _generate_section_group(
     return best
 
 
+def _generate_single_section(
+    *,
+    api_key: str,
+    model: str,
+    evidence_json: str,
+    key: str,
+) -> str:
+    """Write one section independently as a last-resort editorial pass."""
+    prompt = (
+        "Write ONLY the Flag Intelligence section identified below. "
+        "Return one JSON object with exactly that single key. "
+        "Write original, coherent, publication-ready prose specific to the section. "
+        "Use the supplied country evidence only as factual support. "
+        "Do not copy evidence fragments verbatim, do not include source labels, "
+        "MediaWiki headings, citations, URLs, markdown, or boilerplate. "
+        "If the section concerns notable figures, include several relevant people "
+        "with compact mini-biographies where reliable. "
+        "If the section concerns universities, name and explain historically important "
+        "and currently prominent institutions where reliable.\n\n"
+        f"SECTION KEY: {key}\n"
+        "REQUIRED JSON:\n"
+        + json.dumps({key: ""}, ensure_ascii=False)
+        + "\n\nCOUNTRY EVIDENCE:\n"
+        + evidence_json
+    )
+
+    for candidate_model in _model_candidates(model):
+        for _attempt in range(3):
+            client = OpenAI(
+                api_key=api_key,
+                timeout=75.0,
+                max_retries=0,
+            )
+            try:
+                response = client.responses.create(
+                    model=candidate_model,
+                    reasoning={"effort": "low"},
+                    input=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": prompt},
+                    ],
+                    max_output_tokens=2600,
+                )
+                parsed = _parse_writer_response(response.output_text or "")
+                value = str(parsed.get(key, "") or "").strip()
+                if value:
+                    return value
+            except Exception:
+                continue
+    return ""
+
+
 def _recover_report_in_chunks(
     *,
     api_key: str,
@@ -686,6 +738,33 @@ def _recover_report_in_chunks(
             missing_set = set(missing_core)
             if not missing_core:
                 break
+
+    # Final editorial completion: write every still-empty section
+    # independently. This keeps the final report authored rather than stitched.
+    missing_keys = [
+        key for key in REPORT_SECTION_KEYS
+        if not str(merged.get(key, "") or "").strip()
+    ]
+    if missing_keys:
+        with ThreadPoolExecutor(max_workers=min(5, len(missing_keys))) as executor:
+            futures = {
+                executor.submit(
+                    _generate_single_section,
+                    api_key=api_key,
+                    model=model,
+                    evidence_json=evidence_json,
+                    key=key,
+                ): key
+                for key in missing_keys
+            }
+            for future in as_completed(futures):
+                key = futures[future]
+                try:
+                    value = future.result()
+                except Exception:
+                    value = ""
+                if value:
+                    merged[key] = value
 
     return merged
 
