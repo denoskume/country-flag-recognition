@@ -453,7 +453,7 @@ def _render_geography_deck_png(
                     html_path.as_uri(),
                     wait_until="domcontentloaded",
                 )
-                page.wait_for_timeout(4500)
+                page.wait_for_timeout(1000)
 
                 map_element = page.locator(".deckgl-wrapper").first
                 if map_element.count() == 0:
