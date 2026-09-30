@@ -4029,7 +4029,7 @@ def _build_pdf_report_uncached(
     return buffer.getvalue()
 
 
-REPORT_WRITER_CACHE_VERSION = "2026-09-30-r58"
+REPORT_WRITER_CACHE_VERSION = "2026-09-30-r59"
 
 def _cached_authored_report(
     evidence_json: str,
