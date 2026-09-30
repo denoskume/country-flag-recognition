@@ -180,3 +180,15 @@ def test_probe_groq_uses_direct_responses_endpoint(monkeypatch):
     assert "groq ok" in detail
     assert calls["url"].endswith("/responses")
     assert calls["json"]["model"] == "openai/gpt-oss-20b"
+
+
+def test_llm_credentials_available_for_groq(monkeypatch):
+    monkeypatch.setenv("FLAG_INTELLIGENCE_LLM_BACKEND", "groq")
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
+    assert llm_backend.llm_credentials_available() is True
+
+
+def test_llm_credentials_missing_for_groq(monkeypatch):
+    monkeypatch.setenv("FLAG_INTELLIGENCE_LLM_BACKEND", "groq")
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    assert llm_backend.llm_credentials_available() is False
