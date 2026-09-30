@@ -71,6 +71,28 @@ def _bootstrap_openai_api_key() -> bool:
 
 
 OPENAI_API_READY = _bootstrap_openai_api_key()
+
+
+def _bootstrap_ollama_settings() -> None:
+    """Load optional Ollama connection settings from Streamlit secrets."""
+    mappings = {
+        "OLLAMA_BASE_URL": "OLLAMA_BASE_URL",
+        "FLAG_INTELLIGENCE_OLLAMA_MODEL": "FLAG_INTELLIGENCE_OLLAMA_MODEL",
+        "OLLAMA_AUTH_BEARER": "OLLAMA_AUTH_BEARER",
+        "FLAG_INTELLIGENCE_LLM_BACKEND": "FLAG_INTELLIGENCE_LLM_BACKEND",
+    }
+    for secret_name, env_name in mappings.items():
+        if os.getenv(env_name, "").strip():
+            continue
+        try:
+            value = str(st.secrets[secret_name]).strip()
+        except Exception:
+            value = ""
+        if value:
+            os.environ[env_name] = value
+
+
+_bootstrap_ollama_settings()
 import yaml
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
@@ -182,6 +204,10 @@ from flag_recognition.report_writer import (
     generate_authored_report,
     interpret_country_request,
     probe_openai_api,
+)
+from flag_recognition.llm_backend import (
+    llm_backend_name,
+    llm_model_name,
 )
 
 
@@ -4846,21 +4872,21 @@ def _country_code_from_free_text(message: str) -> str | None:
 
 
 # Conversation state: identify a country first, then clarify the report brief.
-API_PROBE_VERSION = "2026-09-30-r48"
+API_PROBE_VERSION = "2026-09-30-r49"
 if st.session_state.get("fi_api_probe_version") != API_PROBE_VERSION:
     api_ok, api_detail = probe_openai_api()
     st.session_state.fi_api_probe_version = API_PROBE_VERSION
     st.session_state.fi_api_ok = api_ok
     st.session_state.fi_api_detail = api_detail
-    print(f"[Flag Intelligence OpenAI probe] ok={api_ok} detail={api_detail}")
+    print(f"[Flag Intelligence LLM probe] backend={llm_backend_name()} model={llm_model_name()} ok={api_ok} detail={api_detail}")
 
 if str(st.query_params.get("debug", "")).strip() == "1":
     debug_ok = bool(st.session_state.get("fi_api_ok"))
     debug_detail = str(st.session_state.get("fi_api_detail") or "")
     if debug_ok:
-        st.success("OpenAI API: OK")
+        st.success(f"LLM backend: {llm_backend_name()} / {llm_model_name()} — OK")
     else:
-        st.error(f"OpenAI API diagnostic: {debug_detail}")
+        st.error(f"LLM backend diagnostic: {debug_detail}")
 
 
 if "fi_stage" not in st.session_state:
