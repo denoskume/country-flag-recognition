@@ -3779,7 +3779,7 @@ def _build_pdf_report_uncached(
     return buffer.getvalue()
 
 
-REPORT_WRITER_CACHE_VERSION = "2026-09-29-r32"
+REPORT_WRITER_CACHE_VERSION = "2026-09-30-r33"
 
 def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
     """Build a complete local report when the external writer is unavailable."""
@@ -5252,6 +5252,27 @@ def show_result(
             if not str(key).startswith("__")
         )
     )
+
+    if accepted and not authored_ready:
+        fallback_report = _fallback_authored_report(report)
+        if isinstance(fallback_report, dict):
+            report["authored_report"] = fallback_report
+            authored_report = fallback_report
+            authored_ready = any(
+                isinstance(value, str) and value.strip()
+                for key, value in fallback_report.items()
+                if not str(key).startswith("__")
+            )
+            if authored_ready:
+                fallback_message = (
+                    "The writer did not finish within the generation window, "
+                    "so I prepared the report from the local country data instead."
+                )
+                st.session_state.fi_messages.append(
+                    {"role": "assistant", "content": fallback_message}
+                )
+                _render_chat_message("assistant", fallback_message)
+
     report_ready = accepted and authored_ready
 
     if report_ready:
