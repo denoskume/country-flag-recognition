@@ -5229,39 +5229,48 @@ if text_process:
         st.session_state.fi_stage = "clarifying"
         st.session_state.fi_clarification_turn = 1
 
-        with st.spinner("Understanding your request..."):
-            turn = continue_report_conversation(
-                country_name,
-                initial_report_request,
-                initial_report_request,
-                turn_number=1,
+        try:
+            with st.spinner("Understanding your request..."):
+                turn = continue_report_conversation(
+                    country_name,
+                    initial_report_request,
+                    initial_report_request,
+                    turn_number=1,
+                )
+        except Exception as exc:
+            assistant_text = (
+                "Ollama could not answer this turn. "
+                f"{type(exc).__name__}: {str(exc)[:220]}"
             )
-        normalized_request = str(
-            turn.get("normalized_request") or initial_report_request
-        ).strip()
-        st.session_state.fi_report_request = normalized_request
-        assistant_text = str(turn.get("reply") or "").strip()
-
-        if str(turn.get("action") or "ask") == "generate":
-            st.session_state.fi_stage = "generating"
-            _render_chat_message("assistant", assistant_text)
             st.session_state.fi_messages.append(
                 {"role": "assistant", "content": assistant_text}
             )
-            show_result(
-                direct_code=resolved_code,
-                user_request=normalized_request,
-            )
-            st.session_state.fi_stage = "idle"
-            st.session_state.fi_country_code = None
-            st.session_state.fi_country_name = None
-            st.session_state.fi_report_request = ""
-            st.session_state.fi_clarification_turn = 0
+            _render_chat_message("assistant", assistant_text)
         else:
+            normalized_request = str(
+                turn.get("normalized_request") or initial_report_request
+            ).strip()
+            st.session_state.fi_report_request = normalized_request
+            assistant_text = str(turn.get("reply") or "").strip()
+
             st.session_state.fi_messages.append(
                 {"role": "assistant", "content": assistant_text}
             )
             _render_chat_message("assistant", assistant_text)
+
+            if str(turn.get("action") or "") == "generate":
+                st.session_state.fi_stage = "generating"
+                show_result(
+                    direct_code=resolved_code,
+                    user_request=normalized_request,
+                )
+                st.session_state.fi_stage = "idle"
+                st.session_state.fi_country_code = None
+                st.session_state.fi_country_name = None
+                st.session_state.fi_report_request = ""
+                st.session_state.fi_clarification_turn = 0
+            else:
+                st.session_state.fi_stage = "clarifying"
     else:
         show_result(
             direct_code=resolved_code,
@@ -5279,49 +5288,59 @@ if conversation_process:
         existing_request = str(st.session_state.fi_report_request or "")
         turn_number = int(st.session_state.fi_clarification_turn or 0) + 1
 
-    with st.spinner("Understanding your request..."):
-        turn = continue_report_conversation(
-            country_name,
-            existing_request,
-            conversation_text,
-            turn_number=turn_number,
+    try:
+        with st.spinner("Understanding your request..."):
+            turn = continue_report_conversation(
+                country_name,
+                existing_request,
+                conversation_text,
+                turn_number=turn_number,
+            )
+    except Exception as exc:
+        assistant_text = (
+            "Ollama could not answer this turn. "
+            f"{type(exc).__name__}: {str(exc)[:220]}"
         )
-
-    normalized_request = str(
-        turn.get("normalized_request")
-        or existing_request
-        or conversation_text
-    ).strip()
-    assistant_text = str(turn.get("reply") or "").strip()
-    action = str(turn.get("action") or "ask").strip()
-
-    st.session_state.fi_report_request = normalized_request
-    st.session_state.fi_clarification_turn = turn_number
-
-    st.session_state.fi_messages.append(
-        {"role": "assistant", "content": assistant_text}
-    )
-    _render_chat_message("assistant", assistant_text)
-
-    if action == "generate":
-        st.session_state.fi_stage = "generating"
-
-        stored_image = None
-        stored_bytes = st.session_state.fi_image_bytes
-        if stored_bytes:
-            stored_image = Image.open(BytesIO(stored_bytes)).convert("RGB")
-
-        show_result(
-            image=stored_image,
-            direct_code=country_code,
-            user_request=normalized_request,
+        st.session_state.fi_messages.append(
+            {"role": "assistant", "content": assistant_text}
         )
-
-        st.session_state.fi_stage = "idle"
-        st.session_state.fi_country_code = None
-        st.session_state.fi_country_name = None
-        st.session_state.fi_report_request = ""
-        st.session_state.fi_image_bytes = None
-        st.session_state.fi_clarification_turn = 0
+        _render_chat_message("assistant", assistant_text)
     else:
-        st.session_state.fi_stage = "clarifying"
+        normalized_request = str(
+            turn.get("normalized_request")
+            or existing_request
+            or conversation_text
+        ).strip()
+        assistant_text = str(turn.get("reply") or "").strip()
+        action = str(turn.get("action") or "").strip()
+
+        st.session_state.fi_report_request = normalized_request
+        st.session_state.fi_clarification_turn = turn_number
+
+        st.session_state.fi_messages.append(
+            {"role": "assistant", "content": assistant_text}
+        )
+        _render_chat_message("assistant", assistant_text)
+
+        if action == "generate":
+            st.session_state.fi_stage = "generating"
+
+            stored_image = None
+            stored_bytes = st.session_state.fi_image_bytes
+            if stored_bytes:
+                stored_image = Image.open(BytesIO(stored_bytes)).convert("RGB")
+
+            show_result(
+                image=stored_image,
+                direct_code=country_code,
+                user_request=normalized_request,
+            )
+
+            st.session_state.fi_stage = "idle"
+            st.session_state.fi_country_code = None
+            st.session_state.fi_country_name = None
+            st.session_state.fi_report_request = ""
+            st.session_state.fi_image_bytes = None
+            st.session_state.fi_clarification_turn = 0
+        else:
+            st.session_state.fi_stage = "clarifying"
