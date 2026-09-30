@@ -1149,10 +1149,36 @@ def _build_scoped_pdf_report(
 
     titles = {
         "introduction": "Introduction",
+        "physical_geography": "Physical Geography",
+        "climate_water_resources": "Climate, Water & Natural Resources",
+        "seasons_climate_calendar": "Seasons & Climate Calendar",
+        "flag_design_symbolism": "Flag Design & Symbolism",
         "origins_early_history": "Origins & Early History",
         "historical_journey": "Historical Journey",
         "key_historical_timeline": "Key Historical Timeline",
         "state_formation_identity": "State Formation & National Identity",
+        "government_structure": "Government & Administrative Structure",
+        "legal_constitutional_system": "Legal & Constitutional System",
+        "leadership_through_time": "Leadership Through Time",
+        "people_society": "People & Society",
+        "demographics_population_structure": "Demographics & Population Structure",
+        "languages_religion": "Languages & Religion",
+        "health_public_health": "Health & Public Health",
+        "culture_cuisine_music_sport": "Culture, Cuisine, Music & Sport",
+        "festivals_holidays_traditions": "Festivals, Holidays & Traditions",
+        "heritage_landmarks": "Heritage & Major Landmarks",
+        "major_cities_regional_profiles": "Major Cities & Regional Profiles",
+        "national_symbols_identity": "National Symbols & Identity",
+        "literature_philosophy_thought": "Literature, Philosophy & Thought",
+        "economy_trade_industries": "Economy, Trade & Key Industries",
+        "infrastructure_transport_energy": "Infrastructure, Transport & Energy",
+        "education_research": "Education & Research",
+        "universities_higher_education": "Universities & Higher Education",
+        "science_discovery_invention": "Science, Discovery & Invention",
+        "environment_biodiversity": "Environment & Biodiversity",
+        "cost_of_living": "Cost of Living & Everyday Prices",
+        "practical_emergency": "Practical & Emergency Information",
+        "international_relations": "International Relations",
         "conclusion": "Conclusion",
     }
 
@@ -4003,7 +4029,7 @@ def _build_pdf_report_uncached(
     return buffer.getvalue()
 
 
-REPORT_WRITER_CACHE_VERSION = "2026-09-30-r35"
+REPORT_WRITER_CACHE_VERSION = "2026-09-30-r55"
 
 def _cached_authored_report(
     evidence_json: str,
