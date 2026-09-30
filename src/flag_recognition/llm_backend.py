@@ -119,6 +119,10 @@ class _OllamaResponses:
             "messages": messages,
             "stream": False,
             "keep_alive": "30m",
+            "think": os.getenv(
+                "FLAG_INTELLIGENCE_OLLAMA_THINK",
+                "false",
+            ).strip().lower() in {"1", "true", "yes", "on"},
             "options": {
                 "temperature": 0.2,
             },
@@ -151,6 +155,15 @@ class _OllamaResponses:
             output_text = str(message.get("content") or "")
         elif isinstance(data, dict):
             output_text = str(data.get("response") or "")
+
+        if not output_text.strip():
+            thinking = ""
+            if isinstance(message, dict):
+                thinking = str(message.get("thinking") or "")
+            raise RuntimeError(
+                "Ollama returned no answer content"
+                + (f"; thinking_chars={len(thinking)}" if thinking else "")
+            )
 
         return SimpleNamespace(output_text=output_text)
 
