@@ -130,7 +130,10 @@ from flag_recognition.report_manifest import (
     build_report_manifest,
     missing_required_sections,
 )
-from flag_recognition.report_writer import generate_authored_report
+from flag_recognition.report_writer import (
+    generate_authored_report,
+    generate_report_follow_up,
+)
 
 
 DISPLAY_NAME_OVERRIDES = {
@@ -5044,9 +5047,9 @@ if conversation_process:
         st.session_state.fi_report_request = conversation_text
         st.session_state.fi_stage = "awaiting_detail"
 
-        follow_up = (
-            "Would you like a concise or detailed report, and is there "
-            "anything you want me to prioritize or leave out?"
+        follow_up = generate_report_follow_up(
+            str(st.session_state.fi_country_name or ""),
+            conversation_text,
         )
         st.session_state.fi_messages.append(
             {"role": "assistant", "content": follow_up}
