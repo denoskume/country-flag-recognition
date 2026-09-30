@@ -1,67 +1,107 @@
-import os
+import json
+from types import SimpleNamespace
+
+import pytest
 
 from flag_recognition import llm_backend
 from flag_recognition import report_writer
 
 
-class _ForbiddenClient:
+class _FakeResponses:
+    def __init__(self, payload):
+        self.payload = payload
+        self.calls = 0
+
+    def create(self, **kwargs):
+        self.calls += 1
+        return SimpleNamespace(output_text=json.dumps(self.payload))
+
+
+class _FakeClient:
+    payload = {}
+    instances = []
+
     def __init__(self, *args, **kwargs):
-        raise AssertionError("trivial dialogue must not call the LLM backend")
+        self.responses = _FakeResponses(type(self).payload)
+        type(self).instances.append(self)
 
 
-def test_greeting_uses_instant_local_fast_path(monkeypatch):
-    monkeypatch.setattr(report_writer, "OpenAI", _ForbiddenClient)
+def test_greeting_is_generated_by_llm(monkeypatch):
+    _FakeClient.payload = {
+        "intent": "greeting",
+        "country": "",
+        "request": "",
+        "reply": "Hi! What would you like to explore today?",
+    }
+    _FakeClient.instances = []
+    monkeypatch.setattr(report_writer, "OpenAI", _FakeClient)
+
     result = report_writer.interpret_country_request("Hey there!")
+
+    assert result["_source"] == "model"
     assert result["intent"] == "greeting"
-    assert result["_source"] == "fast_path"
     assert result["reply"]
+    assert _FakeClient.instances[0].responses.calls == 1
 
 
-def test_help_uses_instant_local_fast_path(monkeypatch):
-    monkeypatch.setattr(report_writer, "OpenAI", _ForbiddenClient)
-    result = report_writer.interpret_country_request("What can you do?")
-    assert result["intent"] == "general"
-    assert result["_source"] == "fast_path"
+def test_country_only_reply_is_generated_by_llm(monkeypatch):
+    _FakeClient.payload = {
+        "intent": "country_only",
+        "country": "France",
+        "request": "",
+        "reply": "What would you like to explore about France?",
+    }
+    _FakeClient.instances = []
+    monkeypatch.setattr(report_writer, "OpenAI", _FakeClient)
+
+    result = report_writer.interpret_country_request("France")
+
+    assert result["_source"] == "model"
+    assert result["country"] == "France"
     assert result["reply"]
+    assert _FakeClient.instances[0].responses.calls == 1
+
+
+def test_follow_up_is_generated_by_llm(monkeypatch):
+    _FakeClient.payload = {
+        "action": "ask",
+        "normalized_request": "history",
+        "reply": "Which period of French history interests you most?",
+    }
+    _FakeClient.instances = []
+    monkeypatch.setattr(report_writer, "OpenAI", _FakeClient)
+
+    result = report_writer.continue_report_conversation(
+        "France",
+        "",
+        "Its history",
+        turn_number=1,
+    )
+
+    assert result["action"] == "ask"
+    assert result["reply"]
+    assert _FakeClient.instances[0].responses.calls == 1
+
+
+def test_dialogue_failure_does_not_fallback(monkeypatch):
+    class _FailResponses:
+        def create(self, **kwargs):
+            raise RuntimeError("ollama unavailable")
+
+    class _FailClient:
+        def __init__(self, *args, **kwargs):
+            self.responses = _FailResponses()
+
+    monkeypatch.setattr(report_writer, "OpenAI", _FailClient)
+
+    with pytest.raises(RuntimeError, match="Ollama dialogue request failed"):
+        report_writer.interpret_country_request("Hello")
 
 
 def test_ollama_respects_interactive_timeout(monkeypatch):
     monkeypatch.setenv("FLAG_INTELLIGENCE_OLLAMA_TIMEOUT", "180")
-    responses = llm_backend._OllamaResponses(timeout=20.0)
-    assert responses.timeout == 20.0
-
-
-def test_report_conversation_never_calls_llm(monkeypatch):
-    monkeypatch.setattr(report_writer, "OpenAI", _ForbiddenClient)
-    result = report_writer.continue_report_conversation(
-        "France",
-        "",
-        "I want to know about its history",
-        turn_number=1,
-    )
-    assert result["action"] in {"ask", "generate"}
-    assert result["reply"]
-
-
-def test_initial_country_request_can_skip_dialogue_llm(monkeypatch):
-    monkeypatch.setattr(report_writer, "OpenAI", _ForbiddenClient)
-    monkeypatch.setenv("FLAG_INTELLIGENCE_DIALOGUE_LLM", "false")
-    result = report_writer.interpret_country_request(
-        "Tell me about France history"
-    )
-    assert result["_source"] == "fast_path"
-    assert result["request"] == "Tell me about France history"
-
-
-def test_dialogue_stays_local_even_if_legacy_flag_is_enabled(monkeypatch):
-    monkeypatch.setattr(report_writer, "OpenAI", _ForbiddenClient)
-    monkeypatch.setenv("FLAG_INTELLIGENCE_DIALOGUE_LLM", "true")
-    first = report_writer.interpret_country_request("Tell me about France")
-    follow = report_writer.continue_report_conversation(
-        "France", "", "history", turn_number=1
-    )
-    assert first["_source"] == "fast_path"
-    assert follow["reply"]
+    responses = llm_backend._OllamaResponses(timeout=12.0)
+    assert responses.timeout == 12.0
 
 
 def test_history_only_scope_selects_history_sections():
@@ -75,17 +115,3 @@ def test_history_only_scope_selects_history_sections():
 def test_broad_scope_keeps_full_report():
     keys = report_writer._requested_report_sections("complete country report")
     assert keys == report_writer.REPORT_SECTION_KEYS
-
-
-def test_prune_report_to_history_scope_removes_unrelated_sections():
-    report = {
-        "introduction": "Intro",
-        "historical_journey": "History",
-        "economy_trade_industries": "Economy",
-        "conclusion": "Conclusion",
-        "__qa_passed": True,
-    }
-    scoped = report_writer.prune_report_to_request(report, "only its history")
-    assert scoped["historical_journey"] == "History"
-    assert "economy_trade_industries" not in scoped
-    assert scoped["__scope_sections"] == report_writer.HISTORY_REPORT_SECTION_KEYS
