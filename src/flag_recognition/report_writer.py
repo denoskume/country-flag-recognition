@@ -1107,11 +1107,11 @@ def interpret_country_request(message: str) -> dict[str, str]:
     """Interpret the user's opening message with one real-time LLM call."""
     text = str(message or "").strip()
     if not text:
-        raise RuntimeError("Ollama dialogue request failed: empty user message")
+        raise RuntimeError("LLM dialogue request failed: empty user message")
 
     api_key = llm_auth_token()
     if not api_key:
-        raise RuntimeError("Ollama dialogue request failed: LLM backend unavailable")
+        raise RuntimeError("LLM dialogue request failed: LLM backend unavailable")
 
     schema = {
         "type": "object",
@@ -1179,7 +1179,7 @@ def interpret_country_request(message: str) -> dict[str, str]:
         return result
     except Exception as exc:
         raise RuntimeError(
-            "Ollama dialogue request failed: " + _api_error_detail(exc)
+            "LLM dialogue request failed: " + _api_error_detail(exc)
         ) from exc
 
 
@@ -1192,7 +1192,7 @@ def continue_report_conversation(
     """Handle one clarification turn with one real-time LLM call."""
     api_key = llm_auth_token()
     if not api_key:
-        raise RuntimeError("Ollama dialogue request failed: LLM backend unavailable")
+        raise RuntimeError("LLM dialogue request failed: LLM backend unavailable")
 
     country = str(country_name or "").strip()
     latest = str(latest_message or "").strip()
@@ -1262,7 +1262,7 @@ def continue_report_conversation(
         }
     except Exception as exc:
         raise RuntimeError(
-            "Ollama dialogue request failed: " + _api_error_detail(exc)
+            "LLM dialogue request failed: " + _api_error_detail(exc)
         ) from exc
 
 def _generate_scoped_report(
@@ -1309,7 +1309,7 @@ def _generate_scoped_report(
         parsed = _parse_writer_response(response.output_text or "")
     except Exception as exc:
         raise RuntimeError(
-            "Ollama scoped report generation failed: "
+            "LLM scoped report generation failed: "
             + _api_error_detail(exc)
         ) from exc
 
@@ -1331,7 +1331,7 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     """Author the complete report through independent model-written chapters."""
     api_key = llm_auth_token()
     if not api_key:
-        raise RuntimeError("Ollama report generation failed: LLM backend unavailable")
+        raise RuntimeError("LLM report generation failed: LLM backend unavailable")
 
     model = llm_model_name()
     country_name = str(
@@ -1341,7 +1341,7 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
         or ""
     ).strip()
     if not country_name:
-        raise RuntimeError("Ollama report generation failed: missing country")
+        raise RuntimeError("LLM report generation failed: missing country")
 
     requested_sections = _requested_report_sections(
         str(report.get("user_request") or "")
@@ -1398,7 +1398,7 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
                     draft[key] = value
 
     if not draft:
-        raise RuntimeError("Ollama report generation failed: no report content returned")
+        raise RuntimeError("LLM report generation failed: no report content returned")
 
     # If QA detects duplicated or malformed prose, rewrite only those sections.
     mechanical = _deterministic_quality_issues(draft)
