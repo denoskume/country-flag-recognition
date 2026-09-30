@@ -199,14 +199,46 @@ from flag_recognition.report_manifest import (
     build_report_manifest,
     missing_required_sections,
 )
-from flag_recognition.report_writer import (
-    HISTORY_REPORT_SECTION_KEYS,
-    continue_report_conversation,
-    generate_authored_report,
-    interpret_country_request,
-    probe_openai_api,
-    prune_report_to_request,
-)
+try:
+    from flag_recognition.report_writer import (
+        continue_report_conversation,
+        generate_authored_report,
+        interpret_country_request,
+        probe_openai_api,
+    )
+except ImportError as exc:
+    st.set_page_config(
+        page_title="Flag Intelligence",
+        page_icon="🌐",
+        layout="centered",
+    )
+    st.markdown(
+        """
+        <div style="
+            max-width:680px;
+            margin:18vh auto 0 auto;
+            text-align:center;
+            padding:2rem 2.25rem;
+            border:1px solid #e5e7eb;
+            border-radius:18px;
+            background:white;
+            box-shadow:0 8px 30px rgba(0,0,0,.06);
+        ">
+          <div style="font-size:1.45rem;font-weight:700;margin-bottom:.65rem;">
+            Flag Intelligence is undergoing updates
+          </div>
+          <div style="font-size:1rem;line-height:1.6;color:#5f6368;">
+            A new version is being deployed. Please refresh this page shortly.
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    print(
+        "[Flag Intelligence startup] report_writer import failed: "
+        f"{type(exc).__name__}: {exc}"
+    )
+    st.stop()
 from flag_recognition.llm_backend import (
     llm_backend_name,
     llm_model_name,
