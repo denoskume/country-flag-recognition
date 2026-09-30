@@ -1164,6 +1164,14 @@ def interpret_country_request(message: str) -> dict[str, str]:
         fast_path["_source"] = "fast_path"
         return fast_path
 
+    dialogue_llm_enabled = os.getenv(
+        "FLAG_INTELLIGENCE_DIALOGUE_LLM",
+        "false",
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    if not dialogue_llm_enabled:
+        fast_path["_source"] = "fast_path"
+        return fast_path
+
     api_key = llm_auth_token()
     if not api_key:
         return _local_initial_interpretation(text)
@@ -1304,7 +1312,11 @@ def continue_report_conversation(
     latest = str(latest_message or "").strip()
     existing = str(existing_request or "").strip()
 
-    if not api_key:
+    dialogue_llm_enabled = os.getenv(
+        "FLAG_INTELLIGENCE_DIALOGUE_LLM",
+        "false",
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    if not dialogue_llm_enabled or not api_key:
         return _local_conversation_fallback(
             country_name,
             existing,
