@@ -1103,126 +1103,85 @@ def _conversation_model_candidates(configured_model: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(model for model in candidates if model))
 
 
-def _local_initial_interpretation(message: str) -> dict[str, str]:
-    """Deterministic continuity fallback when every dialogue API call fails."""
-    text = str(message or "").strip()
-    normalized = re.sub(r"[^a-zà-ÿ0-9' ]+", " ", text.casefold())
-    normalized = re.sub(r"\s+", " ", normalized).strip()
-
-    if normalized in {
-        "hi", "hello", "hey", "hey there", "hello there", "bonjour", "bonsoir",
-        "salut", "good morning", "good afternoon", "good evening",
-    }:
-        greeting_reply = (
-            "Hello! What would you like to explore?"
-        )
-        return {
-            "intent": "greeting",
-            "country": "",
-            "request": "",
-            "reply": greeting_reply,
-            "_source": "fallback",
-        }
-
-    if normalized in {
-        "what can you do", "what do you do", "how does this work",
-        "help", "aide", "comment ça marche", "comment ca marche",
-    }:
-        return {
-            "intent": "general",
-            "country": "",
-            "request": "",
-            "_source": "fallback",
-            "reply": (
-                "I can identify a country, understand what you want to know "
-                "about it, clarify your request, and prepare a tailored PDF report."
-            ),
-        }
-
-    return {
-        "intent": "unknown",
-        "country": "",
-        "request": text,
-        "_source": "fallback",
-        "reply": (
-            "I can help you explore a country or identify one from its flag. "
-            "Tell me what you would like to explore."
-        ),
-    }
-
-
-def _local_conversation_fallback(
-    country_name: str,
-    existing_request: str,
-    latest_message: str,
-    turn_number: int,
-) -> dict[str, str]:
-    """Keep the report conversation moving even without a successful API turn."""
-    latest = str(latest_message or "").strip()
-    existing = str(existing_request or "").strip()
-
-    typo_map = {
-        "histroy": "history",
-        "hitory": "history",
-        "histori": "history",
-        "geograpy": "geography",
-        "geogrophy": "geography",
-        "economi": "economy",
-        "sciense": "science",
-        "univercities": "universities",
-    }
-    normalized_latest = latest
-    lowered = latest.casefold()
-    corrected = False
-    for wrong, right in typo_map.items():
-        if wrong in lowered:
-            normalized_latest = re.sub(
-                rf"\b{re.escape(wrong)}\b",
-                right,
-                normalized_latest,
-                flags=re.IGNORECASE,
-            )
-            corrected = True
-
-    combined = " ".join(
-        part for part in (existing, normalized_latest) if part
-    ).strip()
-
-    if turn_number >= 2:
-        reply = (
-            f"I understand your request about {country_name}. "
-            "I'll prepare the report based on that scope."
-        )
-        return {
-            "action": "generate",
-            "normalized_request": combined,
-            "reply": reply,
-        }
-
-    if corrected:
-        reply = (
-            f"I assume you mean {normalized_latest}. "
-            "Would you like the report to cover the full topic or a specific period or angle?"
-        )
-    else:
-        reply = (
-            "Would you like the report to cover the full topic, or focus on a "
-            "specific period, angle, or level of detail?"
-        )
-
-    return {
-        "action": "ask",
-        "normalized_request": combined,
-        "reply": reply,
-    }
-
-
 def interpret_country_request(message: str) -> dict[str, str]:
-    """Interpret interactive chat locally so the UI never waits on the writer LLM."""
+    """Interpret the user's opening message with one real-time LLM call."""
     text = str(message or "").strip()
-    result = _local_initial_interpretation(text)
-    result["_source"] = "fast_path"
-    return result
+    if not text:
+        raise RuntimeError("Ollama dialogue request failed: empty user message")
+
+    api_key = llm_auth_token()
+    if not api_key:
+        raise RuntimeError("Ollama dialogue request failed: LLM backend unavailable")
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "intent": {
+                "type": "string",
+                "enum": [
+                    "greeting",
+                    "country_only",
+                    "country_request",
+                    "general",
+                    "unknown",
+                ],
+            },
+            "country": {"type": "string"},
+            "request": {"type": "string"},
+            "reply": {"type": "string"},
+        },
+        "required": ["intent", "country", "request", "reply"],
+        "additionalProperties": False,
+    }
+    prompt = (
+        "You are Flag Intelligence, a fast conversational country assistant. "
+        "Respond naturally to the user's message and interpret it at the same time. "
+        "Return compact JSON only. If a country is named, use its canonical English "
+        "name. If the user names only a country, ask naturally what they want to know. "
+        "If they ask about a country topic, preserve that scope in request. "
+        "For greetings or general questions, reply naturally and briefly. "
+        "Do not use canned wording and do not invent a country.\n\n"
+        f"USER MESSAGE: {text}"
+    )
+
+    client = OpenAI(
+        api_key=api_key,
+        timeout=float(os.getenv("FLAG_INTELLIGENCE_DIALOGUE_TIMEOUT", "12")),
+        max_retries=0,
+    )
+    try:
+        response = client.responses.create(
+            model=llm_model_name(),
+            reasoning={"effort": "none"},
+            input=prompt,
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": "flag_intelligence_dialogue_turn",
+                    "strict": True,
+                    "schema": schema,
+                }
+            },
+            max_output_tokens=220,
+        )
+        payload = json.loads(_strip_code_fence(response.output_text or ""))
+        if not isinstance(payload, dict):
+            raise ValueError("dialogue output is not a JSON object")
+        result = {
+            "intent": str(payload.get("intent") or "unknown").strip(),
+            "country": str(payload.get("country") or "").strip(),
+            "request": str(payload.get("request") or "").strip(),
+            "reply": str(payload.get("reply") or "").strip(),
+            "_source": "model",
+        }
+        if not result["reply"]:
+            raise ValueError("dialogue output contains no reply")
+        return result
+    except Exception as exc:
+        raise RuntimeError(
+            "Ollama dialogue request failed: " + _api_error_detail(exc)
+        ) from exc
+
 
 def continue_report_conversation(
     country_name: str,
@@ -1230,13 +1189,81 @@ def continue_report_conversation(
     latest_message: str,
     turn_number: int = 1,
 ) -> dict[str, str]:
-    """Handle clarification locally; the writer LLM is reserved for report authoring."""
-    return _local_conversation_fallback(
-        str(country_name or "").strip(),
-        str(existing_request or "").strip(),
-        str(latest_message or "").strip(),
-        int(turn_number),
+    """Handle one clarification turn with one real-time LLM call."""
+    api_key = llm_auth_token()
+    if not api_key:
+        raise RuntimeError("Ollama dialogue request failed: LLM backend unavailable")
+
+    country = str(country_name or "").strip()
+    latest = str(latest_message or "").strip()
+    existing = str(existing_request or "").strip()
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "action": {
+                "type": "string",
+                "enum": ["ask", "generate"],
+            },
+            "normalized_request": {"type": "string"},
+            "reply": {"type": "string"},
+        },
+        "required": ["action", "normalized_request", "reply"],
+        "additionalProperties": False,
+    }
+    prompt = (
+        "You are Flag Intelligence in a live conversation before generating a report. "
+        f"The selected country is {country}. "
+        f"Previously understood request: {existing!r}. "
+        f"Latest user message: {latest!r}. "
+        f"Clarification turn: {int(turn_number)}. "
+        "Understand the user's meaning naturally. Merge the latest instruction into "
+        "normalized_request. Ask one short clarification only if it materially improves "
+        "the requested report; otherwise set action='generate'. After two clarification "
+        "turns, prefer generate unless the request is genuinely ambiguous. "
+        "Your reply must be natural, concise, and freshly written for this turn. "
+        "Return compact JSON only."
     )
+
+    client = OpenAI(
+        api_key=api_key,
+        timeout=float(os.getenv("FLAG_INTELLIGENCE_DIALOGUE_TIMEOUT", "12")),
+        max_retries=0,
+    )
+    try:
+        response = client.responses.create(
+            model=llm_model_name(),
+            reasoning={"effort": "none"},
+            input=prompt,
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": "flag_intelligence_clarification_turn",
+                    "strict": True,
+                    "schema": schema,
+                }
+            },
+            max_output_tokens=260,
+        )
+        payload = json.loads(_strip_code_fence(response.output_text or ""))
+        if not isinstance(payload, dict):
+            raise ValueError("clarification output is not a JSON object")
+        action = str(payload.get("action") or "").strip()
+        normalized_request = str(
+            payload.get("normalized_request") or ""
+        ).strip()
+        reply = str(payload.get("reply") or "").strip()
+        if action not in {"ask", "generate"} or not reply:
+            raise ValueError("invalid clarification output")
+        return {
+            "action": action,
+            "normalized_request": normalized_request,
+            "reply": reply,
+        }
+    except Exception as exc:
+        raise RuntimeError(
+            "Ollama dialogue request failed: " + _api_error_detail(exc)
+        ) from exc
 
 def generate_report_follow_up(
     country_name: str,
