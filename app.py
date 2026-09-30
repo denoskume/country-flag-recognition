@@ -4573,6 +4573,42 @@ st.markdown(
             font-size: 1rem !important;
         }
 
+        .fi-user-message-row {
+            display: flex;
+            justify-content: flex-end;
+            width: 100%;
+            margin: .35rem 0;
+        }
+
+        .fi-user-message {
+            max-width: min(76%, 760px);
+            padding: .72rem .9rem;
+            border-radius: 16px 16px 4px 16px;
+            background: #ffffff;
+            border: 1px solid var(--line);
+            color: var(--text);
+            text-align: left;
+            box-shadow: 0 2px 8px rgba(15,23,42,.03);
+            overflow-wrap: anywhere;
+        }
+
+        .fi-assistant-message-row {
+            display: flex;
+            justify-content: flex-start;
+            width: 100%;
+            margin: .35rem 0;
+        }
+
+        .fi-assistant-message {
+            max-width: min(76%, 760px);
+            padding: .72rem .9rem;
+            border-radius: 16px 16px 16px 4px;
+            background: transparent;
+            color: var(--text);
+            text-align: left;
+            overflow-wrap: anywhere;
+        }
+
         .stButton > button[kind="primary"]:hover {
             background: var(--blue-dark);
         }
@@ -4719,6 +4755,25 @@ with brand_col:
 
 st.markdown("<div style='height:0.2rem'></div>", unsafe_allow_html=True)
 
+def _render_chat_message(role: str, content: str) -> None:
+    """Render user messages right-aligned and assistant messages left-aligned."""
+    safe = xml_escape(str(content or "")).replace("\n", "<br/>")
+    if role == "user":
+        st.markdown(
+            f'<div class="fi-user-message-row">'
+            f'<div class="fi-user-message">{safe}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            f'<div class="fi-assistant-message-row">'
+            f'<div class="fi-assistant-message">{safe}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+
 # Conversation state: identify a country first, then clarify the report brief.
 if "fi_stage" not in st.session_state:
     st.session_state.fi_stage = "idle"
@@ -4734,8 +4789,7 @@ if "fi_image_bytes" not in st.session_state:
     st.session_state.fi_image_bytes = None
 
 for message in st.session_state.fi_messages:
-    with st.chat_message(message["role"]):
-        st.write(message["content"])
+    _render_chat_message(message["role"], message["content"])
 
 prompt_submission = st.chat_input(
     "Ask Flag Intelligence",
@@ -4842,8 +4896,7 @@ def show_result(
         st.session_state.fi_messages.append(
             {"role": "assistant", "content": assistant_text}
         )
-        with st.chat_message("assistant"):
-            st.write(assistant_text)
+        _render_chat_message("assistant", assistant_text)
         return
 
     report = {
@@ -5016,16 +5069,14 @@ if process and image is not None:
     st.session_state.fi_messages.append(
         {"role": "user", "content": "Flag image uploaded"}
     )
-    with st.chat_message("user"):
-        st.write("Flag image uploaded")
+    _render_chat_message("user", "Flag image uploaded")
     show_result(image=image)
 
 if text_process:
     st.session_state.fi_messages.append(
         {"role": "user", "content": typed_country}
     )
-    with st.chat_message("user"):
-        st.write(typed_country)
+    _render_chat_message("user", typed_country)
 
     resolved_code = country_code_from_text(typed_country)
     if resolved_code is None:
@@ -5040,8 +5091,7 @@ if conversation_process:
     st.session_state.fi_messages.append(
         {"role": "user", "content": conversation_text}
     )
-    with st.chat_message("user"):
-        st.write(conversation_text)
+    _render_chat_message("user", conversation_text)
 
     if st.session_state.fi_stage == "awaiting_interest":
         st.session_state.fi_report_request = conversation_text
@@ -5054,8 +5104,7 @@ if conversation_process:
         st.session_state.fi_messages.append(
             {"role": "assistant", "content": follow_up}
         )
-        with st.chat_message("assistant"):
-            st.write(follow_up)
+        _render_chat_message("assistant", follow_up)
 
     elif st.session_state.fi_stage == "awaiting_detail":
         detail = conversation_text.strip()
@@ -5094,8 +5143,7 @@ if conversation_process:
         st.session_state.fi_messages.append(
             {"role": "assistant", "content": assistant_text}
         )
-        with st.chat_message("assistant"):
-            st.write(assistant_text)
+        _render_chat_message("assistant", assistant_text)
 
         show_result(
             image=stored_image,
