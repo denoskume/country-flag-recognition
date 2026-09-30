@@ -4716,6 +4716,24 @@ with brand_col:
 
 st.markdown("<div style='height:0.2rem'></div>", unsafe_allow_html=True)
 
+# Conversation state: identify a country first, then clarify the report brief.
+if "fi_stage" not in st.session_state:
+    st.session_state.fi_stage = "idle"
+if "fi_country_code" not in st.session_state:
+    st.session_state.fi_country_code = None
+if "fi_country_name" not in st.session_state:
+    st.session_state.fi_country_name = None
+if "fi_report_request" not in st.session_state:
+    st.session_state.fi_report_request = ""
+if "fi_messages" not in st.session_state:
+    st.session_state.fi_messages = []
+if "fi_image_bytes" not in st.session_state:
+    st.session_state.fi_image_bytes = None
+
+for message in st.session_state.fi_messages:
+    with st.chat_message(message["role"]):
+        st.write(message["content"])
+
 prompt_submission = st.chat_input(
     "Ask Flag Intelligence",
     key="flag_intelligence_prompt",
@@ -4726,7 +4744,9 @@ prompt_submission = st.chat_input(
 image = None
 process = False
 text_process = False
+conversation_process = False
 typed_country = ""
+conversation_text = ""
 
 if prompt_submission is not None:
     prompt_text = str(getattr(prompt_submission, "text", "") or "").strip()
@@ -4744,13 +4764,21 @@ if prompt_submission is not None:
             else:
                 process = True
     elif prompt_text:
-        typed_country = prompt_text
-        text_process = True
+        if st.session_state.fi_stage in {
+            "awaiting_interest",
+            "awaiting_detail",
+        }:
+            conversation_text = prompt_text
+            conversation_process = True
+        else:
+            typed_country = prompt_text
+            text_process = True
 
 
 def show_result(
     image: Image.Image | None = None,
     direct_code: str | None = None,
+    user_request: str | None = None,
 ):
     """Build the complete result inline and expose final downloads."""
     if direct_code is None:
@@ -4790,6 +4818,31 @@ def show_result(
 
     country = display_country_name(decision_code)
 
+    if user_request is None:
+        st.session_state.fi_country_code = decision_code
+        st.session_state.fi_country_name = country
+        st.session_state.fi_stage = "awaiting_interest"
+        st.session_state.fi_report_request = ""
+
+        if image is not None:
+            image_buffer = BytesIO()
+            image.convert("RGB").save(
+                image_buffer,
+                format="JPEG",
+                quality=90,
+            )
+            st.session_state.fi_image_bytes = image_buffer.getvalue()
+        else:
+            st.session_state.fi_image_bytes = None
+
+        assistant_text = f"What would you like to know about {country}?"
+        st.session_state.fi_messages.append(
+            {"role": "assistant", "content": assistant_text}
+        )
+        with st.chat_message("assistant"):
+            st.write(assistant_text)
+        return
+
     report = {
         "generated_at": strftime("%Y-%m-%d %H:%M:%S UTC"),
         "accepted": accepted,
@@ -4797,6 +4850,7 @@ def show_result(
         "top_candidate": country,
         "country_code": decision_code,
         "input_mode": input_mode_used,
+        "user_request": user_request,
         "confidence": decision_confidence,
         "deployment_threshold": (
             deployment_threshold if input_mode_used == "image" else None
@@ -4877,6 +4931,7 @@ def show_result(
                 "decision": country,
                 "country_code": decision_code.upper(),
                 "input_mode": input_mode_used,
+                "user_request": user_request,
             }
 
             try:
@@ -4955,9 +5010,20 @@ def show_result(
 
 
 if process and image is not None:
+    st.session_state.fi_messages.append(
+        {"role": "user", "content": "Flag image uploaded"}
+    )
+    with st.chat_message("user"):
+        st.write("Flag image uploaded")
     show_result(image=image)
 
 if text_process:
+    st.session_state.fi_messages.append(
+        {"role": "user", "content": typed_country}
+    )
+    with st.chat_message("user"):
+        st.write(typed_country)
+
     resolved_code = country_code_from_text(typed_country)
     if resolved_code is None:
         st.error(
@@ -4966,3 +5032,75 @@ if text_process:
         )
     else:
         show_result(direct_code=resolved_code)
+
+if conversation_process:
+    st.session_state.fi_messages.append(
+        {"role": "user", "content": conversation_text}
+    )
+    with st.chat_message("user"):
+        st.write(conversation_text)
+
+    if st.session_state.fi_stage == "awaiting_interest":
+        st.session_state.fi_report_request = conversation_text
+        st.session_state.fi_stage = "awaiting_detail"
+
+        follow_up = (
+            "Would you like a concise or detailed report, and is there "
+            "anything you want me to prioritize or leave out?"
+        )
+        st.session_state.fi_messages.append(
+            {"role": "assistant", "content": follow_up}
+        )
+        with st.chat_message("assistant"):
+            st.write(follow_up)
+
+    elif st.session_state.fi_stage == "awaiting_detail":
+        detail = conversation_text.strip()
+        first_request = st.session_state.fi_report_request.strip()
+        normalized = detail.casefold()
+
+        if normalized in {
+            "generate",
+            "go ahead",
+            "proceed",
+            "nothing else",
+            "no",
+            "that's all",
+            "thats all",
+        }:
+            final_request = first_request
+        else:
+            final_request = (
+                first_request
+                + "\n\nAdditional preferences: "
+                + detail
+            ).strip()
+
+        country_code = str(st.session_state.fi_country_code or "")
+        country_name = str(st.session_state.fi_country_name or "")
+        st.session_state.fi_stage = "generating"
+
+        stored_image = None
+        stored_bytes = st.session_state.fi_image_bytes
+        if stored_bytes:
+            stored_image = Image.open(BytesIO(stored_bytes)).convert("RGB")
+
+        assistant_text = (
+            f"I'll prepare the report on {country_name} based on your request."
+        )
+        st.session_state.fi_messages.append(
+            {"role": "assistant", "content": assistant_text}
+        )
+        with st.chat_message("assistant"):
+            st.write(assistant_text)
+
+        show_result(
+            image=stored_image,
+            direct_code=country_code,
+            user_request=final_request,
+        )
+        st.session_state.fi_stage = "idle"
+        st.session_state.fi_country_code = None
+        st.session_state.fi_country_name = None
+        st.session_state.fi_report_request = ""
+        st.session_state.fi_image_bytes = None
