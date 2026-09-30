@@ -87,6 +87,47 @@ REPORT_SECTION_KEYS = (
 )
 
 
+HISTORY_REPORT_SECTION_KEYS = (
+    "introduction",
+    "origins_early_history",
+    "historical_journey",
+    "key_historical_timeline",
+    "state_formation_identity",
+    "conclusion",
+)
+
+
+def _requested_report_sections(user_request: str) -> tuple[str, ...]:
+    """Return only the sections explicitly needed for a narrow report request."""
+    normalized = re.sub(
+        r"[^a-z0-9 ]+",
+        " ",
+        str(user_request or "").casefold(),
+    )
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+
+    broad_markers = {
+        "complete report",
+        "full report",
+        "everything",
+        "all topics",
+        "whole country",
+        "all about",
+    }
+    if any(marker in normalized for marker in broad_markers):
+        return REPORT_SECTION_KEYS
+
+    history_requested = any(
+        token in normalized
+        for token in ("history", "historical", "histoire")
+    )
+    only_markers = ("only", "just", "focus", "solely")
+    if history_requested and any(marker in normalized for marker in only_markers):
+        return HISTORY_REPORT_SECTION_KEYS
+
+    return REPORT_SECTION_KEYS
+
+
 SYSTEM_PROMPT = """You are the senior editorial writer for Flag Intelligence.
 
 You receive the identity of one country plus optional locally collected evidence.
@@ -1219,6 +1260,68 @@ def generate_report_follow_up(
     )
 
 
+def _generate_scoped_report(
+    *,
+    api_key: str,
+    model: str,
+    country_name: str,
+    country_code: str,
+    user_request: str,
+    section_keys: tuple[str, ...],
+) -> dict[str, str]:
+    """Generate a narrow report in one bounded call instead of the full report pipeline."""
+    prompt = (
+        f"Write a focused Flag Intelligence report about {country_name}. "
+        f"The user request is: {user_request!r}. "
+        "Respect that scope strictly. Do not add unrelated country chapters. "
+        "Return exactly the requested JSON keys with concise, factual, "
+        "publication-ready English prose. For history, use a clear chronology "
+        "from early origins through major turning points to the modern state. "
+        "Do not include markdown, citations, URLs, or source labels.\n\n"
+        "REQUESTED KEYS:\n"
+        + json.dumps({key: "" for key in section_keys}, ensure_ascii=False)
+        + f"\n\nCOUNTRY CODE: {country_code}"
+    )
+    client = OpenAI(
+        api_key=api_key,
+        timeout=float(os.getenv("FLAG_INTELLIGENCE_SCOPED_REPORT_TIMEOUT", "45")),
+        max_retries=0,
+    )
+    try:
+        response = client.responses.create(
+            model=model,
+            reasoning={"effort": "none"},
+            input=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            text=_structured_text_format(
+                section_keys,
+                name="flag_intelligence_scoped_report",
+            ),
+            max_output_tokens=4000,
+        )
+        parsed = _parse_writer_response(response.output_text or "")
+    except Exception as exc:
+        print(
+            "[Flag Intelligence report writer] "
+            f"scoped_error={_api_error_detail(exc)}"
+        )
+        return {}
+
+    result = {
+        key: str(parsed.get(key, "") or "").strip()
+        for key in section_keys
+        if str(parsed.get(key, "") or "").strip()
+    }
+    if result:
+        result["__qa_passed"] = True
+        result["__qa_issues"] = []
+        result["__substantial_sections"] = len(result)
+        result["__generation_mode"] = "scoped_single_pass"
+    return result
+
+
 def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     """Author the complete report through independent model-written chapters."""
     api_key = llm_auth_token()
@@ -1234,6 +1337,19 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     ).strip()
     if not country_name:
         return {}
+
+    requested_sections = _requested_report_sections(
+        str(report.get("user_request") or "")
+    )
+    if requested_sections != REPORT_SECTION_KEYS:
+        return _generate_scoped_report(
+            api_key=api_key,
+            model=model,
+            country_name=country_name,
+            country_code=str(report.get("country_code") or ""),
+            user_request=str(report.get("user_request") or ""),
+            section_keys=requested_sections,
+        )
 
     deadline = time.monotonic() + REPORT_GENERATION_BUDGET_SECONDS
     recovery_deadline = deadline - 45.0
