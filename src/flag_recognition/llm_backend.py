@@ -50,6 +50,11 @@ def llm_auth_token() -> str:
     return ""
 
 
+def llm_credentials_available() -> bool:
+    """Return whether the configured backend has credentials without probing the network."""
+    return bool(llm_auth_token())
+
+
 class FlagIntelligenceClient:
     """Compatibility client for GroqCloud or OpenAI."""
 
