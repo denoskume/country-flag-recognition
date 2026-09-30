@@ -128,6 +128,29 @@ def _requested_report_sections(user_request: str) -> tuple[str, ...]:
     return REPORT_SECTION_KEYS
 
 
+
+def prune_report_to_request(
+    report: dict[str, Any],
+    user_request: str,
+) -> dict[str, Any]:
+    """Remove unrelated authored sections for narrow report requests."""
+    selected = _requested_report_sections(user_request)
+    if selected == REPORT_SECTION_KEYS:
+        return dict(report)
+
+    selected_set = set(selected)
+    scoped = {
+        key: value
+        for key, value in report.items()
+        if key in selected_set or str(key).startswith("__")
+    }
+    scoped["__scope_sections"] = selected
+    scoped["__generation_mode"] = str(
+        report.get("__generation_mode") or "scoped"
+    )
+    return scoped
+
+
 SYSTEM_PROMPT = """You are the senior editorial writer for Flag Intelligence.
 
 You receive the identity of one country plus optional locally collected evidence.
@@ -1319,6 +1342,7 @@ def _generate_scoped_report(
         result["__qa_issues"] = []
         result["__substantial_sections"] = len(result)
         result["__generation_mode"] = "scoped_single_pass"
+        result["__scope_sections"] = section_keys
     return result
 
 
