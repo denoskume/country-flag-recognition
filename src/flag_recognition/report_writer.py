@@ -1052,7 +1052,7 @@ def _emergency_full_report_pass(
         try:
             response = client.responses.create(
                 model=candidate_model,
-                reasoning={"effort": "none"},
+                reasoning={"effort": "low"},
                 input=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": prompt},
@@ -1152,7 +1152,7 @@ def interpret_country_request(message: str) -> dict[str, str]:
     try:
         response = client.responses.create(
             model=llm_model_name(),
-            reasoning={"effort": "none"},
+            reasoning={"effort": "low"},
             input=prompt,
             text={
                 "format": {
@@ -1233,7 +1233,7 @@ def continue_report_conversation(
     try:
         response = client.responses.create(
             model=llm_model_name(),
-            reasoning={"effort": "none"},
+            reasoning={"effort": "low"},
             input=prompt,
             text={
                 "format": {
@@ -1295,7 +1295,7 @@ def _generate_scoped_report(
     try:
         response = client.responses.create(
             model=model,
-            reasoning={"effort": "none"},
+            reasoning={"effort": "low"},
             input=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
