@@ -5121,7 +5121,8 @@ def show_result(
         )
 
         report["_writer_api_key_available"] = bool(
-            os.getenv("OPENAI_API_KEY", "").strip()
+            os.getenv("GROQ_API_KEY", "").strip()
+            or os.getenv("OPENAI_API_KEY", "").strip()
         )
 
         with st.spinner("Writing the country report..."):
