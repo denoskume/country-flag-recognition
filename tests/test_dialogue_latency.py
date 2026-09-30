@@ -297,51 +297,6 @@ def test_canonical_brief_preserves_topics_when_depth_arrives_later():
     assert "1950 to 2020" in brief
 
 
-def test_scoped_review_retries_with_json_object_when_strict_schema_fails(monkeypatch):
-    class _Responses:
-        def __init__(self):
-            self.calls = []
-
-        def create(self, **kwargs):
-            self.calls.append(kwargs)
-            if len(self.calls) == 1:
-                raise RuntimeError("json_validate_failed")
-            return SimpleNamespace(
-                output_text=json.dumps({
-                    "introduction": "Reviewed introduction.",
-                    "conclusion": "Reviewed conclusion.",
-                })
-            )
-
-    class _Client:
-        instances = []
-
-        def __init__(self, *args, **kwargs):
-            self.responses = _Responses()
-            type(self).instances.append(self)
-
-    monkeypatch.setattr(report_writer, "OpenAI", _Client)
-
-    result = report_writer._review_scoped_report(
-        api_key="test-key",
-        model="openai/gpt-oss-20b",
-        country_name="France",
-        user_request="economy and culture from 1950 to 2020; detailed analysis",
-        section_keys=("introduction", "conclusion"),
-        draft={
-            "introduction": "Draft introduction.",
-            "conclusion": "Draft conclusion.",
-        },
-    )
-
-    assert result["introduction"] == "Reviewed introduction."
-    assert result["conclusion"] == "Reviewed conclusion."
-    calls = _Client.instances[0].responses.calls
-    assert len(calls) == 2
-    assert calls[0]["text"]["format"]["type"] == "json_schema"
-    assert calls[1]["text"]["format"]["type"] == "json_object"
-
-
 def test_relative_end_date_today_is_understood():
     start, end = report_writer._extract_requested_year_range(
         "from 1950 till today"
@@ -492,3 +447,76 @@ def test_scoped_generation_receives_semantic_brief(monkeypatch):
     assert "French philosophy" in first_prompt
     assert '"period": "1960"' in first_prompt
     assert "concrete named evidence" in first_prompt.lower()
+
+
+def test_country_request_intent_is_normalized_from_model_country_and_request(monkeypatch):
+    _FakeClient.payload = {
+        "intent": "general",
+        "country": "France",
+        "request": "French philosophers",
+        "reply": "Quels philosophes français souhaitez-vous explorer ?",
+    }
+    _FakeClient.instances = []
+    monkeypatch.setattr(report_writer, "OpenAI", _FakeClient)
+
+    result = report_writer.interpret_country_request(
+        "Je voudrais explorer les philosophes français"
+    )
+
+    assert result["intent"] == "country_request"
+    assert result["country"] == "France"
+    assert result["request"] == "French philosophers"
+
+
+def test_scoped_review_uses_plain_prose_per_section(monkeypatch):
+    outputs = {
+        "Introduction draft.": "Introduction reviewed.",
+        "Analysis draft.": "Analysis reviewed with concrete facts.",
+        "Conclusion draft.": "Conclusion reviewed.",
+    }
+
+    class _Responses:
+        def __init__(self):
+            self.calls = []
+
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+            prompt = kwargs["input"][1]["content"]
+            for draft_text, output in outputs.items():
+                if draft_text in prompt:
+                    return SimpleNamespace(output_text=output)
+            raise AssertionError("draft section not present in review prompt")
+
+    class _Client:
+        instances = []
+
+        def __init__(self, *args, **kwargs):
+            self.responses = _Responses()
+            type(self).instances.append(self)
+
+    monkeypatch.setattr(report_writer, "OpenAI", _Client)
+
+    result = report_writer._review_scoped_report(
+        api_key="test-key",
+        model="openai/gpt-oss-20b",
+        country_name="France",
+        user_request="French philosophy in 1960",
+        section_keys=("introduction", "focused_analysis", "conclusion"),
+        draft={
+            "introduction": "Introduction draft.",
+            "focused_analysis": "Analysis draft.",
+            "conclusion": "Conclusion draft.",
+        },
+        brief_state={
+            "subject": "French philosophy",
+            "period": "1960",
+            "topics": ["philosophy"],
+        },
+    )
+
+    assert result["introduction"] == "Introduction reviewed."
+    assert result["focused_analysis"] == "Analysis reviewed with concrete facts."
+    assert result["conclusion"] == "Conclusion reviewed."
+    calls = _Client.instances[0].responses.calls
+    assert len(calls) == 3
+    assert all("text" not in call for call in calls)
