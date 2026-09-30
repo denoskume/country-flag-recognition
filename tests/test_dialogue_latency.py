@@ -271,3 +271,48 @@ def test_canonical_brief_preserves_topics_when_depth_arrives_later():
     assert "culture" in brief
     assert "balanced overview" in brief
     assert "1950 to 2020" in brief
+
+
+def test_scoped_review_retries_with_json_object_when_strict_schema_fails(monkeypatch):
+    class _Responses:
+        def __init__(self):
+            self.calls = []
+
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                raise RuntimeError("json_validate_failed")
+            return SimpleNamespace(
+                output_text=json.dumps({
+                    "introduction": "Reviewed introduction.",
+                    "conclusion": "Reviewed conclusion.",
+                })
+            )
+
+    class _Client:
+        instances = []
+
+        def __init__(self, *args, **kwargs):
+            self.responses = _Responses()
+            type(self).instances.append(self)
+
+    monkeypatch.setattr(report_writer, "OpenAI", _Client)
+
+    result = report_writer._review_scoped_report(
+        api_key="test-key",
+        model="openai/gpt-oss-20b",
+        country_name="France",
+        user_request="economy and culture from 1950 to 2020; detailed analysis",
+        section_keys=("introduction", "conclusion"),
+        draft={
+            "introduction": "Draft introduction.",
+            "conclusion": "Draft conclusion.",
+        },
+    )
+
+    assert result["introduction"] == "Reviewed introduction."
+    assert result["conclusion"] == "Reviewed conclusion."
+    calls = _Client.instances[0].responses.calls
+    assert len(calls) == 2
+    assert calls[0]["text"]["format"]["type"] == "json_schema"
+    assert calls[1]["text"]["format"]["type"] == "json_object"
