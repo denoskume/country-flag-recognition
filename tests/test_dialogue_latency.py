@@ -62,3 +62,16 @@ def test_dialogue_stays_local_even_if_legacy_flag_is_enabled(monkeypatch):
     )
     assert first["_source"] == "fast_path"
     assert follow["reply"]
+
+
+def test_history_only_scope_selects_history_sections():
+    keys = report_writer._requested_report_sections("only its history")
+    assert "historical_journey" in keys
+    assert "origins_early_history" in keys
+    assert "key_historical_timeline" in keys
+    assert "economy_trade_industries" not in keys
+
+
+def test_broad_scope_keeps_full_report():
+    keys = report_writer._requested_report_sections("complete country report")
+    assert keys == report_writer.REPORT_SECTION_KEYS
