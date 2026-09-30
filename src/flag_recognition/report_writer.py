@@ -594,8 +594,12 @@ SECTION_RECOVERY_GROUPS = (
 def _model_candidates(configured_model: str) -> tuple[str, ...]:
     candidates = [
         configured_model.strip(),
+        "gpt-5.6-sol",
+        "gpt-5.6",
         "gpt-5.6-terra",
         "gpt-5.6-luna",
+        "gpt-5.2",
+        "gpt-5",
     ]
     return tuple(dict.fromkeys(model for model in candidates if model))
 
@@ -1161,13 +1165,15 @@ def interpret_country_request(message: str) -> dict[str, str]:
     )
 
     for candidate_model in _conversation_model_candidates(configured_model):
-        for _attempt in range(3):
+        for _attempt in range(2):
+            client = OpenAI(
+                api_key=api_key,
+                timeout=20.0,
+                max_retries=0,
+            )
+
+            # Preferred path: strict structured output.
             try:
-                client = OpenAI(
-                    api_key=api_key,
-                    timeout=20.0,
-                    max_retries=0,
-                )
                 response = client.responses.create(
                     model=candidate_model,
                     reasoning={"effort": "none"},
@@ -1185,21 +1191,50 @@ def interpret_country_request(message: str) -> dict[str, str]:
                 payload = json.loads(
                     _strip_code_fence(response.output_text or "")
                 )
-                if not isinstance(payload, dict):
-                    continue
+                if isinstance(payload, dict):
+                    result = {
+                        "intent": str(payload.get("intent") or "unknown").strip(),
+                        "country": str(payload.get("country") or "").strip(),
+                        "request": str(payload.get("request") or "").strip(),
+                        "reply": str(payload.get("reply") or "").strip(),
+                    }
+                    if result["intent"] and (
+                        result["reply"]
+                        or result["country"]
+                        or result["request"]
+                    ):
+                        return result
+            except Exception:
+                pass
 
-                result = {
-                    "intent": str(payload.get("intent") or "unknown").strip(),
-                    "country": str(payload.get("country") or "").strip(),
-                    "request": str(payload.get("request") or "").strip(),
-                    "reply": str(payload.get("reply") or "").strip(),
-                }
-                if result["intent"] and (
-                    result["reply"]
-                    or result["country"]
-                    or result["request"]
-                ):
-                    return result
+            # Compatibility path: plain Responses API, still JSON by instruction.
+            try:
+                plain_prompt = (
+                    prompt
+                    + "\n\nReturn ONLY compact JSON with keys: "
+                    + "intent, country, request, reply."
+                )
+                response = client.responses.create(
+                    model=candidate_model,
+                    input=plain_prompt,
+                    max_output_tokens=400,
+                )
+                payload = json.loads(
+                    _strip_code_fence(response.output_text or "")
+                )
+                if isinstance(payload, dict):
+                    result = {
+                        "intent": str(payload.get("intent") or "unknown").strip(),
+                        "country": str(payload.get("country") or "").strip(),
+                        "request": str(payload.get("request") or "").strip(),
+                        "reply": str(payload.get("reply") or "").strip(),
+                    }
+                    if result["intent"] and (
+                        result["reply"]
+                        or result["country"]
+                        or result["request"]
+                    ):
+                        return result
             except Exception:
                 continue
 
@@ -1264,13 +1299,14 @@ def continue_report_conversation(
     )
 
     for candidate_model in _conversation_model_candidates(configured_model):
-        for _attempt in range(3):
+        for _attempt in range(2):
+            client = OpenAI(
+                api_key=api_key,
+                timeout=22.0,
+                max_retries=0,
+            )
+
             try:
-                client = OpenAI(
-                    api_key=api_key,
-                    timeout=22.0,
-                    max_retries=0,
-                )
                 response = client.responses.create(
                     model=candidate_model,
                     reasoning={"effort": "low"},
@@ -1288,23 +1324,52 @@ def continue_report_conversation(
                 payload = json.loads(
                     _strip_code_fence(response.output_text or "")
                 )
-                if not isinstance(payload, dict):
-                    continue
+                if isinstance(payload, dict):
+                    action = str(payload.get("action") or "").strip()
+                    normalized_request = str(
+                        payload.get("normalized_request")
+                        or existing
+                        or latest
+                    ).strip()
+                    reply = str(payload.get("reply") or "").strip()
+                    if action in {"ask", "generate"} and reply:
+                        return {
+                            "action": action,
+                            "normalized_request": normalized_request,
+                            "reply": reply,
+                        }
+            except Exception:
+                pass
 
-                action = str(payload.get("action") or "").strip()
-                normalized_request = str(
-                    payload.get("normalized_request")
-                    or existing
-                    or latest
-                ).strip()
-                reply = str(payload.get("reply") or "").strip()
-
-                if action in {"ask", "generate"} and reply:
-                    return {
-                        "action": action,
-                        "normalized_request": normalized_request,
-                        "reply": reply,
-                    }
+            try:
+                plain_prompt = (
+                    prompt
+                    + "\n\nReturn ONLY compact JSON with keys: "
+                    + "action, normalized_request, reply. "
+                    + "action must be ask or generate."
+                )
+                response = client.responses.create(
+                    model=candidate_model,
+                    input=plain_prompt,
+                    max_output_tokens=550,
+                )
+                payload = json.loads(
+                    _strip_code_fence(response.output_text or "")
+                )
+                if isinstance(payload, dict):
+                    action = str(payload.get("action") or "").strip()
+                    normalized_request = str(
+                        payload.get("normalized_request")
+                        or existing
+                        or latest
+                    ).strip()
+                    reply = str(payload.get("reply") or "").strip()
+                    if action in {"ask", "generate"} and reply:
+                        return {
+                            "action": action,
+                            "normalized_request": normalized_request,
+                            "reply": reply,
+                        }
             except Exception:
                 continue
 
