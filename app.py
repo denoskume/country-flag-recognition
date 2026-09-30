@@ -24,6 +24,23 @@ import pydeck as pdk
 from PIL import Image, ImageDraw
 import requests
 import streamlit as st
+
+
+def _bootstrap_openai_api_key() -> bool:
+    """Load OPENAI_API_KEY from Streamlit secrets before any model call."""
+    if os.getenv("OPENAI_API_KEY", "").strip():
+        return True
+    try:
+        secret_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+    except Exception:
+        secret_key = ""
+    if secret_key:
+        os.environ["OPENAI_API_KEY"] = secret_key
+        return True
+    return False
+
+
+_bootstrap_openai_api_key()
 import yaml
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
@@ -5061,16 +5078,6 @@ def show_result(
     }
 
     if accepted:
-        # Streamlit Cloud secrets are accepted explicitly as a fallback to
-        # environment variables so the writer never silently misses the API key.
-        if not os.getenv("OPENAI_API_KEY", "").strip():
-            try:
-                secret_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
-            except Exception:
-                secret_key = ""
-            if secret_key:
-                os.environ["OPENAI_API_KEY"] = secret_key
-
         countdown_slot = st.empty()
         countdown_slot.markdown(
             """
