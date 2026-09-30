@@ -332,3 +332,48 @@ def test_relative_end_date_present_is_understood():
     )
     assert start == 1950
     assert end >= 2026
+
+
+def test_unpredictable_wording_is_carried_by_model_brief_state(monkeypatch):
+    _FakeClient.payload = {
+        "action": "generate",
+        "normalized_request": (
+            "France: how everyday life changed from the post-war boom "
+            "to the smartphone era, with emphasis on work and family life"
+        ),
+        "reply": "Got it — I’ll prepare that focused report.",
+        "brief_state": {
+            "subject": "changes in everyday life",
+            "topics": ["work", "family life"],
+            "period": "post-war boom to smartphone era",
+            "angles": ["social change"],
+            "depth": "detailed",
+            "exclusions": [],
+            "current_events": False,
+            "other_constraints": [],
+            "ready": True,
+            "missing": [],
+        },
+    }
+    _FakeClient.instances = []
+    monkeypatch.setattr(report_writer, "OpenAI", _FakeClient)
+
+    result = report_writer.continue_report_conversation(
+        "France",
+        "",
+        "Show me how ordinary life shifted from the boom years to smartphones, mostly work and family.",
+        turn_number=1,
+        existing_state={},
+    )
+
+    assert result["action"] == "generate"
+    assert result["brief_state"]["subject"] == "changes in everyday life"
+    assert result["brief_state"]["ready"] is True
+
+
+def test_unknown_topic_defaults_to_generic_focused_report():
+    keys = report_writer._requested_report_sections(
+        "How street typography shaped public identity in Marseille"
+    )
+    assert keys == report_writer.GENERIC_FOCUSED_REPORT_SECTION_KEYS
+    assert keys != report_writer.REPORT_SECTION_KEYS
