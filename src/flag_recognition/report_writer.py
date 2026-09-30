@@ -1265,51 +1265,6 @@ def continue_report_conversation(
             "Ollama dialogue request failed: " + _api_error_detail(exc)
         ) from exc
 
-def generate_report_follow_up(
-    country_name: str,
-    user_request: str,
-) -> str:
-    """Ask one concise, useful clarification before report generation."""
-    api_key = llm_auth_token()
-    if not api_key:
-        return (
-            "Would you like a concise or detailed report, and is there "
-            "anything you want me to prioritize or leave out?"
-        )
-
-    model = llm_model_name()
-    client = OpenAI(
-        api_key=api_key,
-        timeout=25.0,
-        max_retries=1,
-    )
-    prompt = (
-        f"The user wants a country report about {country_name}. "
-        f"Their request is: {user_request!r}. "
-        "Ask exactly ONE short follow-up question that would materially improve "
-        "the final report. Do not repeat what the user already said. Prefer a "
-        "question about scope, depth, audience, priority, or exclusions. "
-        "Return only the question, no preamble."
-    )
-    try:
-        response = client.responses.create(
-            model=model,
-            reasoning={"effort": "none"},
-            input=prompt,
-            max_output_tokens=120,
-        )
-        question = str(response.output_text or "").strip()
-        if question:
-            return question
-    except Exception:
-        pass
-
-    return (
-        "Would you like a concise or detailed report, and is there "
-        "anything you want me to prioritize or leave out?"
-    )
-
-
 def _generate_scoped_report(
     *,
     api_key: str,
@@ -1353,11 +1308,10 @@ def _generate_scoped_report(
         )
         parsed = _parse_writer_response(response.output_text or "")
     except Exception as exc:
-        print(
-            "[Flag Intelligence report writer] "
-            f"scoped_error={_api_error_detail(exc)}"
-        )
-        return {}
+        raise RuntimeError(
+            "Ollama scoped report generation failed: "
+            + _api_error_detail(exc)
+        ) from exc
 
     result = {
         key: str(parsed.get(key, "") or "").strip()
@@ -1377,7 +1331,7 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     """Author the complete report through independent model-written chapters."""
     api_key = llm_auth_token()
     if not api_key:
-        return {}
+        raise RuntimeError("Ollama report generation failed: LLM backend unavailable")
 
     model = llm_model_name()
     country_name = str(
@@ -1387,7 +1341,7 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
         or ""
     ).strip()
     if not country_name:
-        return {}
+        raise RuntimeError("Ollama report generation failed: missing country")
 
     requested_sections = _requested_report_sections(
         str(report.get("user_request") or "")
@@ -1444,7 +1398,7 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
                     draft[key] = value
 
     if not draft:
-        return {}
+        raise RuntimeError("Ollama report generation failed: no report content returned")
 
     # If QA detects duplicated or malformed prose, rewrite only those sections.
     mechanical = _deterministic_quality_issues(draft)
