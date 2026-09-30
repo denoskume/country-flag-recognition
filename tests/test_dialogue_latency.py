@@ -401,3 +401,43 @@ def test_unknown_topic_defaults_to_generic_focused_report():
     )
     assert keys == report_writer.GENERIC_FOCUSED_REPORT_SECTION_KEYS
     assert keys != report_writer.REPORT_SECTION_KEYS
+
+
+def test_scoped_parser_preserves_dynamic_section_keys():
+    keys = report_writer.GENERIC_FOCUSED_REPORT_SECTION_KEYS
+    payload = {
+        "introduction": "Intro",
+        "focused_analysis": "Concrete analysis",
+        "key_developments": "Key developments",
+        "context_and_implications": "Context and implications",
+        "conclusion": "Conclusion",
+    }
+    parsed = report_writer._parse_writer_response(
+        json.dumps(payload),
+        allowed_keys=keys,
+    )
+    assert parsed["focused_analysis"] == "Concrete analysis"
+    assert parsed["key_developments"] == "Key developments"
+    assert parsed["context_and_implications"] == "Context and implications"
+
+
+def test_scoped_report_requires_all_requested_sections(monkeypatch):
+    _FakeClient.payload = {
+        "introduction": "Intro",
+        "focused_analysis": "",
+        "key_developments": "",
+        "context_and_implications": "",
+        "conclusion": "Conclusion",
+    }
+    _FakeClient.instances = []
+    monkeypatch.setattr(report_writer, "OpenAI", _FakeClient)
+
+    with pytest.raises(RuntimeError, match="missing required sections"):
+        report_writer._generate_scoped_report(
+            api_key="test",
+            model="openai/gpt-oss-20b",
+            country_name="France",
+            country_code="FR",
+            user_request="French philosophy in 1960",
+            section_keys=report_writer.GENERIC_FOCUSED_REPORT_SECTION_KEYS,
+        )
