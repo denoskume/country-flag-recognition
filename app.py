@@ -4775,43 +4775,6 @@ def _render_chat_message(role: str, content: str) -> None:
         )
 
 
-def _initial_chat_reply(message: str) -> str | None:
-    """Handle greetings and common non-country openings naturally."""
-    normalized = re.sub(r"[^a-zà-ÿ0-9' ]+", " ", message.casefold())
-    normalized = re.sub(r"\s+", " ", normalized).strip()
-
-    greetings = {
-        "hi", "hello", "hey", "bonjour", "bonsoir", "salut",
-        "good morning", "good afternoon", "good evening",
-        "coucou",
-    }
-    if normalized in greetings:
-        return (
-            "Hello! Tell me a country you are interested in, or upload a flag. "
-            "I can then help you define exactly what you want to know before "
-            "preparing the report."
-        )
-
-    if normalized in {
-        "what can you do",
-        "what do you do",
-        "how does this work",
-        "help",
-        "aide",
-        "que peux tu faire",
-        "que peux-tu faire",
-        "comment ça marche",
-        "comment ca marche",
-    }:
-        return (
-            "I can identify a country from its name, ISO code or flag, discuss "
-            "what you want to learn about it, ask one useful clarification, and "
-            "then prepare a tailored PDF report."
-        )
-
-    return None
-
-
 def _country_code_from_free_text(message: str) -> str | None:
     """Resolve a country without mistaking ordinary short words for ISO codes."""
     direct = country_code_from_text(message)
@@ -4939,67 +4902,61 @@ if pending_input is not None:
             conversation_text = prompt_text
             conversation_process = True
         else:
-            simple_reply = _initial_chat_reply(prompt_text)
-
-            if simple_reply is not None:
-                st.session_state.fi_messages.append(
-                    {"role": "assistant", "content": simple_reply}
-                )
-                _render_chat_message("assistant", simple_reply)
-            else:
+            with st.spinner("Understanding your request..."):
                 interpretation = interpret_country_request(prompt_text)
-                intent = str(interpretation.get("intent") or "unknown")
-                interpreted_country = str(
-                    interpretation.get("country") or ""
-                ).strip()
-                interpreted_request = str(
-                    interpretation.get("request") or ""
-                ).strip()
-                interpreted_reply = str(
-                    interpretation.get("reply") or ""
-                ).strip()
 
-                resolved_free_text_code = (
-                    country_code_from_text(interpreted_country)
-                    if interpreted_country
-                    else None
+            intent = str(interpretation.get("intent") or "unknown")
+            interpreted_country = str(
+                interpretation.get("country") or ""
+            ).strip()
+            interpreted_request = str(
+                interpretation.get("request") or ""
+            ).strip()
+            interpreted_reply = str(
+                interpretation.get("reply") or ""
+            ).strip()
+
+            resolved_free_text_code = (
+                country_code_from_text(interpreted_country)
+                if interpreted_country
+                else None
+            )
+            if resolved_free_text_code is None:
+                resolved_free_text_code = _country_code_from_free_text(
+                    prompt_text
                 )
-                if resolved_free_text_code is None:
-                    resolved_free_text_code = _country_code_from_free_text(
-                        prompt_text
-                    )
 
-                if (
-                    intent in {"country_only", "country_request"}
-                    and resolved_free_text_code is not None
-                ):
-                    typed_country = prompt_text
-                    initial_country_code = resolved_free_text_code
-                    initial_report_request = (
-                        interpreted_request
-                        if intent == "country_request"
-                        else ""
-                    )
-                    text_process = True
-                elif intent in {"greeting", "general"} and interpreted_reply:
-                    st.session_state.fi_messages.append(
-                        {"role": "assistant", "content": interpreted_reply}
-                    )
-                    _render_chat_message("assistant", interpreted_reply)
-                elif resolved_free_text_code is not None:
-                    typed_country = prompt_text
-                    initial_country_code = resolved_free_text_code
-                    text_process = True
-                else:
-                    assistant_text = (
-                        interpreted_reply
-                        or "Tell me which country you would like to explore, "
-                        "or upload its flag."
-                    )
-                    st.session_state.fi_messages.append(
-                        {"role": "assistant", "content": assistant_text}
-                    )
-                    _render_chat_message("assistant", assistant_text)
+            if (
+                intent in {"country_only", "country_request"}
+                and resolved_free_text_code is not None
+            ):
+                typed_country = prompt_text
+                initial_country_code = resolved_free_text_code
+                initial_report_request = (
+                    interpreted_request
+                    if intent == "country_request"
+                    else ""
+                )
+                text_process = True
+            elif intent in {"greeting", "general"} and interpreted_reply:
+                st.session_state.fi_messages.append(
+                    {"role": "assistant", "content": interpreted_reply}
+                )
+                _render_chat_message("assistant", interpreted_reply)
+            elif resolved_free_text_code is not None:
+                typed_country = prompt_text
+                initial_country_code = resolved_free_text_code
+                text_process = True
+            else:
+                assistant_text = (
+                    interpreted_reply
+                    or "Tell me which country you would like to explore, "
+                    "or upload its flag."
+                )
+                st.session_state.fi_messages.append(
+                    {"role": "assistant", "content": assistant_text}
+                )
+                _render_chat_message("assistant", assistant_text)
 
 
 def show_result(
@@ -5261,12 +5218,13 @@ if text_process:
         st.session_state.fi_stage = "clarifying"
         st.session_state.fi_clarification_turn = 1
 
-        turn = continue_report_conversation(
-            country_name,
-            initial_report_request,
-            initial_report_request,
-            turn_number=1,
-        )
+        with st.spinner("Understanding your request..."):
+            turn = continue_report_conversation(
+                country_name,
+                initial_report_request,
+                initial_report_request,
+                turn_number=1,
+            )
         normalized_request = str(
             turn.get("normalized_request") or initial_report_request
         ).strip()
@@ -5307,12 +5265,13 @@ if conversation_process:
         existing_request = str(st.session_state.fi_report_request or "")
         turn_number = int(st.session_state.fi_clarification_turn or 0) + 1
 
-    turn = continue_report_conversation(
-        country_name,
-        existing_request,
-        conversation_text,
-        turn_number=turn_number,
-    )
+    with st.spinner("Understanding your request..."):
+        turn = continue_report_conversation(
+            country_name,
+            existing_request,
+            conversation_text,
+            turn_number=turn_number,
+        )
 
     normalized_request = str(
         turn.get("normalized_request")
