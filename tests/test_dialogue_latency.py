@@ -75,3 +75,17 @@ def test_history_only_scope_selects_history_sections():
 def test_broad_scope_keeps_full_report():
     keys = report_writer._requested_report_sections("complete country report")
     assert keys == report_writer.REPORT_SECTION_KEYS
+
+
+def test_prune_report_to_history_scope_removes_unrelated_sections():
+    report = {
+        "introduction": "Intro",
+        "historical_journey": "History",
+        "economy_trade_industries": "Economy",
+        "conclusion": "Conclusion",
+        "__qa_passed": True,
+    }
+    scoped = report_writer.prune_report_to_request(report, "only its history")
+    assert scoped["historical_journey"] == "History"
+    assert "economy_trade_industries" not in scoped
+    assert scoped["__scope_sections"] == report_writer.HISTORY_REPORT_SECTION_KEYS
