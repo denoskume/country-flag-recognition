@@ -986,6 +986,75 @@ def _emergency_full_report_pass(
     return {}
 
 
+def interpret_country_request(message: str) -> dict[str, str]:
+    """Interpret a free-form opening as greeting, country-only, or country request."""
+    text = str(message or "").strip()
+    if not text:
+        return {"intent": "unknown", "country": "", "request": ""}
+
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        return {"intent": "unknown", "country": "", "request": text}
+
+    model = os.getenv("FLAG_INTELLIGENCE_WRITER_MODEL", "gpt-5.6-sol").strip()
+    schema = {
+        "type": "object",
+        "properties": {
+            "intent": {
+                "type": "string",
+                "enum": ["greeting", "country_only", "country_request", "general", "unknown"],
+            },
+            "country": {"type": "string"},
+            "request": {"type": "string"},
+            "reply": {"type": "string"},
+        },
+        "required": ["intent", "country", "request", "reply"],
+        "additionalProperties": False,
+    }
+
+    prompt = (
+        "Interpret the user's first message to Flag Intelligence. "
+        "Understand the whole sentence semantically; never treat ordinary words "
+        "such as 'to', 'in', 'us', or 'no' as country codes when they occur inside "
+        "a sentence. If the user names a country and also says what they want to know, "
+        "set intent=country_request, return the canonical English country name, and "
+        "put the requested topic/scope in request. If they provide only a country name "
+        "or explicit ISO code, use country_only. For a greeting, use greeting. "
+        "For a general capability question, use general and provide a brief natural reply. "
+        "Do not invent a country.\n\n"
+        f"USER MESSAGE: {text}"
+    )
+
+    try:
+        client = OpenAI(api_key=api_key, timeout=25.0, max_retries=1)
+        response = client.responses.create(
+            model=model,
+            reasoning={"effort": "none"},
+            input=prompt,
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": "flag_intelligence_initial_intent",
+                    "strict": True,
+                    "schema": schema,
+                }
+            },
+            max_output_tokens=350,
+        )
+        payload = json.loads(_strip_code_fence(response.output_text or ""))
+        if isinstance(payload, dict):
+            return {
+                "intent": str(payload.get("intent") or "unknown").strip(),
+                "country": str(payload.get("country") or "").strip(),
+                "request": str(payload.get("request") or "").strip(),
+                "reply": str(payload.get("reply") or "").strip(),
+            }
+    except Exception:
+        pass
+
+    return {"intent": "unknown", "country": "", "request": text, "reply": ""}
+
+
 def generate_report_follow_up(
     country_name: str,
     user_request: str,
