@@ -282,6 +282,7 @@ except ImportError as exc:
     st.stop()
 from flag_recognition.llm_backend import (
     llm_backend_name,
+    llm_credentials_available,
     llm_model_name,
 )
 
@@ -4857,7 +4858,7 @@ def _country_code_from_free_text(message: str) -> str | None:
 
 
 # Conversation state: identify a country first, then clarify the report brief.
-API_PROBE_VERSION = "2026-09-30-r53"
+API_PROBE_VERSION = "2026-09-30-r54"
 if st.session_state.get("fi_api_probe_version") != API_PROBE_VERSION:
     api_ok, api_detail = probe_openai_api()
     st.session_state.fi_api_probe_version = API_PROBE_VERSION
@@ -4873,7 +4874,7 @@ if str(st.query_params.get("debug", "")).strip() == "1":
     else:
         st.error(f"LLM backend diagnostic: {debug_detail}")
 
-if not bool(st.session_state.get("fi_api_ok")):
+if not llm_credentials_available():
     st.markdown(
         """
         <div style="
@@ -4898,10 +4899,16 @@ if not bool(st.session_state.get("fi_api_ok")):
         unsafe_allow_html=True,
     )
     print(
-        "[Flag Intelligence maintenance] LLM backend unavailable: "
-        f"{st.session_state.get('fi_api_detail')}"
+        "[Flag Intelligence maintenance] Missing LLM credentials for backend="
+        f"{llm_backend_name()}"
     )
     st.stop()
+
+if not bool(st.session_state.get("fi_api_ok")):
+    print(
+        "[Flag Intelligence diagnostic] Backend probe failed but startup continues: "
+        f"{st.session_state.get('fi_api_detail')}"
+    )
 
 
 if "fi_stage" not in st.session_state:
