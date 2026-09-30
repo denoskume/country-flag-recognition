@@ -4849,6 +4849,8 @@ if "fi_image_bytes" not in st.session_state:
     st.session_state.fi_image_bytes = None
 if "fi_clarification_turn" not in st.session_state:
     st.session_state.fi_clarification_turn = 0
+if "fi_pending_input" not in st.session_state:
+    st.session_state.fi_pending_input = None
 
 for message in st.session_state.fi_messages:
     _render_chat_message(message["role"], message["content"])
@@ -4873,17 +4875,62 @@ if prompt_submission is not None:
     prompt_text = str(getattr(prompt_submission, "text", "") or "").strip()
     prompt_files = list(getattr(prompt_submission, "files", []) or [])
 
+    pending = {
+        "text": prompt_text,
+        "has_file": bool(prompt_files),
+        "file_bytes": None,
+    }
+
     if prompt_files:
         uploaded_image = prompt_files[0]
         try:
-            image = Image.open(uploaded_image).convert("RGB")
+            pending["file_bytes"] = uploaded_image.getvalue()
         except Exception:
-            st.error("The selected file could not be read as an image.")
+            try:
+                pending["file_bytes"] = uploaded_image.read()
+            except Exception:
+                pending["file_bytes"] = None
+
+    if prompt_text:
+        st.session_state.fi_messages.append(
+            {"role": "user", "content": prompt_text}
+        )
+    elif prompt_files:
+        st.session_state.fi_messages.append(
+            {"role": "user", "content": "Flag image uploaded"}
+        )
+
+    st.session_state.fi_pending_input = pending
+    st.rerun()
+
+
+pending_input = st.session_state.fi_pending_input
+if pending_input is not None:
+    st.session_state.fi_pending_input = None
+
+    prompt_text = str(pending_input.get("text") or "").strip()
+    file_bytes = pending_input.get("file_bytes")
+    has_file = bool(pending_input.get("has_file"))
+
+    if has_file and file_bytes:
+        try:
+            image = Image.open(BytesIO(file_bytes)).convert("RGB")
+        except Exception:
+            assistant_text = "I couldn't read that image. Please upload another flag image."
+            st.session_state.fi_messages.append(
+                {"role": "assistant", "content": assistant_text}
+            )
+            _render_chat_message("assistant", assistant_text)
         else:
-            if not MODEL_PATH.is_file():
-                st.error(f"Model checkpoint not found: {MODEL_PATH}")
-            else:
+            if MODEL_PATH.is_file():
                 process = True
+            else:
+                assistant_text = "The flag recognition model is currently unavailable."
+                st.session_state.fi_messages.append(
+                    {"role": "assistant", "content": assistant_text}
+                )
+                _render_chat_message("assistant", assistant_text)
+
     elif prompt_text:
         if st.session_state.fi_stage in {
             "awaiting_interest",
@@ -4895,10 +4942,6 @@ if prompt_submission is not None:
             simple_reply = _initial_chat_reply(prompt_text)
 
             if simple_reply is not None:
-                st.session_state.fi_messages.append(
-                    {"role": "user", "content": prompt_text}
-                )
-                _render_chat_message("user", prompt_text)
                 st.session_state.fi_messages.append(
                     {"role": "assistant", "content": simple_reply}
                 )
@@ -4940,10 +4983,6 @@ if prompt_submission is not None:
                     text_process = True
                 elif intent in {"greeting", "general"} and interpreted_reply:
                     st.session_state.fi_messages.append(
-                        {"role": "user", "content": prompt_text}
-                    )
-                    _render_chat_message("user", prompt_text)
-                    st.session_state.fi_messages.append(
                         {"role": "assistant", "content": interpreted_reply}
                     )
                     _render_chat_message("assistant", interpreted_reply)
@@ -4952,10 +4991,6 @@ if prompt_submission is not None:
                     initial_country_code = resolved_free_text_code
                     text_process = True
                 else:
-                    st.session_state.fi_messages.append(
-                        {"role": "user", "content": prompt_text}
-                    )
-                    _render_chat_message("user", prompt_text)
                     assistant_text = (
                         interpreted_reply
                         or "Tell me which country you would like to explore, "
@@ -5202,18 +5237,9 @@ def show_result(
 
 
 if process and image is not None:
-    st.session_state.fi_messages.append(
-        {"role": "user", "content": "Flag image uploaded"}
-    )
-    _render_chat_message("user", "Flag image uploaded")
     show_result(image=image)
 
 if text_process:
-    st.session_state.fi_messages.append(
-        {"role": "user", "content": typed_country}
-    )
-    _render_chat_message("user", typed_country)
-
     resolved_code = (
         initial_country_code
         or _country_code_from_free_text(typed_country)
@@ -5271,11 +5297,6 @@ if text_process:
         show_result(direct_code=resolved_code)
 
 if conversation_process:
-    st.session_state.fi_messages.append(
-        {"role": "user", "content": conversation_text}
-    )
-    _render_chat_message("user", conversation_text)
-
     country_name = str(st.session_state.fi_country_name or "")
     country_code = str(st.session_state.fi_country_code or "")
 
