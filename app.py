@@ -4029,7 +4029,7 @@ def _build_pdf_report_uncached(
     return buffer.getvalue()
 
 
-REPORT_WRITER_CACHE_VERSION = "2026-09-30-r57"
+REPORT_WRITER_CACHE_VERSION = "2026-09-30-r58"
 
 def _cached_authored_report(
     evidence_json: str,
@@ -4945,6 +4945,8 @@ if "fi_country_name" not in st.session_state:
     st.session_state.fi_country_name = None
 if "fi_report_request" not in st.session_state:
     st.session_state.fi_report_request = ""
+if "fi_report_state" not in st.session_state:
+    st.session_state.fi_report_state = {}
 if "fi_messages" not in st.session_state:
     st.session_state.fi_messages = []
 if "fi_image_bytes" not in st.session_state:
@@ -5109,6 +5111,7 @@ def show_result(
     direct_code: str | None = None,
     user_request: str | None = None,
     opening_reply: str | None = None,
+    brief_state: dict[str, object] | None = None,
 ):
     """Build the complete result inline and expose final downloads."""
     if direct_code is None:
@@ -5153,6 +5156,7 @@ def show_result(
         st.session_state.fi_country_name = country
         st.session_state.fi_stage = "awaiting_interest"
         st.session_state.fi_report_request = ""
+        st.session_state.fi_report_state = {}
         st.session_state.fi_clarification_turn = 0
 
         if image is not None:
@@ -5197,6 +5201,7 @@ def show_result(
         "country_code": decision_code,
         "input_mode": input_mode_used,
         "user_request": user_request,
+        "brief_state": brief_state if isinstance(brief_state, dict) else {},
         "confidence": decision_confidence,
         "deployment_threshold": (
             deployment_threshold if input_mode_used == "image" else None
@@ -5269,6 +5274,9 @@ def show_result(
                 "country_code": decision_code.upper(),
                 "input_mode": input_mode_used,
                 "user_request": user_request,
+                "brief_state": (
+                    brief_state if isinstance(brief_state, dict) else {}
+                ),
             }
 
             try:
@@ -5380,6 +5388,7 @@ if text_process:
         st.session_state.fi_country_code = resolved_code
         st.session_state.fi_country_name = country_name
         st.session_state.fi_report_request = initial_report_request
+        st.session_state.fi_report_state = {}
         st.session_state.fi_stage = "clarifying"
         st.session_state.fi_clarification_turn = 1
 
@@ -5390,6 +5399,7 @@ if text_process:
                     initial_report_request,
                     initial_report_request,
                     turn_number=1,
+                    existing_state=st.session_state.fi_report_state,
                 )
         except Exception as exc:
             assistant_text = (
@@ -5405,6 +5415,9 @@ if text_process:
                 turn.get("normalized_request") or initial_report_request
             ).strip()
             st.session_state.fi_report_request = normalized_request
+            turn_state = turn.get("brief_state")
+            if isinstance(turn_state, dict):
+                st.session_state.fi_report_state = turn_state
             assistant_text = str(turn.get("reply") or "").strip()
 
             st.session_state.fi_messages.append(
@@ -5417,11 +5430,13 @@ if text_process:
                 show_result(
                     direct_code=resolved_code,
                     user_request=normalized_request,
+                    brief_state=st.session_state.fi_report_state,
                 )
                 st.session_state.fi_stage = "idle"
                 st.session_state.fi_country_code = None
                 st.session_state.fi_country_name = None
                 st.session_state.fi_report_request = ""
+                st.session_state.fi_report_state = {}
                 st.session_state.fi_clarification_turn = 0
             else:
                 st.session_state.fi_stage = "clarifying"
@@ -5449,6 +5464,7 @@ if conversation_process:
                 existing_request,
                 conversation_text,
                 turn_number=turn_number,
+                existing_state=st.session_state.fi_report_state,
             )
     except Exception as exc:
         assistant_text = (
@@ -5469,6 +5485,9 @@ if conversation_process:
         action = str(turn.get("action") or "").strip()
 
         st.session_state.fi_report_request = normalized_request
+        turn_state = turn.get("brief_state")
+        if isinstance(turn_state, dict):
+            st.session_state.fi_report_state = turn_state
         st.session_state.fi_clarification_turn = turn_number
 
         st.session_state.fi_messages.append(
@@ -5488,12 +5507,14 @@ if conversation_process:
                 image=stored_image,
                 direct_code=country_code,
                 user_request=normalized_request,
+                brief_state=st.session_state.fi_report_state,
             )
 
             st.session_state.fi_stage = "idle"
             st.session_state.fi_country_code = None
             st.session_state.fi_country_name = None
             st.session_state.fi_report_request = ""
+            st.session_state.fi_report_state = {}
             st.session_state.fi_image_bytes = None
             st.session_state.fi_clarification_turn = 0
         else:
