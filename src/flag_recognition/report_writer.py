@@ -678,7 +678,11 @@ def _generate_section_group(
                     best = block
                 if len(best) == len(requested):
                     return best
-            except Exception:
+            except Exception as exc:
+                print(
+                    f"[Flag Intelligence dialogue API] model={candidate_model} "
+                    f"plain_error={_api_error_detail(exc)}"
+                )
                 continue
     return best
 
@@ -739,7 +743,11 @@ def _generate_single_section(
                 value = str(parsed.get(key, "") or "").strip()
                 if value:
                     return value
-            except Exception:
+            except Exception as exc:
+                print(
+                    f"[Flag Intelligence dialogue API] model={candidate_model} "
+                    f"plain_error={_api_error_detail(exc)}"
+                )
                 continue
     return ""
 
@@ -990,6 +998,16 @@ def _emergency_full_report_pass(
     return {}
 
 
+def _api_error_detail(exc: Exception) -> str:
+    return (
+        f"{type(exc).__name__}"
+        f" status={getattr(exc, 'status_code', None)!r}"
+        f" code={getattr(exc, 'code', None)!r}"
+        f" body={getattr(exc, 'body', None)!r}"
+        f" message={str(exc)[:500]}"
+    )
+
+
 def probe_openai_api() -> tuple[bool, str]:
     """Run a tiny API call and return an internal diagnostic string."""
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -1012,17 +1030,7 @@ def probe_openai_api() -> tuple[bool, str]:
             return True, "ok"
         return False, "empty API response"
     except Exception as exc:
-        code = getattr(exc, "code", None)
-        status = getattr(exc, "status_code", None)
-        body = getattr(exc, "body", None)
-        detail = (
-            f"{type(exc).__name__}"
-            f" status={status!r}"
-            f" code={code!r}"
-            f" body={body!r}"
-            f" message={str(exc)[:500]}"
-        )
-        return False, detail
+        return False, _api_error_detail(exc)
 
 
 def _conversation_model_candidates(configured_model: str) -> tuple[str, ...]:
@@ -1239,8 +1247,11 @@ def interpret_country_request(message: str) -> dict[str, str]:
                         or result["request"]
                     ):
                         return result
-            except Exception:
-                pass
+            except Exception as exc:
+                print(
+                    f"[Flag Intelligence dialogue API] model={candidate_model} "
+                    f"structured_error={_api_error_detail(exc)}"
+                )
 
             # Compatibility path: plain Responses API, still JSON by instruction.
             try:
@@ -1270,7 +1281,11 @@ def interpret_country_request(message: str) -> dict[str, str]:
                         or result["request"]
                     ):
                         return result
-            except Exception:
+            except Exception as exc:
+                print(
+                    f"[Flag Intelligence dialogue API] model={candidate_model} "
+                    f"plain_error={_api_error_detail(exc)}"
+                )
                 continue
 
     return _local_initial_interpretation(text)
@@ -1373,8 +1388,11 @@ def continue_report_conversation(
                             "normalized_request": normalized_request,
                             "reply": reply,
                         }
-            except Exception:
-                pass
+            except Exception as exc:
+                print(
+                    f"[Flag Intelligence dialogue API] model={candidate_model} "
+                    f"structured_error={_api_error_detail(exc)}"
+                )
 
             try:
                 plain_prompt = (
@@ -1405,7 +1423,11 @@ def continue_report_conversation(
                             "normalized_request": normalized_request,
                             "reply": reply,
                         }
-            except Exception:
+            except Exception as exc:
+                print(
+                    f"[Flag Intelligence dialogue API] model={candidate_model} "
+                    f"plain_error={_api_error_detail(exc)}"
+                )
                 continue
 
     return _local_conversation_fallback(
