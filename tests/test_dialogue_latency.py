@@ -29,3 +29,25 @@ def test_ollama_respects_interactive_timeout(monkeypatch):
     monkeypatch.setenv("FLAG_INTELLIGENCE_OLLAMA_TIMEOUT", "180")
     responses = llm_backend._OllamaResponses(timeout=20.0)
     assert responses.timeout == 20.0
+
+
+def test_report_conversation_never_calls_llm(monkeypatch):
+    monkeypatch.setattr(report_writer, "OpenAI", _ForbiddenClient)
+    result = report_writer.continue_report_conversation(
+        "France",
+        "",
+        "I want to know about its history",
+        turn_number=1,
+    )
+    assert result["action"] in {"ask", "generate"}
+    assert result["reply"]
+
+
+def test_initial_country_request_can_skip_dialogue_llm(monkeypatch):
+    monkeypatch.setattr(report_writer, "OpenAI", _ForbiddenClient)
+    monkeypatch.setenv("FLAG_INTELLIGENCE_DIALOGUE_LLM", "false")
+    result = report_writer.interpret_country_request(
+        "Tell me about France history"
+    )
+    assert result["_source"] == "fast_path"
+    assert result["request"] == "Tell me about France history"
