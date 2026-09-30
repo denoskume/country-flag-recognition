@@ -92,10 +92,10 @@ def _schema_from_text_config(text_config: Any) -> dict[str, Any] | None:
 
 class _OllamaResponses:
     def __init__(self, timeout: float | None = None):
-        requested = float(timeout or 120.0)
-        self.timeout = max(
-            requested,
-            float(os.getenv("FLAG_INTELLIGENCE_OLLAMA_TIMEOUT", "180")),
+        self.timeout = float(
+            timeout
+            if timeout is not None
+            else os.getenv("FLAG_INTELLIGENCE_OLLAMA_TIMEOUT", "180")
         )
 
     def create(
