@@ -520,3 +520,5 @@ def test_scoped_review_uses_plain_prose_per_section(monkeypatch):
     calls = _Client.instances[0].responses.calls
     assert len(calls) == 3
     assert all("text" not in call for call in calls)
+    assert all(call["tools"] == [{"type": "browser_search"}] for call in calls)
+    assert all(call["tool_choice"] == "auto" for call in calls)
