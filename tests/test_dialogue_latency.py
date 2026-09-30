@@ -316,3 +316,19 @@ def test_scoped_review_retries_with_json_object_when_strict_schema_fails(monkeyp
     assert len(calls) == 2
     assert calls[0]["text"]["format"]["type"] == "json_schema"
     assert calls[1]["text"]["format"]["type"] == "json_object"
+
+
+def test_relative_end_date_today_is_understood():
+    start, end = report_writer._extract_requested_year_range(
+        "from 1950 till today"
+    )
+    assert start == 1950
+    assert end >= 2026
+
+
+def test_relative_end_date_present_is_understood():
+    start, end = report_writer._extract_requested_year_range(
+        "1950 to present"
+    )
+    assert start == 1950
+    assert end >= 2026
