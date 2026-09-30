@@ -201,35 +201,124 @@ def _requested_topic_groups(user_request: str) -> tuple[str, ...]:
     return tuple(groups)
 
 
+def _extract_depth_label(value: str) -> str:
+    normalized = _normalized_request_text(value)
+    depth_markers = (
+        ("year by year", "year-by-year analysis"),
+        ("in depth", "in-depth analysis"),
+        ("detailed", "detailed analysis"),
+        ("deep", "in-depth analysis"),
+        ("comprehensive", "comprehensive analysis"),
+        ("high level", "high-level overview"),
+        ("balanced overview", "balanced overview"),
+        ("overview", "overview"),
+        ("brief", "brief overview"),
+    )
+    for marker, label in depth_markers:
+        if marker in normalized:
+            return label
+    return ""
+
+
+def _canonicalize_report_brief(
+    existing_request: str,
+    latest_message: str,
+    model_normalized: str = "",
+) -> str:
+    """Preserve explicit user constraints while preventing model scope drift."""
+    existing = str(existing_request or "").strip()
+    latest = str(latest_message or "").strip()
+    model_value = str(model_normalized or "").strip()
+
+    latest_groups = _requested_topic_groups(latest)
+    existing_groups = _requested_topic_groups(existing)
+    model_groups = _requested_topic_groups(model_value)
+
+    if latest_groups:
+        groups = latest_groups
+    elif existing_groups:
+        groups = existing_groups
+    else:
+        groups = model_groups
+
+    year_range = (
+        _extract_requested_year_range(latest)
+        or _extract_requested_year_range(existing)
+        or _extract_requested_year_range(model_value)
+    )
+
+    depth = (
+        _extract_depth_label(latest)
+        or _extract_depth_label(existing)
+        or _extract_depth_label(model_value)
+    )
+
+    parts: list[str] = []
+    if groups:
+        labels = {
+            "history": "history",
+            "economy": "economy",
+            "culture": "culture",
+            "politics": "politics",
+            "society": "society",
+            "technology": "technology",
+            "diplomacy": "diplomacy",
+            "education": "education",
+            "environment": "environment",
+            "geography": "geography",
+            "travel": "travel",
+            "flag": "flag",
+        }
+        named = [labels[group] for group in groups if group in labels]
+        if len(named) == 1:
+            parts.append(named[0])
+        elif len(named) == 2:
+            parts.append(f"{named[0]} and {named[1]}")
+        elif named:
+            parts.append(", ".join(named[:-1]) + f", and {named[-1]}")
+
+    if year_range is not None:
+        parts.append(f"from {year_range[0]} to {year_range[1]}")
+
+    if depth:
+        parts.append(depth)
+
+    if parts:
+        return "; ".join(parts)
+
+    return model_value or latest or existing
+
+
+def _brief_missing_dimension(existing_request: str, latest_message: str) -> str:
+    brief = _canonicalize_report_brief(existing_request, latest_message)
+    groups = _requested_topic_groups(brief)
+    has_period = _has_explicit_time_range(brief)
+    has_depth = bool(_extract_depth_label(brief))
+
+    if not groups:
+        return "topic"
+    if "history" in groups and not has_period:
+        return "period"
+    if not has_depth:
+        return "depth"
+    return ""
+
+
 def _brief_is_sufficiently_specific(
     existing_request: str,
     latest_message: str,
 ) -> bool:
-    merged = " ".join(
-        part for part in (str(existing_request or ""), str(latest_message or "")) if part
-    )
-    normalized = _normalized_request_text(merged)
-    groups = _requested_topic_groups(merged)
-    has_period = _has_explicit_time_range(merged)
-    has_depth = any(
-        marker in normalized
-        for marker in (
-            "detailed",
-            "in depth",
-            "deep",
-            "comprehensive",
-            "year by year",
-            "high level",
-            "overview",
-            "brief",
-        )
-    )
-    broad_acceptance = any(
-        marker in normalized
-        for marker in ("all of them", "all aspects", "everything in that period")
-    )
+    brief = _canonicalize_report_brief(existing_request, latest_message)
+    groups = _requested_topic_groups(brief)
+    has_period = _has_explicit_time_range(brief)
+    has_depth = bool(_extract_depth_label(brief))
 
-    return bool(has_period and groups and (has_depth or broad_acceptance))
+    if not groups or not has_depth:
+        return False
+    if "history" in groups and not has_period:
+        return False
+    return True
+
 
 
 def _extract_requested_year_range(user_request: str) -> tuple[int, int] | None:
@@ -1372,16 +1461,32 @@ def continue_report_conversation(
         "required": ["action", "normalized_request", "reply"],
         "additionalProperties": False,
     }
+    canonical_before_model = _canonicalize_report_brief(existing, latest)
     brief_complete = _brief_is_sufficiently_specific(existing, latest)
-    completeness_instruction = (
-        "The accumulated brief is now sufficiently specific. Set action='generate' and "
-        "write a short natural confirmation that you are preparing the focused report. "
-        "Do not ask another question. "
-        if brief_complete
-        else
-        "The accumulated brief is not yet fully specific. Ask one focused clarification "
-        "only if it materially improves the final report. "
-    )
+    missing_dimension = _brief_missing_dimension(existing, latest)
+
+    if brief_complete:
+        completeness_instruction = (
+            "The accumulated brief is now sufficiently specific. Set action='generate' and "
+            "write a short natural confirmation that you are preparing the focused report. "
+            "Do not ask another question. "
+        )
+    elif missing_dimension == "depth":
+        completeness_instruction = (
+            "The only missing decision is desired depth. Ask only whether the user wants "
+            "a brief/high-level overview, balanced overview, detailed analysis, or "
+            "year-by-year treatment. Do not reopen topic selection. "
+        )
+    elif missing_dimension == "period":
+        completeness_instruction = (
+            "The only important missing decision is the time period. Ask only for the "
+            "period or dates to cover. Do not reopen the selected topic. "
+        )
+    else:
+        completeness_instruction = (
+            "The accumulated brief is not yet fully specific. Ask one focused clarification "
+            "only if it materially improves the final report. "
+        )
 
     prompt = (
         "You are Flag Intelligence in a live conversation before generating a report. "
@@ -1424,9 +1529,14 @@ def continue_report_conversation(
         if not isinstance(payload, dict):
             raise ValueError("clarification output is not a JSON object")
         action = str(payload.get("action") or "").strip()
-        normalized_request = str(
+        model_normalized = str(
             payload.get("normalized_request") or ""
         ).strip()
+        normalized_request = _canonicalize_report_brief(
+            existing,
+            latest,
+            model_normalized,
+        )
         reply = str(payload.get("reply") or "").strip()
         if action not in {"ask", "generate"} or not reply:
             raise ValueError("invalid clarification output")
