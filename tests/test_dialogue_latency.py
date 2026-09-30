@@ -98,10 +98,21 @@ def test_dialogue_failure_does_not_fallback(monkeypatch):
         report_writer.interpret_country_request("Hello")
 
 
-def test_ollama_respects_interactive_timeout(monkeypatch):
-    monkeypatch.setenv("FLAG_INTELLIGENCE_OLLAMA_TIMEOUT", "180")
-    responses = llm_backend._OllamaResponses(timeout=12.0)
-    assert responses.timeout == 12.0
+def test_groq_is_default_backend(monkeypatch):
+    monkeypatch.delenv("FLAG_INTELLIGENCE_LLM_BACKEND", raising=False)
+    assert llm_backend.llm_backend_name() == "groq"
+
+
+def test_groq_default_model(monkeypatch):
+    monkeypatch.setenv("FLAG_INTELLIGENCE_LLM_BACKEND", "groq")
+    monkeypatch.delenv("FLAG_INTELLIGENCE_GROQ_MODEL", raising=False)
+    assert llm_backend.llm_model_name() == "openai/gpt-oss-20b"
+
+
+def test_groq_uses_groq_api_key(monkeypatch):
+    monkeypatch.setenv("FLAG_INTELLIGENCE_LLM_BACKEND", "groq")
+    monkeypatch.setenv("GROQ_API_KEY", "test-groq-key")
+    assert llm_backend.llm_auth_token() == "test-groq-key"
 
 
 def test_history_only_scope_selects_history_sections():
