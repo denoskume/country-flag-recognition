@@ -106,6 +106,15 @@ HISTORY_PERIOD_REPORT_SECTION_KEYS = (
 )
 
 
+GENERIC_FOCUSED_REPORT_SECTION_KEYS = (
+    "introduction",
+    "focused_analysis",
+    "key_developments",
+    "context_and_implications",
+    "conclusion",
+)
+
+
 TOPIC_SECTION_GROUPS: dict[str, tuple[str, ...]] = {
     "history": (
         "historical_journey",
@@ -389,7 +398,7 @@ def _requested_report_sections(user_request: str) -> tuple[str, ...]:
 
     groups = _requested_topic_groups(user_request)
     if not groups:
-        return REPORT_SECTION_KEYS
+        return GENERIC_FOCUSED_REPORT_SECTION_KEYS
 
     if groups == ("history",):
         if _has_explicit_time_range(user_request):
@@ -1468,8 +1477,9 @@ def continue_report_conversation(
     existing_request: str,
     latest_message: str,
     turn_number: int = 1,
-) -> dict[str, str]:
-    """Handle one clarification turn with one real-time LLM call."""
+    existing_state: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Update the report brief semantically with one real-time model turn."""
     api_key = llm_auth_token()
     if not api_key:
         raise RuntimeError("LLM dialogue request failed: LLM backend unavailable")
@@ -1477,69 +1487,90 @@ def continue_report_conversation(
     country = str(country_name or "").strip()
     latest = str(latest_message or "").strip()
     existing = str(existing_request or "").strip()
+    state = existing_state if isinstance(existing_state, dict) else {}
+
+    brief_state_schema = {
+        "type": "object",
+        "properties": {
+            "subject": {"type": "string"},
+            "topics": {"type": "array", "items": {"type": "string"}},
+            "period": {"type": "string"},
+            "angles": {"type": "array", "items": {"type": "string"}},
+            "depth": {"type": "string"},
+            "exclusions": {"type": "array", "items": {"type": "string"}},
+            "current_events": {"type": "boolean"},
+            "other_constraints": {"type": "array", "items": {"type": "string"}},
+            "ready": {"type": "boolean"},
+            "missing": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": [
+            "subject",
+            "topics",
+            "period",
+            "angles",
+            "depth",
+            "exclusions",
+            "current_events",
+            "other_constraints",
+            "ready",
+            "missing",
+        ],
+        "additionalProperties": False,
+    }
 
     schema = {
         "type": "object",
         "properties": {
-            "action": {
-                "type": "string",
-                "enum": ["ask", "generate"],
-            },
+            "action": {"type": "string", "enum": ["ask", "generate"]},
             "normalized_request": {"type": "string"},
             "reply": {"type": "string"},
+            "brief_state": brief_state_schema,
         },
-        "required": ["action", "normalized_request", "reply"],
+        "required": [
+            "action",
+            "normalized_request",
+            "reply",
+            "brief_state",
+        ],
         "additionalProperties": False,
     }
-    canonical_before_model = _canonicalize_report_brief(existing, latest)
-    brief_complete = _brief_is_sufficiently_specific(existing, latest)
-    missing_dimension = _brief_missing_dimension(existing, latest)
-
-    if brief_complete:
-        completeness_instruction = (
-            "The accumulated brief is now sufficiently specific. Set action='generate' and "
-            "write a short natural confirmation that you are preparing the focused report. "
-            "Do not ask another question. "
-        )
-    elif missing_dimension == "angle":
-        completeness_instruction = (
-            "The period is already clear. Ask only which angle(s) within that period the "
-            "user wants emphasized, for example economic, political, social, cultural, "
-            "technological, diplomatic, or a balanced treatment. Do not ask for the "
-            "period again. "
-        )
-    elif missing_dimension == "depth":
-        completeness_instruction = (
-            "The selected topic/angle and period are already clear. Ask only whether the "
-            "user wants a brief/high-level overview, balanced overview, detailed analysis, "
-            "or year-by-year treatment. Do not reopen topic or angle selection. "
-        )
-    elif missing_dimension == "period":
-        completeness_instruction = (
-            "The only important missing decision is the time period. Ask only for the "
-            "period or dates to cover. Do not reopen the selected topic. "
-        )
-    else:
-        completeness_instruction = (
-            "The accumulated brief is not yet fully specific. Ask one focused clarification "
-            "only if it materially improves the final report. "
-        )
 
     prompt = (
-        "You are Flag Intelligence in a live conversation before generating a report. "
-        f"The selected country is {country}. "
-        f"Previously understood request: {existing!r}. "
-        f"Latest user message: {latest!r}. "
-        f"Clarification turn: {int(turn_number)}. "
-        + completeness_instruction
-        + "Understand the user's meaning naturally and merge the latest instruction into "
-        "normalized_request. Preserve constraints already supplied by the user, including "
-        "time range, chosen angles, exclusions, and desired depth. Ask only one focused "
-        "question at a time. If the user narrows the scope, replace broader earlier angles "
-        "with the narrower final choice rather than retaining unwanted topics. "
-        "Avoid repetitive clarification loops. "
-        "Your reply must be natural, concise, and freshly written for this turn. "
-        "Return compact JSON only."
+        "You are Flag Intelligence managing a live report-planning conversation. "
+        "Interpret the user's meaning semantically; user wording is unpredictable and "
+        "must never be handled as a fixed template. Update the structured brief from the "
+        "previous state and the latest message.\n\n"
+        f"COUNTRY: {country}\n"
+        f"TURN: {int(turn_number)}\n"
+        f"PREVIOUS NORMALIZED REQUEST: {existing or '(none)'}\n"
+        "PREVIOUS BRIEF STATE:\n"
+        + json.dumps(state, ensure_ascii=False, sort_keys=True)
+        + "\nLATEST USER MESSAGE:\n"
+        + latest
+        + "\n\nRULES:\n"
+        "- Previous resolved facts are conversation memory. Preserve them unless the "
+        "latest user message explicitly changes, narrows, removes, or corrects them.\n"
+        "- Understand natural language, paraphrases, relative dates, vague concepts, and "
+        "unusual topics by meaning rather than keyword matching.\n"
+        "- Do not ask again for information already resolved in the brief.\n"
+        "- Do not require every field to be filled. Ask a clarification only when the "
+        "missing information would materially change the usefulness or scope of the report.\n"
+        "- If the user delegates a choice ('you decide', 'whatever is useful', etc.), "
+        "choose a sensible scope and mark the brief ready instead of asking again.\n"
+        "- current_events=true when the user explicitly asks for latest/current/recent/"
+        "today developments. Preserve that intent in normalized_request.\n"
+        "- topics and angles may contain any concise natural-language concepts; do not "
+        "force them into a predefined taxonomy.\n"
+        "- period should preserve the user's intended temporal scope in natural language.\n"
+        "- exclusions must preserve explicit 'do not include' constraints.\n"
+        "- ready=true when there is enough information to produce a useful focused report.\n"
+        "- missing contains only genuinely material unresolved items.\n"
+        "- If ready=true, action must be generate and reply should briefly confirm the "
+        "understood scope. If ready=false, action must be ask and reply must contain one "
+        "concise, non-repetitive clarification question about the most important missing item.\n"
+        "- normalized_request must be a faithful compact summary of the accumulated user "
+        "intent, including all resolved constraints and no invented preferences.\n"
+        "Return JSON only."
     )
 
     client = OpenAI(
@@ -1547,6 +1578,9 @@ def continue_report_conversation(
         timeout=float(os.getenv("FLAG_INTELLIGENCE_DIALOGUE_TIMEOUT", "12")),
         max_retries=0,
     )
+
+    parsed: dict[str, Any] | None = None
+    strict_error: Exception | None = None
     try:
         response = client.responses.create(
             model=llm_model_name(),
@@ -1555,39 +1589,76 @@ def continue_report_conversation(
             text={
                 "format": {
                     "type": "json_schema",
-                    "name": "flag_intelligence_clarification_turn",
+                    "name": "flag_intelligence_semantic_brief_turn",
                     "strict": True,
                     "schema": schema,
                 }
             },
-            max_output_tokens=260,
+            max_output_tokens=700,
         )
-        payload = json.loads(_strip_code_fence(response.output_text or ""))
-        if not isinstance(payload, dict):
-            raise ValueError("clarification output is not a JSON object")
-        action = str(payload.get("action") or "").strip()
-        model_normalized = str(
-            payload.get("normalized_request") or ""
-        ).strip()
-        normalized_request = _canonicalize_report_brief(
-            existing,
-            latest,
-            model_normalized,
-        )
-        reply = str(payload.get("reply") or "").strip()
-        if action not in {"ask", "generate"} or not reply:
-            raise ValueError("invalid clarification output")
-        if brief_complete:
-            action = "generate"
-        return {
-            "action": action,
-            "normalized_request": normalized_request,
-            "reply": reply,
-        }
+        candidate = json.loads(_strip_code_fence(response.output_text or ""))
+        if isinstance(candidate, dict):
+            parsed = candidate
     except Exception as exc:
-        raise RuntimeError(
-            "LLM dialogue request failed: " + _api_error_detail(exc)
-        ) from exc
+        strict_error = exc
+
+    if parsed is None:
+        try:
+            response = client.responses.create(
+                model=llm_model_name(),
+                reasoning={"effort": "low"},
+                input=(
+                    prompt
+                    + "\n\nReturn a single valid JSON object with exactly these top-level "
+                    "keys: action, normalized_request, reply, brief_state."
+                ),
+                text={"format": {"type": "json_object"}},
+                max_output_tokens=900,
+            )
+            candidate = json.loads(_strip_code_fence(response.output_text or ""))
+            if isinstance(candidate, dict):
+                parsed = candidate
+        except Exception as retry_exc:
+            detail = (
+                "LLM dialogue request failed after structured and JSON-object attempts. "
+            )
+            if strict_error is not None:
+                detail += "strict=" + _api_error_detail(strict_error) + " "
+            detail += "retry=" + _api_error_detail(retry_exc)
+            raise RuntimeError(detail) from retry_exc
+
+    if not isinstance(parsed, dict):
+        raise RuntimeError("LLM dialogue request failed: invalid semantic brief output")
+
+    brief_state = parsed.get("brief_state")
+    if not isinstance(brief_state, dict):
+        raise RuntimeError("LLM dialogue request failed: missing semantic brief state")
+
+    normalized_request = str(parsed.get("normalized_request") or "").strip()
+    reply = str(parsed.get("reply") or "").strip()
+    if not normalized_request:
+        raise RuntimeError("LLM dialogue request failed: empty normalized request")
+    if not reply:
+        raise RuntimeError("LLM dialogue request failed: empty reply")
+
+    ready = bool(brief_state.get("ready"))
+    action = "generate" if ready else "ask"
+
+    missing = brief_state.get("missing")
+    if not isinstance(missing, list):
+        brief_state["missing"] = []
+
+    for key in ("topics", "angles", "exclusions", "other_constraints"):
+        value = brief_state.get(key)
+        if not isinstance(value, list):
+            brief_state[key] = []
+
+    return {
+        "action": action,
+        "normalized_request": normalized_request,
+        "reply": reply,
+        "brief_state": brief_state,
+    }
 
 def _review_scoped_report(
     *,
