@@ -9,13 +9,18 @@ from __future__ import annotations
 
 import os
 
+import requests
+
 
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 DEFAULT_GROQ_MODEL = "openai/gpt-oss-20b"
 
 
 def llm_backend_name() -> str:
-    return os.getenv("FLAG_INTELLIGENCE_LLM_BACKEND", "groq").strip().lower()
+    backend = os.getenv("FLAG_INTELLIGENCE_LLM_BACKEND", "groq").strip().lower()
+    if backend == "ollama":
+        return "groq"
+    return backend or "groq"
 
 
 def llm_model_name() -> str:
@@ -97,6 +102,29 @@ def probe_llm_backend() -> tuple[bool, str]:
     if not token:
         key_name = "GROQ_API_KEY" if backend == "groq" else "OPENAI_API_KEY"
         return False, f"{key_name} missing"
+
+    if backend == "groq":
+        try:
+            response = requests.post(
+                f"{GROQ_BASE_URL}/responses",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": llm_model_name(),
+                    "input": "Reply with OK only.",
+                    "max_output_tokens": 16,
+                },
+                timeout=10.0,
+            )
+            response.raise_for_status()
+            data = response.json()
+            if isinstance(data, dict) and data.get("status") in {"completed", "in_progress"}:
+                return True, f"groq ok: {llm_model_name()}"
+            return False, f"unexpected Groq response: {str(data)[:300]}"
+        except Exception as exc:
+            return False, f"{type(exc).__name__}: {str(exc)[:500]}"
 
     try:
         client = FlagIntelligenceClient(
