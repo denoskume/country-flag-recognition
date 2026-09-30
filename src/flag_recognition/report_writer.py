@@ -990,6 +990,41 @@ def _emergency_full_report_pass(
     return {}
 
 
+def probe_openai_api() -> tuple[bool, str]:
+    """Run a tiny API call and return an internal diagnostic string."""
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        return False, "OPENAI_API_KEY missing"
+
+    try:
+        client = OpenAI(
+            api_key=api_key,
+            timeout=15.0,
+            max_retries=0,
+        )
+        response = client.responses.create(
+            model="gpt-5.6-luna",
+            input="Reply with OK only.",
+            max_output_tokens=8,
+        )
+        output = str(response.output_text or "").strip()
+        if output:
+            return True, "ok"
+        return False, "empty API response"
+    except Exception as exc:
+        code = getattr(exc, "code", None)
+        status = getattr(exc, "status_code", None)
+        body = getattr(exc, "body", None)
+        detail = (
+            f"{type(exc).__name__}"
+            f" status={status!r}"
+            f" code={code!r}"
+            f" body={body!r}"
+            f" message={str(exc)[:500]}"
+        )
+        return False, detail
+
+
 def _conversation_model_candidates(configured_model: str) -> tuple[str, ...]:
     """Ordered failover models for low-latency dialogue turns."""
     candidates = [
