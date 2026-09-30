@@ -330,20 +330,42 @@ def _brief_is_sufficiently_specific(
 
 
 def _extract_requested_year_range(user_request: str) -> tuple[int, int] | None:
-    """Extract a plausible explicit year range such as 1950 to 2026."""
+    """Extract explicit or relative year ranges such as 1950 to today."""
     text = str(user_request or "")
-    match = re.search(
-        r"\b(1[5-9]\d{2}|20\d{2})\s*(?:-|–|—|to|until|through|au|à)\s*"
+    current_year = time.gmtime().tm_year
+
+    explicit = re.search(
+        r"\b(1[5-9]\d{2}|20\d{2})\s*(?:-|–|—|to|until|through|till|au|à)\s*"
         r"(1[5-9]\d{2}|20\d{2})\b",
         text,
         flags=re.IGNORECASE,
     )
-    if not match:
-        return None
-    start, end = int(match.group(1)), int(match.group(2))
-    if start > end:
-        start, end = end, start
-    return start, end
+    if explicit:
+        start, end = int(explicit.group(1)), int(explicit.group(2))
+        if start > end:
+            start, end = end, start
+        return start, end
+
+    relative = re.search(
+        r"\b(1[5-9]\d{2}|20\d{2})\s*"
+        r"(?:-|–|—|to|until|through|till|up\s+to)\s*"
+        r"(?:today|present|now|current(?:\s+year)?)\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if relative:
+        return int(relative.group(1)), current_year
+
+    between_relative = re.search(
+        r"\bbetween\s+(1[5-9]\d{2}|20\d{2})\s+and\s+"
+        r"(?:today|present|now|current(?:\s+year)?)\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if between_relative:
+        return int(between_relative.group(1)), current_year
+
+    return None
 
 
 def _has_explicit_time_range(user_request: str) -> bool:
