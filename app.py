@@ -200,10 +200,12 @@ from flag_recognition.report_manifest import (
     missing_required_sections,
 )
 from flag_recognition.report_writer import (
+    HISTORY_REPORT_SECTION_KEYS,
     continue_report_conversation,
     generate_authored_report,
     interpret_country_request,
     probe_openai_api,
+    prune_report_to_request,
 )
 from flag_recognition.llm_backend import (
     llm_backend_name,
@@ -994,11 +996,159 @@ def _validate_professional_report_story(story: list[object]) -> None:
         )
 
 
+def _clean_scoped_pdf_text(value: object) -> str:
+    """Remove source-markup residue from focused report prose."""
+    text = str(value or "").strip()
+    text = re.sub(r"={2,}\s*([^=]+?)\s*={2,}", r"\1.", text)
+    text = re.sub(r"\{\{[^{}]*\}\}", " ", text)
+    text = re.sub(r"\[\[(?:[^|\]]*\|)?([^\]]+)\]\]", r"\1", text)
+    text = re.sub(r"<ref\b[^>]*>.*?</ref>", " ", text, flags=re.I | re.S)
+    text = re.sub(r"<ref\b[^>]*/>", " ", text, flags=re.I)
+    text = re.sub(r"https?://\S+", " ", text, flags=re.I)
+    text = re.sub(r"\s+", " ", text).strip(" ;|")
+    return text
+
+
+def _build_scoped_pdf_report(
+    report: dict[str, object],
+    image: Image.Image | None,
+    section_keys: tuple[str, ...],
+) -> bytes:
+    """Build a focused PDF containing only the sections requested by the user."""
+    buffer = BytesIO()
+    document = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=PDF_MARGIN_MM * mm,
+        leftMargin=PDF_MARGIN_MM * mm,
+        topMargin=44 * mm,
+        bottomMargin=28 * mm,
+        title="Flag Intelligence - Focused Country Report",
+        author="Denos Kume",
+        subject="Focused country knowledge report",
+    )
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "ScopedReportTitle",
+        parent=styles["Title"],
+        fontName=PDF_FONT_BOLD,
+        fontSize=18,
+        leading=22,
+        alignment=TA_CENTER,
+        spaceAfter=5 * mm,
+    )
+    scope_style = ParagraphStyle(
+        "ScopedReportScope",
+        parent=styles["Normal"],
+        fontName=PDF_FONT_REGULAR,
+        fontSize=9,
+        leading=12,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#555555"),
+        spaceAfter=7 * mm,
+    )
+    heading_style = ParagraphStyle(
+        "ScopedSectionHeading",
+        parent=styles["Heading2"],
+        fontName=PDF_FONT_BOLD,
+        fontSize=12,
+        leading=15,
+        spaceBefore=3 * mm,
+        spaceAfter=2 * mm,
+        keepWithNext=True,
+    )
+    body_style = ParagraphStyle(
+        "ScopedBody",
+        parent=styles["BodyText"],
+        fontName=PDF_FONT_REGULAR,
+        fontSize=10.5,
+        leading=14.2,
+        alignment=TA_JUSTIFY,
+        spaceAfter=3 * mm,
+    )
+
+    country = str(report.get("decision") or report.get("top_candidate") or "").strip()
+    user_request = str(report.get("user_request") or "").strip()
+    authored = report.get("authored_report")
+    if not isinstance(authored, dict):
+        authored = {}
+
+    titles = {
+        "introduction": "Introduction",
+        "origins_early_history": "Origins & Early History",
+        "historical_journey": "Historical Journey",
+        "key_historical_timeline": "Key Historical Timeline",
+        "state_formation_identity": "State Formation & National Identity",
+        "conclusion": "Conclusion",
+    }
+
+    story: list[object] = [
+        Paragraph(
+            xml_escape(f"{country} — Focused Report"),
+            title_style,
+        ),
+        Paragraph(
+            xml_escape(user_request or "Focused country report"),
+            scope_style,
+        ),
+    ]
+
+    for key in section_keys:
+        value = authored.get(key)
+        if not isinstance(value, str):
+            continue
+        cleaned = _clean_scoped_pdf_text(value)
+        if not cleaned:
+            continue
+        story.append(Paragraph(xml_escape(titles.get(key, key.replace("_", " ").title())), heading_style))
+        story.append(
+            HRFlowable(
+                width="100%",
+                thickness=0.8,
+                color=colors.HexColor("#B8BEC7"),
+                spaceBefore=0,
+                spaceAfter=2 * mm,
+            )
+        )
+        for paragraph_text in re.split(r"\n\s*\n+", cleaned):
+            paragraph_text = paragraph_text.strip()
+            if paragraph_text:
+                story.append(Paragraph(xml_escape(paragraph_text), body_style))
+
+    if len(story) <= 2:
+        story.append(
+            Paragraph(
+                "No report content was available for the requested scope.",
+                body_style,
+            )
+        )
+
+    document.build(
+        story,
+        onFirstPage=draw_pdf_watermark,
+        onLaterPages=draw_pdf_watermark,
+    )
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
 def _build_pdf_report_uncached(
     report: dict[str, object],
     image: Image.Image | None,
 ) -> bytes:
     """Build a compact institutional country knowledge report."""
+    authored = report.get("authored_report")
+    scope_sections = (
+        tuple(authored.get("__scope_sections") or ())
+        if isinstance(authored, dict)
+        else ()
+    )
+    if scope_sections:
+        return _build_scoped_pdf_report(
+            report,
+            image,
+            scope_sections,
+        )
     report = _sanitize_pdf_payload(report)
     assert isinstance(report, dict)
     buffer = BytesIO()
@@ -3779,7 +3929,7 @@ def _build_pdf_report_uncached(
     return buffer.getvalue()
 
 
-REPORT_WRITER_CACHE_VERSION = "2026-09-30-r33"
+REPORT_WRITER_CACHE_VERSION = "2026-09-30-r34"
 
 def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
     """Build a complete local report when the external writer is unavailable."""
@@ -4035,7 +4185,10 @@ def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
         "__substantial_sections": 0,
         "__generation_mode": "local_support_only",
     }
-    return result
+    return prune_report_to_request(
+        result,
+        str(report.get("user_request") or ""),
+    )
 
 def _cached_authored_report(
     evidence_json: str,
