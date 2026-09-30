@@ -121,8 +121,31 @@ def _requested_report_sections(user_request: str) -> tuple[str, ...]:
         token in normalized
         for token in ("history", "historical", "histoire")
     )
-    only_markers = ("only", "just", "focus", "solely")
-    if history_requested and any(marker in normalized for marker in only_markers):
+
+    other_topic_markers = (
+        "geography",
+        "climate",
+        "economy",
+        "culture",
+        "government",
+        "politics",
+        "education",
+        "science",
+        "universities",
+        "infrastructure",
+        "environment",
+        "cost of living",
+        "international relations",
+        "society",
+        "health",
+        "sport",
+        "sports",
+        "flag",
+    )
+
+    if history_requested and not any(
+        marker in normalized for marker in other_topic_markers
+    ):
         return HISTORY_REPORT_SECTION_KEYS
 
     return REPORT_SECTION_KEYS
