@@ -1055,6 +1055,99 @@ def interpret_country_request(message: str) -> dict[str, str]:
     return {"intent": "unknown", "country": "", "request": text, "reply": ""}
 
 
+def continue_report_conversation(
+    country_name: str,
+    existing_request: str,
+    latest_message: str,
+    turn_number: int = 1,
+) -> dict[str, str]:
+    """Let the model decide whether to clarify further or start the report."""
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    latest = str(latest_message or "").strip()
+    existing = str(existing_request or "").strip()
+
+    if not api_key:
+        combined = " ".join(part for part in (existing, latest) if part).strip()
+        return {
+            "action": "ask",
+            "normalized_request": combined,
+            "reply": "Could you clarify the scope or level of detail you want?",
+        }
+
+    model = os.getenv("FLAG_INTELLIGENCE_WRITER_MODEL", "gpt-5.6-sol").strip()
+    schema = {
+        "type": "object",
+        "properties": {
+            "action": {
+                "type": "string",
+                "enum": ["ask", "generate"],
+            },
+            "normalized_request": {"type": "string"},
+            "reply": {"type": "string"},
+        },
+        "required": ["action", "normalized_request", "reply"],
+        "additionalProperties": False,
+    }
+
+    prompt = (
+        "You are conducting a short natural conversation before writing a country "
+        "report. Understand the user's intent semantically, not through templates. "
+        f"The country is {country_name}. "
+        f"Previously understood request: {existing!r}. "
+        f"Latest user message: {latest!r}. "
+        f"This is clarification turn {turn_number}. "
+        "Correct obvious spelling or wording mistakes when needed. If a typo changes "
+        "or obscures meaning, acknowledge the correction naturally in the reply, e.g. "
+        "'I assume you mean history.' Never embarrass the user or overfocus on grammar. "
+        "Merge the user's latest instruction into normalized_request as a clean, precise "
+        "report brief. If one useful clarification would materially improve the report, "
+        "set action='ask' and ask exactly one context-specific question. Do not ask "
+        "generic questions the user has effectively answered already. If the request "
+        "is sufficiently clear, or after two useful clarification turns, set "
+        "action='generate' and briefly confirm what report you will prepare. "
+        "The reply must be concise and conversational."
+    )
+
+    try:
+        client = OpenAI(api_key=api_key, timeout=30.0, max_retries=1)
+        response = client.responses.create(
+            model=model,
+            reasoning={"effort": "low"},
+            input=prompt,
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": "flag_intelligence_report_conversation",
+                    "strict": True,
+                    "schema": schema,
+                }
+            },
+            max_output_tokens=500,
+        )
+        payload = json.loads(_strip_code_fence(response.output_text or ""))
+        if isinstance(payload, dict):
+            action = str(payload.get("action") or "ask").strip()
+            normalized_request = str(
+                payload.get("normalized_request") or existing or latest
+            ).strip()
+            reply = str(payload.get("reply") or "").strip()
+            if action in {"ask", "generate"} and reply:
+                return {
+                    "action": action,
+                    "normalized_request": normalized_request,
+                    "reply": reply,
+                }
+    except Exception:
+        pass
+
+    combined = " ".join(part for part in (existing, latest) if part).strip()
+    return {
+        "action": "ask",
+        "normalized_request": combined,
+        "reply": "Could you clarify the scope or level of detail you want?",
+    }
+
+
 def generate_report_follow_up(
     country_name: str,
     user_request: str,
