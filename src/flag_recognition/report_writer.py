@@ -627,8 +627,11 @@ def _generate_section_group(
         "same paragraph under different keys, do not preserve source labels such as "
         "'Politics:', 'Art:', 'Economy:', or MediaWiki headings such as '=== ... ==='. "
         "Use the evidence only as factual support and rewrite it completely. "
-        "Different keys must contain meaningfully different content. Do not output "
-        "markdown, citations, URLs or source names.\n\n"
+        "Different keys must contain meaningfully different content. The COUNTRY "
+        "EVIDENCE may contain a user_request: treat it as the report brief. Prioritize "
+        "and deepen the topics the user explicitly requested, keep unrelated material "
+        "concise, and do not ignore requested angles. Do not output markdown, citations, "
+        "URLs or source names.\n\n"
         f"THEMATIC BLOCK: {group_name}\n"
         "REQUESTED KEYS:\n"
         + json.dumps(requested, ensure_ascii=False)
@@ -695,7 +698,8 @@ def _generate_single_section(
         "If the section concerns notable figures, include several relevant people "
         "with compact mini-biographies where reliable. "
         "If the section concerns universities, name and explain historically important "
-        "and currently prominent institutions where reliable.\n\n"
+        "and currently prominent institutions where reliable. The COUNTRY EVIDENCE may "
+        "contain a user_request; align depth and emphasis with that brief.\n\n"
         f"SECTION KEY: {key}\n"
         "REQUIRED JSON:\n"
         + json.dumps({key: ""}, ensure_ascii=False)
@@ -1005,6 +1009,7 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
             "decision": country_name,
             "country_code": report.get("country_code"),
             "input_mode": report.get("input_mode"),
+            "user_request": report.get("user_request"),
         },
         ensure_ascii=False,
         sort_keys=True,
