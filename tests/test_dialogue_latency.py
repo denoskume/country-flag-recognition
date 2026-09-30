@@ -192,3 +192,14 @@ def test_llm_credentials_missing_for_groq(monkeypatch):
     monkeypatch.setenv("FLAG_INTELLIGENCE_LLM_BACKEND", "groq")
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
     assert llm_backend.llm_credentials_available() is False
+
+
+def test_period_history_request_uses_period_history_sections():
+    keys = report_writer._requested_report_sections("History of France from 1950 to 2026")
+    assert keys == report_writer.HISTORY_PERIOD_REPORT_SECTION_KEYS
+    assert "origins_early_history" not in keys
+
+
+def test_explicit_time_range_is_detected():
+    assert report_writer._has_explicit_time_range("From 1950 to 2026") is True
+    assert report_writer._has_explicit_time_range("Its history") is False
