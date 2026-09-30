@@ -4846,12 +4846,21 @@ def _country_code_from_free_text(message: str) -> str | None:
 
 
 # Conversation state: identify a country first, then clarify the report brief.
-if "fi_api_probe_done" not in st.session_state:
+API_PROBE_VERSION = "2026-09-30-r47"
+if st.session_state.get("fi_api_probe_version") != API_PROBE_VERSION:
     api_ok, api_detail = probe_openai_api()
-    st.session_state.fi_api_probe_done = True
+    st.session_state.fi_api_probe_version = API_PROBE_VERSION
     st.session_state.fi_api_ok = api_ok
     st.session_state.fi_api_detail = api_detail
     print(f"[Flag Intelligence OpenAI probe] ok={api_ok} detail={api_detail}")
+
+if str(st.query_params.get("debug", "")).strip() == "1":
+    debug_ok = bool(st.session_state.get("fi_api_ok"))
+    debug_detail = str(st.session_state.get("fi_api_detail") or "")
+    if debug_ok:
+        st.success("OpenAI API: OK")
+    else:
+        st.error(f"OpenAI API diagnostic: {debug_detail}")
 
 
 if "fi_stage" not in st.session_state:
