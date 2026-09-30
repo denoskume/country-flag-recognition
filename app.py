@@ -74,29 +74,63 @@ OPENAI_API_READY = _bootstrap_openai_api_key()
 
 
 def _bootstrap_llm_settings() -> None:
-    """Load the active cloud LLM settings from Streamlit secrets."""
-    mappings = {
-        "GROQ_API_KEY": "GROQ_API_KEY",
-        "FLAG_INTELLIGENCE_LLM_BACKEND": "FLAG_INTELLIGENCE_LLM_BACKEND",
-        "FLAG_INTELLIGENCE_GROQ_MODEL": "FLAG_INTELLIGENCE_GROQ_MODEL",
-        "OPENAI_API_KEY": "OPENAI_API_KEY",
-        "FLAG_INTELLIGENCE_WRITER_MODEL": "FLAG_INTELLIGENCE_WRITER_MODEL",
-    }
-    for secret_name, env_name in mappings.items():
-        if os.getenv(env_name, "").strip():
-            continue
-        try:
-            value = str(st.secrets[secret_name]).strip()
-        except Exception:
-            value = ""
-        if value and value.lower() not in {"none", "null"}:
-            os.environ[env_name] = value
+    """Load Groq/OpenAI settings from common Streamlit secret layouts."""
+    def secret_candidates(*paths: tuple[str, ...]) -> list[str]:
+        values: list[str] = []
+        for path in paths:
+            try:
+                value = st.secrets
+                for part in path:
+                    value = value[part]
+                text = str(value).strip()
+            except Exception:
+                text = ""
+            if text and text.lower() not in {"none", "null"}:
+                values.append(text)
+        return values
 
-    os.environ.setdefault("FLAG_INTELLIGENCE_LLM_BACKEND", "groq")
-    os.environ.setdefault(
-        "FLAG_INTELLIGENCE_GROQ_MODEL",
-        "openai/gpt-oss-20b",
+    groq_candidates = secret_candidates(
+        ("GROQ_API_KEY",),
+        ("groq_api_key",),
+        ("groq", "api_key"),
+        ("GROQ", "API_KEY"),
     )
+    if not os.getenv("GROQ_API_KEY", "").strip() and groq_candidates:
+        os.environ["GROQ_API_KEY"] = groq_candidates[0]
+
+    backend_candidates = secret_candidates(
+        ("FLAG_INTELLIGENCE_LLM_BACKEND",),
+        ("llm", "backend"),
+    )
+    backend = (
+        os.getenv("FLAG_INTELLIGENCE_LLM_BACKEND", "").strip().lower()
+        or (backend_candidates[0].strip().lower() if backend_candidates else "")
+        or "groq"
+    )
+    if backend == "ollama":
+        backend = "groq"
+    os.environ["FLAG_INTELLIGENCE_LLM_BACKEND"] = backend
+
+    model_candidates = secret_candidates(
+        ("FLAG_INTELLIGENCE_GROQ_MODEL",),
+        ("groq", "model"),
+    )
+    if not os.getenv("FLAG_INTELLIGENCE_GROQ_MODEL", "").strip():
+        os.environ["FLAG_INTELLIGENCE_GROQ_MODEL"] = (
+            model_candidates[0]
+            if model_candidates
+            else "openai/gpt-oss-20b"
+        )
+
+    openai_candidates = secret_candidates(
+        ("OPENAI_API_KEY",),
+        ("openai_api_key",),
+        ("openai", "api_key"),
+        ("OPENAI", "API_KEY"),
+    )
+    if not os.getenv("OPENAI_API_KEY", "").strip() and openai_candidates:
+        os.environ["OPENAI_API_KEY"] = openai_candidates[0]
+
 
 
 _bootstrap_llm_settings()
@@ -4823,7 +4857,7 @@ def _country_code_from_free_text(message: str) -> str | None:
 
 
 # Conversation state: identify a country first, then clarify the report brief.
-API_PROBE_VERSION = "2026-09-30-r52"
+API_PROBE_VERSION = "2026-09-30-r53"
 if st.session_state.get("fi_api_probe_version") != API_PROBE_VERSION:
     api_ok, api_detail = probe_openai_api()
     st.session_state.fi_api_probe_version = API_PROBE_VERSION
