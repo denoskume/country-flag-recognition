@@ -51,3 +51,14 @@ def test_initial_country_request_can_skip_dialogue_llm(monkeypatch):
     )
     assert result["_source"] == "fast_path"
     assert result["request"] == "Tell me about France history"
+
+
+def test_dialogue_stays_local_even_if_legacy_flag_is_enabled(monkeypatch):
+    monkeypatch.setattr(report_writer, "OpenAI", _ForbiddenClient)
+    monkeypatch.setenv("FLAG_INTELLIGENCE_DIALOGUE_LLM", "true")
+    first = report_writer.interpret_country_request("Tell me about France")
+    follow = report_writer.continue_report_conversation(
+        "France", "", "history", turn_number=1
+    )
+    assert first["_source"] == "fast_path"
+    assert follow["reply"]
