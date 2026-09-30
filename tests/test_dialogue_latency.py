@@ -441,3 +441,54 @@ def test_scoped_report_requires_all_requested_sections(monkeypatch):
             user_request="French philosophy in 1960",
             section_keys=report_writer.GENERIC_FOCUSED_REPORT_SECTION_KEYS,
         )
+
+
+def test_scoped_generation_receives_semantic_brief(monkeypatch):
+    payload = {
+        "introduction": "Concrete introduction.",
+        "focused_analysis": "Sartre, Beauvoir, structuralism, and major debates.",
+        "key_developments": "Specific 1960 developments and works.",
+        "context_and_implications": "Intellectual context and influence.",
+        "conclusion": "Evidence-based conclusion.",
+    }
+
+    class _Responses:
+        def __init__(self):
+            self.calls = []
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+            return SimpleNamespace(output_text=json.dumps(payload))
+
+    class _Client:
+        instances = []
+        def __init__(self, *args, **kwargs):
+            self.responses = _Responses()
+            type(self).instances.append(self)
+
+    monkeypatch.setattr(report_writer, "OpenAI", _Client)
+
+    report_writer._generate_scoped_report(
+        api_key="test",
+        model="openai/gpt-oss-20b",
+        country_name="France",
+        country_code="FR",
+        user_request="France philosophy 1960",
+        section_keys=report_writer.GENERIC_FOCUSED_REPORT_SECTION_KEYS,
+        brief_state={
+            "subject": "French philosophy",
+            "topics": ["philosophy", "writers"],
+            "period": "1960",
+            "angles": ["major thinkers", "works", "debates"],
+            "depth": "detailed",
+            "exclusions": [],
+            "current_events": False,
+            "other_constraints": [],
+            "ready": True,
+            "missing": [],
+        },
+    )
+
+    first_prompt = _Client.instances[0].responses.calls[0]["input"][1]["content"]
+    assert "French philosophy" in first_prompt
+    assert '"period": "1960"' in first_prompt
+    assert "concrete named evidence" in first_prompt.lower()
