@@ -94,7 +94,7 @@ def test_dialogue_failure_does_not_fallback(monkeypatch):
 
     monkeypatch.setattr(report_writer, "OpenAI", _FailClient)
 
-    with pytest.raises(RuntimeError, match="Ollama dialogue request failed"):
+    with pytest.raises(RuntimeError, match="LLM dialogue request failed"):
         report_writer.interpret_country_request("Hello")
 
 
