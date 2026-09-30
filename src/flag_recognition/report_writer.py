@@ -1159,6 +1159,11 @@ def interpret_country_request(message: str) -> dict[str, str]:
     if not text:
         return _local_initial_interpretation(text)
 
+    fast_path = _local_initial_interpretation(text)
+    if fast_path.get("intent") in {"greeting", "general"}:
+        fast_path["_source"] = "fast_path"
+        return fast_path
+
     api_key = llm_auth_token()
     if not api_key:
         return _local_initial_interpretation(text)
