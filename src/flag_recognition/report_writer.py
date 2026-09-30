@@ -1023,7 +1023,7 @@ def probe_openai_api() -> tuple[bool, str]:
         response = client.responses.create(
             model="gpt-5.6-luna",
             input="Reply with OK only.",
-            max_output_tokens=8,
+            max_output_tokens=16,
         )
         output = str(response.output_text or "").strip()
         if output:
