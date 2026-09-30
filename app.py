@@ -181,6 +181,7 @@ from flag_recognition.report_writer import (
     continue_report_conversation,
     generate_authored_report,
     interpret_country_request,
+    probe_openai_api,
 )
 
 
@@ -4845,6 +4846,14 @@ def _country_code_from_free_text(message: str) -> str | None:
 
 
 # Conversation state: identify a country first, then clarify the report brief.
+if "fi_api_probe_done" not in st.session_state:
+    api_ok, api_detail = probe_openai_api()
+    st.session_state.fi_api_probe_done = True
+    st.session_state.fi_api_ok = api_ok
+    st.session_state.fi_api_detail = api_detail
+    print(f"[Flag Intelligence OpenAI probe] ok={api_ok} detail={api_detail}")
+
+
 if "fi_stage" not in st.session_state:
     st.session_state.fi_stage = "idle"
 if "fi_country_code" not in st.session_state:
