@@ -131,8 +131,8 @@ from flag_recognition.report_manifest import (
     missing_required_sections,
 )
 from flag_recognition.report_writer import (
+    continue_report_conversation,
     generate_authored_report,
-    generate_report_follow_up,
     interpret_country_request,
 )
 
@@ -4847,6 +4847,8 @@ if "fi_messages" not in st.session_state:
     st.session_state.fi_messages = []
 if "fi_image_bytes" not in st.session_state:
     st.session_state.fi_image_bytes = None
+if "fi_clarification_turn" not in st.session_state:
+    st.session_state.fi_clarification_turn = 0
 
 for message in st.session_state.fi_messages:
     _render_chat_message(message["role"], message["content"])
@@ -4885,7 +4887,7 @@ if prompt_submission is not None:
     elif prompt_text:
         if st.session_state.fi_stage in {
             "awaiting_interest",
-            "awaiting_detail",
+            "clarifying",
         }:
             conversation_text = prompt_text
             conversation_process = True
@@ -5013,6 +5015,7 @@ def show_result(
         st.session_state.fi_country_name = country
         st.session_state.fi_stage = "awaiting_interest"
         st.session_state.fi_report_request = ""
+        st.session_state.fi_clarification_turn = 0
 
         if image is not None:
             image_buffer = BytesIO()
@@ -5229,16 +5232,41 @@ if text_process:
         st.session_state.fi_country_code = resolved_code
         st.session_state.fi_country_name = country_name
         st.session_state.fi_report_request = initial_report_request
-        st.session_state.fi_stage = "awaiting_detail"
+        st.session_state.fi_stage = "clarifying"
+        st.session_state.fi_clarification_turn = 1
 
-        follow_up = generate_report_follow_up(
+        turn = continue_report_conversation(
             country_name,
             initial_report_request,
+            initial_report_request,
+            turn_number=1,
         )
-        st.session_state.fi_messages.append(
-            {"role": "assistant", "content": follow_up}
-        )
-        _render_chat_message("assistant", follow_up)
+        normalized_request = str(
+            turn.get("normalized_request") or initial_report_request
+        ).strip()
+        st.session_state.fi_report_request = normalized_request
+        assistant_text = str(turn.get("reply") or "").strip()
+
+        if str(turn.get("action") or "ask") == "generate":
+            st.session_state.fi_stage = "generating"
+            _render_chat_message("assistant", assistant_text)
+            st.session_state.fi_messages.append(
+                {"role": "assistant", "content": assistant_text}
+            )
+            show_result(
+                direct_code=resolved_code,
+                user_request=normalized_request,
+            )
+            st.session_state.fi_stage = "idle"
+            st.session_state.fi_country_code = None
+            st.session_state.fi_country_name = None
+            st.session_state.fi_report_request = ""
+            st.session_state.fi_clarification_turn = 0
+        else:
+            st.session_state.fi_messages.append(
+                {"role": "assistant", "content": assistant_text}
+            )
+            _render_chat_message("assistant", assistant_text)
     else:
         show_result(direct_code=resolved_code)
 
@@ -5248,43 +5276,40 @@ if conversation_process:
     )
     _render_chat_message("user", conversation_text)
 
+    country_name = str(st.session_state.fi_country_name or "")
+    country_code = str(st.session_state.fi_country_code or "")
+
     if st.session_state.fi_stage == "awaiting_interest":
-        st.session_state.fi_report_request = conversation_text
-        st.session_state.fi_stage = "awaiting_detail"
+        existing_request = ""
+        turn_number = 1
+    else:
+        existing_request = str(st.session_state.fi_report_request or "")
+        turn_number = int(st.session_state.fi_clarification_turn or 0) + 1
 
-        follow_up = generate_report_follow_up(
-            str(st.session_state.fi_country_name or ""),
-            conversation_text,
-        )
-        st.session_state.fi_messages.append(
-            {"role": "assistant", "content": follow_up}
-        )
-        _render_chat_message("assistant", follow_up)
+    turn = continue_report_conversation(
+        country_name,
+        existing_request,
+        conversation_text,
+        turn_number=turn_number,
+    )
 
-    elif st.session_state.fi_stage == "awaiting_detail":
-        detail = conversation_text.strip()
-        first_request = st.session_state.fi_report_request.strip()
-        normalized = detail.casefold()
+    normalized_request = str(
+        turn.get("normalized_request")
+        or existing_request
+        or conversation_text
+    ).strip()
+    assistant_text = str(turn.get("reply") or "").strip()
+    action = str(turn.get("action") or "ask").strip()
 
-        if normalized in {
-            "generate",
-            "go ahead",
-            "proceed",
-            "nothing else",
-            "no",
-            "that's all",
-            "thats all",
-        }:
-            final_request = first_request
-        else:
-            final_request = (
-                first_request
-                + "\n\nAdditional preferences: "
-                + detail
-            ).strip()
+    st.session_state.fi_report_request = normalized_request
+    st.session_state.fi_clarification_turn = turn_number
 
-        country_code = str(st.session_state.fi_country_code or "")
-        country_name = str(st.session_state.fi_country_name or "")
+    st.session_state.fi_messages.append(
+        {"role": "assistant", "content": assistant_text}
+    )
+    _render_chat_message("assistant", assistant_text)
+
+    if action == "generate":
         st.session_state.fi_stage = "generating"
 
         stored_image = None
@@ -5292,21 +5317,17 @@ if conversation_process:
         if stored_bytes:
             stored_image = Image.open(BytesIO(stored_bytes)).convert("RGB")
 
-        assistant_text = (
-            f"I'll prepare the report on {country_name} based on your request."
-        )
-        st.session_state.fi_messages.append(
-            {"role": "assistant", "content": assistant_text}
-        )
-        _render_chat_message("assistant", assistant_text)
-
         show_result(
             image=stored_image,
             direct_code=country_code,
-            user_request=final_request,
+            user_request=normalized_request,
         )
+
         st.session_state.fi_stage = "idle"
         st.session_state.fi_country_code = None
         st.session_state.fi_country_name = None
         st.session_state.fi_report_request = ""
         st.session_state.fi_image_bytes = None
+        st.session_state.fi_clarification_turn = 0
+    else:
+        st.session_state.fi_stage = "clarifying"
