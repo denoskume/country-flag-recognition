@@ -1,4 +1,4 @@
-"""OpenAI-authored country report narrative.
+"""LLM-authored country report narrative.
 
 The data collectors remain responsible for evidence gathering. This module is
 responsible only for editorial synthesis: turning the collected evidence into
@@ -14,7 +14,13 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 from typing import Any
 
-from openai import OpenAI
+from .llm_backend import (
+    FlagIntelligenceClient as OpenAI,
+    llm_auth_token,
+    llm_backend_name,
+    llm_model_name,
+    probe_llm_backend,
+)
 
 
 REPORT_GENERATION_BUDGET_SECONDS = min(
@@ -592,6 +598,10 @@ SECTION_RECOVERY_GROUPS = (
 
 
 def _model_candidates(configured_model: str) -> tuple[str, ...]:
+    """Ordered writer models, reduced to the local model in Ollama mode."""
+    if llm_backend_name() == "ollama":
+        return (llm_model_name(),)
+
     candidates = [
         configured_model.strip(),
         "gpt-5.6-sol",
@@ -602,7 +612,6 @@ def _model_candidates(configured_model: str) -> tuple[str, ...]:
         "gpt-5",
     ]
     return tuple(dict.fromkeys(model for model in candidates if model))
-
 
 def _generate_section_group(
     *,
@@ -1009,36 +1018,23 @@ def _api_error_detail(exc: Exception) -> str:
 
 
 def probe_openai_api() -> tuple[bool, str]:
-    """Run a tiny API call and return an internal diagnostic string."""
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    if not api_key:
-        return False, "OPENAI_API_KEY missing"
-
-    try:
-        client = OpenAI(
-            api_key=api_key,
-            timeout=15.0,
-            max_retries=0,
-        )
-        response = client.responses.create(
-            model="gpt-5.6-luna",
-            input="Reply with OK only.",
-            max_output_tokens=16,
-        )
-        output = str(response.output_text or "").strip()
-        if output:
-            return True, "ok"
-        return False, "empty API response"
-    except Exception as exc:
-        return False, _api_error_detail(exc)
+    """Backward-compatible probe name; checks the configured LLM backend."""
+    return probe_llm_backend()
 
 
 def _conversation_model_candidates(configured_model: str) -> tuple[str, ...]:
     """Ordered failover models for low-latency dialogue turns."""
+    if llm_backend_name() == "ollama":
+        return (llm_model_name(),)
+
     candidates = [
         configured_model.strip(),
+        "gpt-5.6-sol",
+        "gpt-5.6",
         "gpt-5.6-terra",
         "gpt-5.6-luna",
+        "gpt-5.2",
+        "gpt-5",
     ]
     return tuple(dict.fromkeys(model for model in candidates if model))
 
@@ -1164,7 +1160,7 @@ def interpret_country_request(message: str) -> dict[str, str]:
     if not text:
         return _local_initial_interpretation(text)
 
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    api_key = llm_auth_token()
     if not api_key:
         return _local_initial_interpretation(text)
 
@@ -1298,7 +1294,7 @@ def continue_report_conversation(
     turn_number: int = 1,
 ) -> dict[str, str]:
     """Manage one dialogue turn with retries, failover and local continuity."""
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    api_key = llm_auth_token()
     latest = str(latest_message or "").strip()
     existing = str(existing_request or "").strip()
 
@@ -1443,14 +1439,14 @@ def generate_report_follow_up(
     user_request: str,
 ) -> str:
     """Ask one concise, useful clarification before report generation."""
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    api_key = llm_auth_token()
     if not api_key:
         return (
             "Would you like a concise or detailed report, and is there "
             "anything you want me to prioritize or leave out?"
         )
 
-    model = os.getenv("FLAG_INTELLIGENCE_WRITER_MODEL", "gpt-5.6-sol").strip()
+    model = llm_model_name()
     client = OpenAI(
         api_key=api_key,
         timeout=25.0,
@@ -1485,11 +1481,11 @@ def generate_report_follow_up(
 
 def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     """Author the complete report through independent model-written chapters."""
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    api_key = llm_auth_token()
     if not api_key:
         return {}
 
-    model = os.getenv("FLAG_INTELLIGENCE_WRITER_MODEL", "gpt-5.6-sol").strip()
+    model = llm_model_name()
     country_name = str(
         report.get("decision")
         or report.get("country")
