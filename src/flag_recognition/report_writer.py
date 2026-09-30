@@ -292,6 +292,7 @@ def _canonicalize_report_brief(
 def _brief_missing_dimension(existing_request: str, latest_message: str) -> str:
     brief = _canonicalize_report_brief(existing_request, latest_message)
     groups = _requested_topic_groups(brief)
+    latest_groups = _requested_topic_groups(latest_message)
     has_period = _has_explicit_time_range(brief)
     has_depth = bool(_extract_depth_label(brief))
 
@@ -299,6 +300,13 @@ def _brief_missing_dimension(existing_request: str, latest_message: str) -> str:
         return "topic"
     if "history" in groups and not has_period:
         return "period"
+    if (
+        "history" in groups
+        and has_period
+        and not latest_groups
+        and not has_depth
+    ):
+        return "angle"
     if not has_depth:
         return "depth"
     return ""
@@ -1471,11 +1479,18 @@ def continue_report_conversation(
             "write a short natural confirmation that you are preparing the focused report. "
             "Do not ask another question. "
         )
+    elif missing_dimension == "angle":
+        completeness_instruction = (
+            "The period is already clear. Ask only which angle(s) within that period the "
+            "user wants emphasized, for example economic, political, social, cultural, "
+            "technological, diplomatic, or a balanced treatment. Do not ask for the "
+            "period again. "
+        )
     elif missing_dimension == "depth":
         completeness_instruction = (
-            "The only missing decision is desired depth. Ask only whether the user wants "
-            "a brief/high-level overview, balanced overview, detailed analysis, or "
-            "year-by-year treatment. Do not reopen topic selection. "
+            "The selected topic/angle and period are already clear. Ask only whether the "
+            "user wants a brief/high-level overview, balanced overview, detailed analysis, "
+            "or year-by-year treatment. Do not reopen topic or angle selection. "
         )
     elif missing_dimension == "period":
         completeness_instruction = (
@@ -1576,12 +1591,19 @@ def _review_scoped_report(
         f"Act as the final historical editor for a report about {country_name}. "
         f"User request: {user_request!r}. "
         + range_rule
-        + "Audit the draft for factual chronology, impossible dates, category errors, "
-        "internal notes, malformed escape sequences, unsupported claims, and scope drift. "
-        "Correct errors directly. For French modern history, do not misdate the end of "
-        "the Algerian War or decolonisation. Preserve only the requested section keys. "
-        "Return publication-ready English with no markdown, citations, URLs, source "
-        "labels, or editorial commentary. Return exactly the JSON object requested.\n\n"
+        + "Audit every factual sentence independently rather than merely polishing the "
+        "draft. Check chronology, event dates, direction of independence or sovereignty "
+        "claims, geographic locations, host cities/countries, institutional names, named "
+        "people, and whether each person or event materially belongs inside the requested "
+        "time window. Remove claims that you cannot confidently verify. Do not keep a "
+        "famous person merely because they influenced the period if their life/work falls "
+        "outside the requested interval unless one brief contextual reference is essential. "
+        "Correct category errors, internal notes, placeholders, malformed escape sequences, "
+        "unsupported claims, and scope drift. Preserve only the requested section keys. "
+        "For history, distinguish clearly between the colonizing state and the territory "
+        "that gained independence. Return publication-ready English with no markdown, "
+        "citations, URLs, source labels, or editorial commentary. Return exactly the JSON "
+        "object requested.\n\n"
         "DRAFT:\n"
         + json.dumps(
             {key: str(draft.get(key, "") or "") for key in section_keys},
@@ -1597,7 +1619,7 @@ def _review_scoped_report(
     try:
         response = client.responses.create(
             model=model,
-            reasoning={"effort": "medium"},
+            reasoning={"effort": "high"},
             input=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
