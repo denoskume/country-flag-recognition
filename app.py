@@ -133,6 +133,7 @@ from flag_recognition.report_manifest import (
 from flag_recognition.report_writer import (
     generate_authored_report,
     generate_report_follow_up,
+    interpret_country_request,
 )
 
 
@@ -4812,20 +4813,20 @@ def _initial_chat_reply(message: str) -> str | None:
 
 
 def _country_code_from_free_text(message: str) -> str | None:
-    """Resolve an exact country input or a country mentioned in a short sentence."""
+    """Resolve a country without mistaking ordinary short words for ISO codes."""
     direct = country_code_from_text(message)
     if direct is not None:
         return direct
 
-    cleaned = re.sub(r"[^A-Za-zÀ-ÿ0-9' -]+", " ", message)
+    cleaned = str(message or "")
+    cleaned = re.sub(r"[’']s\b", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"[^A-Za-zÀ-ÿ0-9 -]+", " ", cleaned)
     words = cleaned.split()
 
-    # Try useful n-grams so inputs such as "tell me about France" work without
-    # requiring the user to submit only the country name.
     for size in (4, 3, 2, 1):
         for start in range(0, len(words) - size + 1):
             candidate = " ".join(words[start:start + size]).strip()
-            if len(candidate) < 2:
+            if size == 1 and len(candidate) < 4:
                 continue
             code = country_code_from_text(candidate)
             if code is not None:
@@ -4863,6 +4864,8 @@ text_process = False
 conversation_process = False
 typed_country = ""
 conversation_text = ""
+initial_country_code = None
+initial_report_request = ""
 
 if prompt_submission is not None:
     prompt_text = str(getattr(prompt_submission, "text", "") or "").strip()
@@ -4888,11 +4891,6 @@ if prompt_submission is not None:
             conversation_process = True
         else:
             simple_reply = _initial_chat_reply(prompt_text)
-            resolved_free_text_code = (
-                None
-                if simple_reply is not None
-                else _country_code_from_free_text(prompt_text)
-            )
 
             if simple_reply is not None:
                 st.session_state.fi_messages.append(
@@ -4903,23 +4901,68 @@ if prompt_submission is not None:
                     {"role": "assistant", "content": simple_reply}
                 )
                 _render_chat_message("assistant", simple_reply)
-            elif resolved_free_text_code is not None:
-                typed_country = prompt_text
-                text_process = True
             else:
-                st.session_state.fi_messages.append(
-                    {"role": "user", "content": prompt_text}
+                interpretation = interpret_country_request(prompt_text)
+                intent = str(interpretation.get("intent") or "unknown")
+                interpreted_country = str(
+                    interpretation.get("country") or ""
+                ).strip()
+                interpreted_request = str(
+                    interpretation.get("request") or ""
+                ).strip()
+                interpreted_reply = str(
+                    interpretation.get("reply") or ""
+                ).strip()
+
+                resolved_free_text_code = (
+                    country_code_from_text(interpreted_country)
+                    if interpreted_country
+                    else None
                 )
-                _render_chat_message("user", prompt_text)
-                assistant_text = (
-                    "Tell me which country you would like to explore, or upload "
-                    "its flag. You can also write something like “I want to know "
-                    "about France”."
-                )
-                st.session_state.fi_messages.append(
-                    {"role": "assistant", "content": assistant_text}
-                )
-                _render_chat_message("assistant", assistant_text)
+                if resolved_free_text_code is None:
+                    resolved_free_text_code = _country_code_from_free_text(
+                        prompt_text
+                    )
+
+                if (
+                    intent in {"country_only", "country_request"}
+                    and resolved_free_text_code is not None
+                ):
+                    typed_country = prompt_text
+                    initial_country_code = resolved_free_text_code
+                    initial_report_request = (
+                        interpreted_request
+                        if intent == "country_request"
+                        else ""
+                    )
+                    text_process = True
+                elif intent in {"greeting", "general"} and interpreted_reply:
+                    st.session_state.fi_messages.append(
+                        {"role": "user", "content": prompt_text}
+                    )
+                    _render_chat_message("user", prompt_text)
+                    st.session_state.fi_messages.append(
+                        {"role": "assistant", "content": interpreted_reply}
+                    )
+                    _render_chat_message("assistant", interpreted_reply)
+                elif resolved_free_text_code is not None:
+                    typed_country = prompt_text
+                    initial_country_code = resolved_free_text_code
+                    text_process = True
+                else:
+                    st.session_state.fi_messages.append(
+                        {"role": "user", "content": prompt_text}
+                    )
+                    _render_chat_message("user", prompt_text)
+                    assistant_text = (
+                        interpreted_reply
+                        or "Tell me which country you would like to explore, "
+                        "or upload its flag."
+                    )
+                    st.session_state.fi_messages.append(
+                        {"role": "assistant", "content": assistant_text}
+                    )
+                    _render_chat_message("assistant", assistant_text)
 
 
 def show_result(
@@ -5168,7 +5211,10 @@ if text_process:
     )
     _render_chat_message("user", typed_country)
 
-    resolved_code = _country_code_from_free_text(typed_country)
+    resolved_code = (
+        initial_country_code
+        or _country_code_from_free_text(typed_country)
+    )
     if resolved_code is None:
         assistant_text = (
             "I couldn't identify a country in that message. Tell me the country "
@@ -5178,6 +5224,21 @@ if text_process:
             {"role": "assistant", "content": assistant_text}
         )
         _render_chat_message("assistant", assistant_text)
+    elif initial_report_request:
+        country_name = display_country_name(resolved_code)
+        st.session_state.fi_country_code = resolved_code
+        st.session_state.fi_country_name = country_name
+        st.session_state.fi_report_request = initial_report_request
+        st.session_state.fi_stage = "awaiting_detail"
+
+        follow_up = generate_report_follow_up(
+            country_name,
+            initial_report_request,
+        )
+        st.session_state.fi_messages.append(
+            {"role": "assistant", "content": follow_up}
+        )
+        _render_chat_message("assistant", follow_up)
     else:
         show_result(direct_code=resolved_code)
 
