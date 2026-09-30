@@ -1006,14 +1006,19 @@ def _local_initial_interpretation(message: str) -> dict[str, str]:
         "hi", "hello", "hey", "hello there", "bonjour", "bonsoir",
         "salut", "good morning", "good afternoon", "good evening",
     }:
+        greeting_reply = (
+            "Hey there! What country would you like to explore today? "
+            "You can also upload a flag if you prefer."
+            if normalized in {"hey", "hey there"}
+            else
+            "Hello! What country would you like to explore today? "
+            "You can also upload a flag if you prefer."
+        )
         return {
             "intent": "greeting",
             "country": "",
             "request": "",
-            "reply": (
-                "Hello! Tell me which country you would like to explore, "
-                "or upload its flag."
-            ),
+            "reply": greeting_reply,
         }
 
     if normalized in {
