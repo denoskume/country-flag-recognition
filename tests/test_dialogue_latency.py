@@ -203,3 +203,23 @@ def test_period_history_request_uses_period_history_sections():
 def test_explicit_time_range_is_detected():
     assert report_writer._has_explicit_time_range("From 1950 to 2026") is True
     assert report_writer._has_explicit_time_range("Its history") is False
+
+
+def test_time_range_does_not_force_generation_when_scope_can_still_be_refined(monkeypatch):
+    _FakeClient.payload = {
+        "action": "ask",
+        "normalized_request": "History of France from 1950 to 2026",
+        "reply": "Would you like political, economic, cultural developments, or all of them?",
+    }
+    _FakeClient.instances = []
+    monkeypatch.setattr(report_writer, "OpenAI", _FakeClient)
+
+    result = report_writer.continue_report_conversation(
+        "France",
+        "history",
+        "From 1950 to 2026",
+        turn_number=2,
+    )
+
+    assert result["action"] == "ask"
+    assert "political" in result["reply"].lower()
