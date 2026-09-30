@@ -986,23 +986,152 @@ def _emergency_full_report_pass(
     return {}
 
 
+def _conversation_model_candidates(configured_model: str) -> tuple[str, ...]:
+    """Ordered failover models for low-latency dialogue turns."""
+    candidates = [
+        configured_model.strip(),
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
+    ]
+    return tuple(dict.fromkeys(model for model in candidates if model))
+
+
+def _local_initial_interpretation(message: str) -> dict[str, str]:
+    """Deterministic continuity fallback when every dialogue API call fails."""
+    text = str(message or "").strip()
+    normalized = re.sub(r"[^a-zà-ÿ0-9' ]+", " ", text.casefold())
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+
+    if normalized in {
+        "hi", "hello", "hey", "hello there", "bonjour", "bonsoir",
+        "salut", "good morning", "good afternoon", "good evening",
+    }:
+        return {
+            "intent": "greeting",
+            "country": "",
+            "request": "",
+            "reply": (
+                "Hello! Tell me which country you would like to explore, "
+                "or upload its flag."
+            ),
+        }
+
+    if normalized in {
+        "what can you do", "what do you do", "how does this work",
+        "help", "aide", "comment ça marche", "comment ca marche",
+    }:
+        return {
+            "intent": "general",
+            "country": "",
+            "request": "",
+            "reply": (
+                "I can identify a country, understand what you want to know "
+                "about it, clarify your request, and prepare a tailored PDF report."
+            ),
+        }
+
+    return {
+        "intent": "unknown",
+        "country": "",
+        "request": text,
+        "reply": (
+            "Tell me which country you would like to explore, or upload its flag."
+        ),
+    }
+
+
+def _local_conversation_fallback(
+    country_name: str,
+    existing_request: str,
+    latest_message: str,
+    turn_number: int,
+) -> dict[str, str]:
+    """Keep the report conversation moving even without a successful API turn."""
+    latest = str(latest_message or "").strip()
+    existing = str(existing_request or "").strip()
+
+    typo_map = {
+        "histroy": "history",
+        "hitory": "history",
+        "histori": "history",
+        "geograpy": "geography",
+        "geogrophy": "geography",
+        "economi": "economy",
+        "sciense": "science",
+        "univercities": "universities",
+    }
+    normalized_latest = latest
+    lowered = latest.casefold()
+    corrected = False
+    for wrong, right in typo_map.items():
+        if wrong in lowered:
+            normalized_latest = re.sub(
+                rf"\b{re.escape(wrong)}\b",
+                right,
+                normalized_latest,
+                flags=re.IGNORECASE,
+            )
+            corrected = True
+
+    combined = " ".join(
+        part for part in (existing, normalized_latest) if part
+    ).strip()
+
+    if turn_number >= 2:
+        reply = (
+            f"I understand your request about {country_name}. "
+            "I'll prepare the report based on that scope."
+        )
+        return {
+            "action": "generate",
+            "normalized_request": combined,
+            "reply": reply,
+        }
+
+    if corrected:
+        reply = (
+            f"I assume you mean {normalized_latest}. "
+            "Would you like the report to cover the full topic or a specific period or angle?"
+        )
+    else:
+        reply = (
+            "Would you like the report to cover the full topic, or focus on a "
+            "specific period, angle, or level of detail?"
+        )
+
+    return {
+        "action": "ask",
+        "normalized_request": combined,
+        "reply": reply,
+    }
+
+
 def interpret_country_request(message: str) -> dict[str, str]:
-    """Interpret a free-form opening as greeting, country-only, or country request."""
+    """Interpret a free-form opening with retry, model failover and local continuity."""
     text = str(message or "").strip()
     if not text:
-        return {"intent": "unknown", "country": "", "request": ""}
+        return _local_initial_interpretation(text)
 
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
-        return {"intent": "unknown", "country": "", "request": text}
+        return _local_initial_interpretation(text)
 
-    model = os.getenv("FLAG_INTELLIGENCE_WRITER_MODEL", "gpt-5.6-sol").strip()
+    configured_model = os.getenv(
+        "FLAG_INTELLIGENCE_WRITER_MODEL",
+        "gpt-5.6-sol",
+    ).strip()
     schema = {
         "type": "object",
         "properties": {
             "intent": {
                 "type": "string",
-                "enum": ["greeting", "country_only", "country_request", "general", "unknown"],
+                "enum": [
+                    "greeting",
+                    "country_only",
+                    "country_request",
+                    "general",
+                    "unknown",
+                ],
             },
             "country": {"type": "string"},
             "request": {"type": "string"},
@@ -1014,45 +1143,62 @@ def interpret_country_request(message: str) -> dict[str, str]:
 
     prompt = (
         "Interpret the user's first message to Flag Intelligence. "
-        "Understand the whole sentence semantically; never treat ordinary words "
-        "such as 'to', 'in', 'us', or 'no' as country codes when they occur inside "
-        "a sentence. If the user names a country and also says what they want to know, "
-        "set intent=country_request, return the canonical English country name, and "
-        "put the requested topic/scope in request. If they provide only a country name "
-        "or explicit ISO code, use country_only. For a greeting, use greeting. "
-        "For a general capability question, use general and provide a brief natural reply. "
-        "Do not invent a country.\n\n"
+        "Understand the whole sentence semantically. Never treat ordinary words "
+        "such as 'to', 'in', 'us', or 'no' as country codes inside a sentence. "
+        "Correct obvious spelling mistakes silently when interpreting meaning. "
+        "If the user names a country and says what they want to know, use "
+        "intent=country_request, return the canonical English country name, and "
+        "normalize the requested scope. If they provide only a country name or "
+        "explicit ISO code, use country_only. For a greeting, use greeting and "
+        "write a natural short reply. For a capability/general question, use "
+        "general and answer briefly. Do not invent a country.\n\n"
         f"USER MESSAGE: {text}"
     )
 
-    try:
-        client = OpenAI(api_key=api_key, timeout=25.0, max_retries=1)
-        response = client.responses.create(
-            model=model,
-            reasoning={"effort": "none"},
-            input=prompt,
-            text={
-                "format": {
-                    "type": "json_schema",
-                    "name": "flag_intelligence_initial_intent",
-                    "strict": True,
-                    "schema": schema,
-                }
-            },
-            max_output_tokens=350,
-        )
-        payload = json.loads(_strip_code_fence(response.output_text or ""))
-        if isinstance(payload, dict):
-            return {
-                "intent": str(payload.get("intent") or "unknown").strip(),
-                "country": str(payload.get("country") or "").strip(),
-                "request": str(payload.get("request") or "").strip(),
-                "reply": str(payload.get("reply") or "").strip(),
-            }
-    except Exception:
-        pass
+    for candidate_model in _conversation_model_candidates(configured_model):
+        for _attempt in range(3):
+            try:
+                client = OpenAI(
+                    api_key=api_key,
+                    timeout=20.0,
+                    max_retries=0,
+                )
+                response = client.responses.create(
+                    model=candidate_model,
+                    reasoning={"effort": "none"},
+                    input=prompt,
+                    text={
+                        "format": {
+                            "type": "json_schema",
+                            "name": "flag_intelligence_initial_intent",
+                            "strict": True,
+                            "schema": schema,
+                        }
+                    },
+                    max_output_tokens=400,
+                )
+                payload = json.loads(
+                    _strip_code_fence(response.output_text or "")
+                )
+                if not isinstance(payload, dict):
+                    continue
 
-    return {"intent": "unknown", "country": "", "request": text, "reply": ""}
+                result = {
+                    "intent": str(payload.get("intent") or "unknown").strip(),
+                    "country": str(payload.get("country") or "").strip(),
+                    "request": str(payload.get("request") or "").strip(),
+                    "reply": str(payload.get("reply") or "").strip(),
+                }
+                if result["intent"] and (
+                    result["reply"]
+                    or result["country"]
+                    or result["request"]
+                ):
+                    return result
+            except Exception:
+                continue
+
+    return _local_initial_interpretation(text)
 
 
 def continue_report_conversation(
@@ -1061,20 +1207,23 @@ def continue_report_conversation(
     latest_message: str,
     turn_number: int = 1,
 ) -> dict[str, str]:
-    """Let the model decide whether to clarify further or start the report."""
+    """Manage one dialogue turn with retries, failover and local continuity."""
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     latest = str(latest_message or "").strip()
     existing = str(existing_request or "").strip()
 
     if not api_key:
-        combined = " ".join(part for part in (existing, latest) if part).strip()
-        return {
-            "action": "ask",
-            "normalized_request": combined,
-            "reply": "Could you clarify the scope or level of detail you want?",
-        }
+        return _local_conversation_fallback(
+            country_name,
+            existing,
+            latest,
+            turn_number,
+        )
 
-    model = os.getenv("FLAG_INTELLIGENCE_WRITER_MODEL", "gpt-5.6-sol").strip()
+    configured_model = os.getenv(
+        "FLAG_INTELLIGENCE_WRITER_MODEL",
+        "gpt-5.6-sol",
+    ).strip()
     schema = {
         "type": "object",
         "properties": {
@@ -1090,62 +1239,76 @@ def continue_report_conversation(
     }
 
     prompt = (
-        "You are conducting a short natural conversation before writing a country "
-        "report. Understand the user's intent semantically, not through templates. "
+        "You are conducting a short natural conversation before writing a "
+        "country report. Understand the user's intent semantically, not through "
+        "templates. "
         f"The country is {country_name}. "
         f"Previously understood request: {existing!r}. "
         f"Latest user message: {latest!r}. "
         f"This is clarification turn {turn_number}. "
-        "Correct obvious spelling or wording mistakes when needed. If a typo changes "
-        "or obscures meaning, acknowledge the correction naturally in the reply, e.g. "
-        "'I assume you mean history.' Never embarrass the user or overfocus on grammar. "
-        "Merge the user's latest instruction into normalized_request as a clean, precise "
-        "report brief. If one useful clarification would materially improve the report, "
-        "set action='ask' and ask exactly one context-specific question. Do not ask "
-        "generic questions the user has effectively answered already. If the request "
-        "is sufficiently clear, or after two useful clarification turns, set "
-        "action='generate' and briefly confirm what report you will prepare. "
-        "The reply must be concise and conversational."
+        "Correct obvious spelling or wording mistakes when needed. If a typo "
+        "changes or obscures meaning, acknowledge the correction naturally in "
+        "the reply, for example 'I assume you mean history.' Never embarrass "
+        "the user or overfocus on grammar. Merge the latest instruction into "
+        "normalized_request as a clean, precise report brief. If one useful "
+        "clarification would materially improve the report, set action='ask' "
+        "and ask exactly one context-specific question. Do not ask generic "
+        "questions already answered. If the request is sufficiently clear, or "
+        "after two useful clarification turns, set action='generate' and briefly "
+        "confirm what you will prepare. Keep the reply concise and conversational."
     )
 
-    try:
-        client = OpenAI(api_key=api_key, timeout=30.0, max_retries=1)
-        response = client.responses.create(
-            model=model,
-            reasoning={"effort": "low"},
-            input=prompt,
-            text={
-                "format": {
-                    "type": "json_schema",
-                    "name": "flag_intelligence_report_conversation",
-                    "strict": True,
-                    "schema": schema,
-                }
-            },
-            max_output_tokens=500,
-        )
-        payload = json.loads(_strip_code_fence(response.output_text or ""))
-        if isinstance(payload, dict):
-            action = str(payload.get("action") or "ask").strip()
-            normalized_request = str(
-                payload.get("normalized_request") or existing or latest
-            ).strip()
-            reply = str(payload.get("reply") or "").strip()
-            if action in {"ask", "generate"} and reply:
-                return {
-                    "action": action,
-                    "normalized_request": normalized_request,
-                    "reply": reply,
-                }
-    except Exception:
-        pass
+    for candidate_model in _conversation_model_candidates(configured_model):
+        for _attempt in range(3):
+            try:
+                client = OpenAI(
+                    api_key=api_key,
+                    timeout=22.0,
+                    max_retries=0,
+                )
+                response = client.responses.create(
+                    model=candidate_model,
+                    reasoning={"effort": "low"},
+                    input=prompt,
+                    text={
+                        "format": {
+                            "type": "json_schema",
+                            "name": "flag_intelligence_report_conversation",
+                            "strict": True,
+                            "schema": schema,
+                        }
+                    },
+                    max_output_tokens=550,
+                )
+                payload = json.loads(
+                    _strip_code_fence(response.output_text or "")
+                )
+                if not isinstance(payload, dict):
+                    continue
 
-    combined = " ".join(part for part in (existing, latest) if part).strip()
-    return {
-        "action": "ask",
-        "normalized_request": combined,
-        "reply": "Could you clarify the scope or level of detail you want?",
-    }
+                action = str(payload.get("action") or "").strip()
+                normalized_request = str(
+                    payload.get("normalized_request")
+                    or existing
+                    or latest
+                ).strip()
+                reply = str(payload.get("reply") or "").strip()
+
+                if action in {"ask", "generate"} and reply:
+                    return {
+                        "action": action,
+                        "normalized_request": normalized_request,
+                        "reply": reply,
+                    }
+            except Exception:
+                continue
+
+    return _local_conversation_fallback(
+        country_name,
+        existing,
+        latest,
+        turn_number,
+    )
 
 
 def generate_report_follow_up(
