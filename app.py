@@ -4846,7 +4846,7 @@ def _country_code_from_free_text(message: str) -> str | None:
 
 
 # Conversation state: identify a country first, then clarify the report brief.
-API_PROBE_VERSION = "2026-09-30-r47"
+API_PROBE_VERSION = "2026-09-30-r48"
 if st.session_state.get("fi_api_probe_version") != API_PROBE_VERSION:
     api_ok, api_detail = probe_openai_api()
     st.session_state.fi_api_probe_version = API_PROBE_VERSION
