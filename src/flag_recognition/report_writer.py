@@ -106,6 +106,132 @@ HISTORY_PERIOD_REPORT_SECTION_KEYS = (
 )
 
 
+TOPIC_SECTION_GROUPS: dict[str, tuple[str, ...]] = {
+    "history": (
+        "historical_journey",
+        "key_historical_timeline",
+        "state_formation_identity",
+    ),
+    "economy": (
+        "economy_trade_industries",
+        "infrastructure_transport_energy",
+    ),
+    "culture": (
+        "people_society",
+        "culture_cuisine_music_sport",
+        "heritage_landmarks",
+        "national_symbols_identity",
+        "literature_philosophy_thought",
+    ),
+    "politics": (
+        "government_structure",
+        "legal_constitutional_system",
+        "leadership_through_time",
+    ),
+    "society": (
+        "people_society",
+        "demographics_population_structure",
+        "languages_religion",
+        "health_public_health",
+    ),
+    "technology": (
+        "education_research",
+        "science_discovery_invention",
+        "infrastructure_transport_energy",
+    ),
+    "diplomacy": (
+        "international_relations",
+        "leadership_through_time",
+    ),
+    "education": (
+        "education_research",
+        "universities_higher_education",
+    ),
+    "environment": (
+        "environment_biodiversity",
+        "climate_water_resources",
+    ),
+    "geography": (
+        "physical_geography",
+        "climate_water_resources",
+        "seasons_climate_calendar",
+        "major_cities_regional_profiles",
+    ),
+    "travel": (
+        "major_cities_regional_profiles",
+        "heritage_landmarks",
+        "culture_cuisine_music_sport",
+        "cost_of_living",
+        "practical_emergency",
+    ),
+    "flag": (
+        "flag_design_symbolism",
+        "national_symbols_identity",
+    ),
+}
+
+
+def _normalized_request_text(value: str) -> str:
+    text = re.sub(r"[^a-z0-9 ]+", " ", str(value or "").casefold())
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _requested_topic_groups(user_request: str) -> tuple[str, ...]:
+    normalized = _normalized_request_text(user_request)
+    groups: list[str] = []
+
+    markers = {
+        "history": ("history", "historical", "histoire"),
+        "economy": ("economy", "economic", "trade", "industry", "industrial"),
+        "culture": ("culture", "cultural", "arts", "literature", "music", "cinema"),
+        "politics": ("politics", "political", "government", "constitutional"),
+        "society": ("society", "social", "demographic", "health"),
+        "technology": ("technology", "technological", "science", "scientific", "innovation"),
+        "diplomacy": ("diplomacy", "diplomatic", "international relations", "foreign policy"),
+        "education": ("education", "university", "universities"),
+        "environment": ("environment", "environmental", "biodiversity"),
+        "geography": ("geography", "geographic", "climate"),
+        "travel": ("travel", "tourism", "visit", "practical"),
+        "flag": ("flag", "tricolour", "tricolor"),
+    }
+
+    for group, group_markers in markers.items():
+        if any(marker in normalized for marker in group_markers):
+            groups.append(group)
+    return tuple(groups)
+
+
+def _brief_is_sufficiently_specific(
+    existing_request: str,
+    latest_message: str,
+) -> bool:
+    merged = " ".join(
+        part for part in (str(existing_request or ""), str(latest_message or "")) if part
+    )
+    normalized = _normalized_request_text(merged)
+    groups = _requested_topic_groups(merged)
+    has_period = _has_explicit_time_range(merged)
+    has_depth = any(
+        marker in normalized
+        for marker in (
+            "detailed",
+            "in depth",
+            "deep",
+            "comprehensive",
+            "year by year",
+            "high level",
+            "overview",
+            "brief",
+        )
+    )
+    broad_acceptance = any(
+        marker in normalized
+        for marker in ("all of them", "all aspects", "everything in that period")
+    )
+
+    return bool(has_period and groups and (has_depth or broad_acceptance))
+
+
 def _extract_requested_year_range(user_request: str) -> tuple[int, int] | None:
     """Extract a plausible explicit year range such as 1950 to 2026."""
     text = str(user_request or "")
@@ -128,13 +254,8 @@ def _has_explicit_time_range(user_request: str) -> bool:
 
 
 def _requested_report_sections(user_request: str) -> tuple[str, ...]:
-    """Return only the sections explicitly needed for a narrow report request."""
-    normalized = re.sub(
-        r"[^a-z0-9 ]+",
-        " ",
-        str(user_request or "").casefold(),
-    )
-    normalized = re.sub(r"\s+", " ", normalized).strip()
+    """Return report sections matching the user's final topical brief."""
+    normalized = _normalized_request_text(user_request)
 
     broad_markers = {
         "complete report",
@@ -147,40 +268,25 @@ def _requested_report_sections(user_request: str) -> tuple[str, ...]:
     if any(marker in normalized for marker in broad_markers):
         return REPORT_SECTION_KEYS
 
-    history_requested = any(
-        token in normalized
-        for token in ("history", "historical", "histoire")
-    )
+    groups = _requested_topic_groups(user_request)
+    if not groups:
+        return REPORT_SECTION_KEYS
 
-    other_topic_markers = (
-        "geography",
-        "climate",
-        "economy",
-        "culture",
-        "government",
-        "politics",
-        "education",
-        "science",
-        "universities",
-        "infrastructure",
-        "environment",
-        "cost of living",
-        "international relations",
-        "society",
-        "health",
-        "sport",
-        "sports",
-        "flag",
-    )
-
-    if history_requested and not any(
-        marker in normalized for marker in other_topic_markers
-    ):
+    if groups == ("history",):
         if _has_explicit_time_range(user_request):
             return HISTORY_PERIOD_REPORT_SECTION_KEYS
         return HISTORY_REPORT_SECTION_KEYS
 
-    return REPORT_SECTION_KEYS
+    selected: list[str] = ["introduction"]
+    for group in groups:
+        for key in TOPIC_SECTION_GROUPS.get(group, ()):
+            if key not in selected:
+                selected.append(key)
+
+    if "conclusion" not in selected:
+        selected.append("conclusion")
+
+    return tuple(selected)
 
 
 
@@ -1266,24 +1372,30 @@ def continue_report_conversation(
         "required": ["action", "normalized_request", "reply"],
         "additionalProperties": False,
     }
+    brief_complete = _brief_is_sufficiently_specific(existing, latest)
+    completeness_instruction = (
+        "The accumulated brief is now sufficiently specific. Set action='generate' and "
+        "write a short natural confirmation that you are preparing the focused report. "
+        "Do not ask another question. "
+        if brief_complete
+        else
+        "The accumulated brief is not yet fully specific. Ask one focused clarification "
+        "only if it materially improves the final report. "
+    )
+
     prompt = (
         "You are Flag Intelligence in a live conversation before generating a report. "
         f"The selected country is {country}. "
         f"Previously understood request: {existing!r}. "
         f"Latest user message: {latest!r}. "
         f"Clarification turn: {int(turn_number)}. "
-        "Understand the user's meaning naturally. Merge the latest instruction into "
-        "normalized_request. Ask one short clarification only when it will materially "
-        "improve the final report. A time range alone does not necessarily make the brief "
-        "complete: you may still clarify the desired angle, such as political, economic, "
-        "social, cultural, technological, diplomatic developments, or all of them, and "
-        "you may clarify desired depth when useful. Ask only one focused question at a "
-        "time. Once the topic, time range when relevant, desired angle(s), and level of "
-        "detail are sufficiently clear, set action='generate'. If the user says things "
-        "like 'all of them', 'everything in that period', 'comprehensive', or otherwise "
-        "clearly accepts broad coverage within the stated scope, generate immediately. "
-        "Avoid repetitive clarification loops; after three clarification turns, generate "
-        "unless a critical ambiguity would make the report misleading. "
+        + completeness_instruction
+        + "Understand the user's meaning naturally and merge the latest instruction into "
+        "normalized_request. Preserve constraints already supplied by the user, including "
+        "time range, chosen angles, exclusions, and desired depth. Ask only one focused "
+        "question at a time. If the user narrows the scope, replace broader earlier angles "
+        "with the narrower final choice rather than retaining unwanted topics. "
+        "Avoid repetitive clarification loops. "
         "Your reply must be natural, concise, and freshly written for this turn. "
         "Return compact JSON only."
     )
@@ -1318,6 +1430,8 @@ def continue_report_conversation(
         reply = str(payload.get("reply") or "").strip()
         if action not in {"ask", "generate"} or not reply:
             raise ValueError("invalid clarification output")
+        if brief_complete:
+            action = "generate"
         return {
             "action": action,
             "normalized_request": normalized_request,
