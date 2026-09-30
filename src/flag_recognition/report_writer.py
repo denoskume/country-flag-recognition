@@ -1616,6 +1616,7 @@ def _review_scoped_report(
         timeout=float(os.getenv("FLAG_INTELLIGENCE_SCOPED_REVIEW_TIMEOUT", "30")),
         max_retries=0,
     )
+    strict_error: Exception | None = None
     try:
         response = client.responses.create(
             model=model,
@@ -1632,10 +1633,33 @@ def _review_scoped_report(
         )
         parsed = _parse_writer_response(response.output_text or "")
     except Exception as exc:
-        raise RuntimeError(
-            "LLM scoped report review failed: "
-            + _api_error_detail(exc)
-        ) from exc
+        strict_error = exc
+        retry_prompt = (
+            prompt
+            + "\n\nIMPORTANT RETRY FORMAT RULE: Return one valid JSON object only. "
+            + "Use exactly these keys and string values; no extra keys: "
+            + json.dumps(list(section_keys), ensure_ascii=False)
+        )
+        try:
+            response = client.responses.create(
+                model=model,
+                reasoning={"effort": "medium"},
+                input=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": retry_prompt},
+                ],
+                text={"format": {"type": "json_object"}},
+                max_output_tokens=5000,
+            )
+            parsed = _parse_writer_response(response.output_text or "")
+        except Exception as retry_exc:
+            raise RuntimeError(
+                "LLM scoped report review failed after strict-schema and JSON-object "
+                "attempts. strict="
+                + _api_error_detail(strict_error)
+                + " retry="
+                + _api_error_detail(retry_exc)
+            ) from retry_exc
 
     reviewed = {
         key: str(parsed.get(key, "") or "").strip()
