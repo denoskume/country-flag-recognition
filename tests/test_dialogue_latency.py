@@ -143,3 +143,40 @@ def test_explicit_full_history_request_keeps_full_report():
         "Give me a complete report about France including its history"
     )
     assert keys == report_writer.REPORT_SECTION_KEYS
+
+
+def test_legacy_ollama_backend_is_normalized_to_groq(monkeypatch):
+    monkeypatch.setenv("FLAG_INTELLIGENCE_LLM_BACKEND", "ollama")
+    assert llm_backend.llm_backend_name() == "groq"
+
+
+def test_probe_groq_uses_direct_responses_endpoint(monkeypatch):
+    monkeypatch.setenv("FLAG_INTELLIGENCE_LLM_BACKEND", "groq")
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
+
+    class _Response:
+        status_code = 200
+        text = '{"status":"completed","output":[{"type":"message"}]}'
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"status": "completed", "output": [{"type": "message"}]}
+
+    calls = {}
+
+    def _post(url, **kwargs):
+        calls["url"] = url
+        calls["headers"] = kwargs.get("headers")
+        calls["json"] = kwargs.get("json")
+        return _Response()
+
+    monkeypatch.setattr(llm_backend.requests, "post", _post)
+
+    ok, detail = llm_backend.probe_llm_backend()
+
+    assert ok is True
+    assert "groq ok" in detail
+    assert calls["url"].endswith("/responses")
+    assert calls["json"]["model"] == "openai/gpt-oss-20b"
