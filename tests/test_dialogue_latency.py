@@ -223,3 +223,28 @@ def test_time_range_does_not_force_generation_when_scope_can_still_be_refined(mo
 
     assert result["action"] == "ask"
     assert "political" in result["reply"].lower()
+
+
+def test_economic_and_cultural_scope_is_not_full_report():
+    keys = report_writer._requested_report_sections(
+        "In-depth economic and cultural developments in France from 1950 to 2020"
+    )
+    assert "economy_trade_industries" in keys
+    assert "culture_cuisine_music_sport" in keys
+    assert "government_structure" not in keys
+    assert "cost_of_living" not in keys
+    assert keys != report_writer.REPORT_SECTION_KEYS
+
+
+def test_complete_brief_detects_period_angles_and_depth():
+    assert report_writer._brief_is_sufficiently_specific(
+        "France history and culture from 1950 to 2020; focus on economic and cultural developments",
+        "in-depth analysis",
+    ) is True
+
+
+def test_brief_without_angle_still_needs_clarification():
+    assert report_writer._brief_is_sufficiently_specific(
+        "France history from 1950 to 2020",
+        "",
+    ) is False
