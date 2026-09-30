@@ -27,20 +27,50 @@ import streamlit as st
 
 
 def _bootstrap_openai_api_key() -> bool:
-    """Load OPENAI_API_KEY from Streamlit secrets before any model call."""
-    if os.getenv("OPENAI_API_KEY", "").strip():
+    """Load an OpenAI API key from supported Streamlit secret layouts."""
+    existing = os.getenv("OPENAI_API_KEY", "").strip()
+    if existing:
         return True
+
+    candidates: list[str] = []
+
     try:
-        secret_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+        candidates.append(str(st.secrets["OPENAI_API_KEY"]).strip())
     except Exception:
-        secret_key = ""
+        pass
+
+    try:
+        candidates.append(str(st.secrets["openai"]["api_key"]).strip())
+    except Exception:
+        pass
+
+    try:
+        candidates.append(str(st.secrets["openai_api_key"]).strip())
+    except Exception:
+        pass
+
+    try:
+        candidates.append(str(st.secrets["OPENAI"]["API_KEY"]).strip())
+    except Exception:
+        pass
+
+    secret_key = next(
+        (
+            value
+            for value in candidates
+            if value and value.lower() not in {"none", "null"}
+        ),
+        "",
+    )
+
     if secret_key:
         os.environ["OPENAI_API_KEY"] = secret_key
         return True
+
     return False
 
 
-_bootstrap_openai_api_key()
+OPENAI_API_READY = _bootstrap_openai_api_key()
 import yaml
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
