@@ -5214,8 +5214,7 @@ if text_process:
     )
     if resolved_code is None:
         assistant_text = (
-            "I couldn't identify a country in that message. Tell me the country "
-            "name or ISO code, or upload its flag."
+            "Ollama returned a country reference that the application could not resolve."
         )
         st.session_state.fi_messages.append(
             {"role": "assistant", "content": assistant_text}
