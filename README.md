@@ -809,3 +809,93 @@ The next priorities are:
 - improved real-world visual recognition;
 - continued report-quality refinement;
 - production-grade reliability for V0.1.x.
+
+
+## Zero-cost local AI mode
+
+Flag Intelligence can run without a paid LLM API by using **Ollama** on the same
+computer that runs the Streamlit application.
+
+Architecture:
+
+```text
+User
+  |
+  v
+Flag Intelligence (Streamlit)
+  |
+  v
+FlagIntelligenceLLM adapter
+  |
+  v
+Ollama on localhost
+  |
+  v
+Local open-weight model
+```
+
+The default backend is now `ollama`. No OpenAI API call is made unless
+`FLAG_INTELLIGENCE_LLM_BACKEND=openai` is explicitly configured.
+
+### Recommended model
+
+The default model is:
+
+```text
+qwen3:8b
+```
+
+It can be changed with:
+
+```text
+FLAG_INTELLIGENCE_OLLAMA_MODEL=qwen3:14b
+```
+
+Use the larger model only when the machine has enough RAM/VRAM.
+
+### Windows
+
+Install Ollama, then from the repository root run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/run_free_local.ps1
+```
+
+The script:
+1. selects Ollama as the LLM backend;
+2. pulls the configured model if needed;
+3. starts Flag Intelligence on `http://localhost:8501`.
+
+### Linux / WSL
+
+```bash
+chmod +x scripts/run_free_local.sh
+./scripts/run_free_local.sh
+```
+
+### Free temporary public access
+
+For testing with classmates or reviewers, install `cloudflared` and run in a
+second terminal:
+
+```bash
+cloudflared tunnel --url http://localhost:8501
+```
+
+Cloudflare prints a temporary public `trycloudflare.com` URL. The model still
+runs locally; only the Streamlit interface is exposed through the tunnel.
+
+Quick Tunnels are intended for development/testing. For a stable public hostname,
+use a managed Cloudflare Tunnel and map it to `http://localhost:8501`.
+
+### Environment variables
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `FLAG_INTELLIGENCE_LLM_BACKEND` | `ollama` | LLM provider |
+| `FLAG_INTELLIGENCE_OLLAMA_MODEL` | `qwen3:8b` | Local model |
+| `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Ollama server |
+| `OLLAMA_AUTH_BEARER` | empty | Optional bearer token for a protected remote Ollama endpoint |
+
+The existing OpenAI backend remains available only as an optional compatibility
+mode and is not required for the zero-cost workflow.
