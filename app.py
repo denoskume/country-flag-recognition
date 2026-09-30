@@ -73,13 +73,14 @@ def _bootstrap_openai_api_key() -> bool:
 OPENAI_API_READY = _bootstrap_openai_api_key()
 
 
-def _bootstrap_ollama_settings() -> None:
-    """Load optional Ollama connection settings from Streamlit secrets."""
+def _bootstrap_llm_settings() -> None:
+    """Load the active cloud LLM settings from Streamlit secrets."""
     mappings = {
-        "OLLAMA_BASE_URL": "OLLAMA_BASE_URL",
-        "FLAG_INTELLIGENCE_OLLAMA_MODEL": "FLAG_INTELLIGENCE_OLLAMA_MODEL",
-        "OLLAMA_AUTH_BEARER": "OLLAMA_AUTH_BEARER",
+        "GROQ_API_KEY": "GROQ_API_KEY",
         "FLAG_INTELLIGENCE_LLM_BACKEND": "FLAG_INTELLIGENCE_LLM_BACKEND",
+        "FLAG_INTELLIGENCE_GROQ_MODEL": "FLAG_INTELLIGENCE_GROQ_MODEL",
+        "OPENAI_API_KEY": "OPENAI_API_KEY",
+        "FLAG_INTELLIGENCE_WRITER_MODEL": "FLAG_INTELLIGENCE_WRITER_MODEL",
     }
     for secret_name, env_name in mappings.items():
         if os.getenv(env_name, "").strip():
@@ -88,11 +89,17 @@ def _bootstrap_ollama_settings() -> None:
             value = str(st.secrets[secret_name]).strip()
         except Exception:
             value = ""
-        if value:
+        if value and value.lower() not in {"none", "null"}:
             os.environ[env_name] = value
 
+    os.environ.setdefault("FLAG_INTELLIGENCE_LLM_BACKEND", "groq")
+    os.environ.setdefault(
+        "FLAG_INTELLIGENCE_GROQ_MODEL",
+        "openai/gpt-oss-20b",
+    )
 
-_bootstrap_ollama_settings()
+
+_bootstrap_llm_settings()
 import yaml
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
@@ -4816,7 +4823,7 @@ def _country_code_from_free_text(message: str) -> str | None:
 
 
 # Conversation state: identify a country first, then clarify the report brief.
-API_PROBE_VERSION = "2026-09-30-r51"
+API_PROBE_VERSION = "2026-09-30-r52"
 if st.session_state.get("fi_api_probe_version") != API_PROBE_VERSION:
     api_ok, api_detail = probe_openai_api()
     st.session_state.fi_api_probe_version = API_PROBE_VERSION
@@ -4831,6 +4838,36 @@ if str(st.query_params.get("debug", "")).strip() == "1":
         st.success(f"LLM backend: {llm_backend_name()} / {llm_model_name()} — OK")
     else:
         st.error(f"LLM backend diagnostic: {debug_detail}")
+
+if not bool(st.session_state.get("fi_api_ok")):
+    st.markdown(
+        """
+        <div style="
+            max-width:680px;
+            margin:8vh auto 0 auto;
+            text-align:center;
+            padding:2rem 2.25rem;
+            border:1px solid #e5e7eb;
+            border-radius:18px;
+            background:white;
+            box-shadow:0 8px 30px rgba(0,0,0,.06);
+        ">
+          <div style="font-size:1.45rem;font-weight:700;margin-bottom:.65rem;">
+            Flag Intelligence is undergoing updates
+          </div>
+          <div style="font-size:1rem;line-height:1.6;color:#5f6368;">
+            The service is temporarily unavailable while the latest update is being applied.
+            Please refresh this page shortly.
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    print(
+        "[Flag Intelligence maintenance] LLM backend unavailable: "
+        f"{st.session_state.get('fi_api_detail')}"
+    )
+    st.stop()
 
 
 if "fi_stage" not in st.session_state:
