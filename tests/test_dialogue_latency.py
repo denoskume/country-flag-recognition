@@ -248,3 +248,26 @@ def test_brief_without_angle_still_needs_clarification():
         "France history from 1950 to 2020",
         "",
     ) is False
+
+
+def test_canonical_brief_preserves_latest_explicit_topics():
+    brief = report_writer._canonicalize_report_brief(
+        "history and culture from 1950 to 2020",
+        "Economic and cultural",
+        "culture and history of France 1950-2020",
+    )
+    assert "economy" in brief
+    assert "culture" in brief
+    assert "history" not in brief
+
+
+def test_canonical_brief_preserves_topics_when_depth_arrives_later():
+    brief = report_writer._canonicalize_report_brief(
+        "economy and culture from 1950 to 2020",
+        "balanced overview",
+        "culture and history of France 1950-2020 balanced overview",
+    )
+    assert "economy" in brief
+    assert "culture" in brief
+    assert "balanced overview" in brief
+    assert "1950 to 2020" in brief
