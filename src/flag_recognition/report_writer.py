@@ -1050,18 +1050,14 @@ def _local_initial_interpretation(message: str) -> dict[str, str]:
         "salut", "good morning", "good afternoon", "good evening",
     }:
         greeting_reply = (
-            "Hey there! What country would you like to explore today? "
-            "You can also upload a flag if you prefer."
-            if normalized in {"hey", "hey there"}
-            else
-            "Hello! What country would you like to explore today? "
-            "You can also upload a flag if you prefer."
+            "Hello! What would you like to explore?"
         )
         return {
             "intent": "greeting",
             "country": "",
             "request": "",
             "reply": greeting_reply,
+            "_source": "fallback",
         }
 
     if normalized in {
@@ -1072,6 +1068,7 @@ def _local_initial_interpretation(message: str) -> dict[str, str]:
             "intent": "general",
             "country": "",
             "request": "",
+            "_source": "fallback",
             "reply": (
                 "I can identify a country, understand what you want to know "
                 "about it, clarify your request, and prepare a tailored PDF report."
@@ -1082,6 +1079,7 @@ def _local_initial_interpretation(message: str) -> dict[str, str]:
         "intent": "unknown",
         "country": "",
         "request": text,
+        "_source": "fallback",
         "reply": (
             "I can help you explore a country or identify one from its flag. "
             "Tell me what you would like to explore."
@@ -1237,6 +1235,7 @@ def interpret_country_request(message: str) -> dict[str, str]:
                         "country": str(payload.get("country") or "").strip(),
                         "request": str(payload.get("request") or "").strip(),
                         "reply": str(payload.get("reply") or "").strip(),
+                        "_source": "model",
                     }
                     if result["intent"] and (
                         result["reply"]
@@ -1271,6 +1270,7 @@ def interpret_country_request(message: str) -> dict[str, str]:
                         "country": str(payload.get("country") or "").strip(),
                         "request": str(payload.get("request") or "").strip(),
                         "reply": str(payload.get("reply") or "").strip(),
+                        "_source": "model",
                     }
                     if result["intent"] and (
                         result["reply"]
