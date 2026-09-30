@@ -4092,6 +4092,24 @@ st.set_page_config(
 # writer credentials into the process environment because the report-writer
 # module is intentionally independent from Streamlit.
 try:
+    if not os.getenv("GROQ_API_KEY"):
+        secret_groq_key = str(st.secrets.get("GROQ_API_KEY", "") or "").strip()
+        if secret_groq_key:
+            os.environ["GROQ_API_KEY"] = secret_groq_key
+    if not os.getenv("FLAG_INTELLIGENCE_LLM_BACKEND"):
+        secret_backend = str(
+            st.secrets.get("FLAG_INTELLIGENCE_LLM_BACKEND", "groq") or "groq"
+        ).strip()
+        os.environ["FLAG_INTELLIGENCE_LLM_BACKEND"] = secret_backend
+    if not os.getenv("FLAG_INTELLIGENCE_GROQ_MODEL"):
+        secret_groq_model = str(
+            st.secrets.get(
+                "FLAG_INTELLIGENCE_GROQ_MODEL",
+                "openai/gpt-oss-20b",
+            )
+            or "openai/gpt-oss-20b"
+        ).strip()
+        os.environ["FLAG_INTELLIGENCE_GROQ_MODEL"] = secret_groq_model
     if not os.getenv("OPENAI_API_KEY"):
         secret_key = str(st.secrets.get("OPENAI_API_KEY", "") or "").strip()
         if secret_key:
@@ -4893,7 +4911,7 @@ if pending_input is not None:
                     interpretation = interpret_country_request(prompt_text)
             except Exception as exc:
                 assistant_text = (
-                    "Ollama could not answer this turn. "
+                    "The language model could not answer this turn. "
                     f"{type(exc).__name__}: {str(exc)[:220]}"
                 )
                 st.session_state.fi_messages.append(
@@ -5025,7 +5043,7 @@ def show_result(
                 assistant_text = str(opening_turn.get("reply") or "").strip()
             except Exception as exc:
                 assistant_text = (
-                    "Ollama could not start the country conversation. "
+                    "The language model could not start the country conversation. "
                     f"{type(exc).__name__}: {str(exc)[:220]}"
                 )
 
@@ -5173,7 +5191,7 @@ def show_result(
     if accepted and not authored_ready:
         writer_error = str(report.get("authored_report_error") or "").strip()
         assistant_text = (
-            "Ollama did not produce a usable report. "
+            "The language model did not produce a usable report. "
             + (writer_error if writer_error else "No report content was returned.")
         )
         st.session_state.fi_messages.append(
@@ -5214,7 +5232,7 @@ if text_process:
     )
     if resolved_code is None:
         assistant_text = (
-            "Ollama returned a country reference that the application could not resolve."
+            "The language model returned a country reference that the application could not resolve."
         )
         st.session_state.fi_messages.append(
             {"role": "assistant", "content": assistant_text}
@@ -5238,7 +5256,7 @@ if text_process:
                 )
         except Exception as exc:
             assistant_text = (
-                "Ollama could not answer this turn. "
+                "The language model could not answer this turn. "
                 f"{type(exc).__name__}: {str(exc)[:220]}"
             )
             st.session_state.fi_messages.append(
@@ -5297,7 +5315,7 @@ if conversation_process:
             )
     except Exception as exc:
         assistant_text = (
-            "Ollama could not answer this turn. "
+            "The language model could not answer this turn. "
             f"{type(exc).__name__}: {str(exc)[:220]}"
         )
         st.session_state.fi_messages.append(
