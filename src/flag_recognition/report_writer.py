@@ -1676,6 +1676,7 @@ def _review_scoped_report(
     user_request: str,
     section_keys: tuple[str, ...],
     draft: dict[str, str],
+    brief_state: dict[str, Any] | None = None,
 ) -> dict[str, str]:
     """Run a second real-time model pass to validate chronology and scope."""
     year_range = _extract_requested_year_range(user_request)
@@ -1688,9 +1689,15 @@ def _review_scoped_report(
             "appear only as minimal context in the introduction when essential. "
         )
 
+    brief_json = json.dumps(
+        brief_state if isinstance(brief_state, dict) else {},
+        ensure_ascii=False,
+        sort_keys=True,
+    )
     prompt = (
-        f"Act as the final historical editor for a report about {country_name}. "
+        f"Act as the final subject-matter editor for a focused report about {country_name}. "
         f"User request: {user_request!r}. "
+        f"Semantic brief: {brief_json}. "
         + range_rule
         + "Audit every factual sentence independently rather than merely polishing the "
         "draft. Check chronology, event dates, direction of independence or sovereignty "
@@ -1795,6 +1802,7 @@ def _generate_scoped_report(
     country_code: str,
     user_request: str,
     section_keys: tuple[str, ...],
+    brief_state: dict[str, Any] | None = None,
 ) -> dict[str, str]:
     """Generate a narrow report in one bounded call instead of the full report pipeline."""
     year_range = _extract_requested_year_range(user_request)
@@ -1808,15 +1816,27 @@ def _generate_scoped_report(
             "in the introduction if indispensable. "
         )
 
+    brief_json = json.dumps(
+        brief_state if isinstance(brief_state, dict) else {},
+        ensure_ascii=False,
+        sort_keys=True,
+    )
     prompt = (
         f"Write a focused Flag Intelligence report about {country_name}. "
         f"The user request is: {user_request!r}. "
+        f"Semantic brief: {brief_json}. "
         + range_rule
         + "Respect that scope strictly. Do not add unrelated country chapters. "
-        "Return exactly the requested JSON keys with concise, factual, "
-        "publication-ready English prose. Verify historical dates and chronology before "
-        "returning the answer. Do not include markdown, citations, URLs, source labels, "
-        "internal notes, or literal escape sequences such as \\n.\n\n"
+        "Every substantive section must contain concrete named evidence appropriate to "
+        "the subject: relevant people, works, institutions, concepts, events, dates, "
+        "examples, or quantitative facts where appropriate. Explain why the evidence "
+        "matters instead of writing generic praise or vague summaries. If the request "
+        "names a single year, focus on that year and use surrounding years only as brief "
+        "context; do not silently expand it into an entire decade. "
+        "Return exactly the requested JSON keys with factual, publication-ready English "
+        "prose. Verify dates, names, chronology, attribution, and scope before returning "
+        "the answer. Do not include markdown, citations, URLs, source labels, internal "
+        "notes, or literal escape sequences such as \\n.\n\n"
         "REQUESTED KEYS:\n"
         + json.dumps({key: "" for key in section_keys}, ensure_ascii=False)
         + f"\n\nCOUNTRY CODE: {country_code}"
@@ -1875,6 +1895,7 @@ def _generate_scoped_report(
         user_request=user_request,
         section_keys=section_keys,
         draft=result,
+        brief_state=brief_state,
     )
     result["__qa_passed"] = True
     result["__qa_issues"] = []
@@ -1911,6 +1932,11 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
             country_code=str(report.get("country_code") or ""),
             user_request=str(report.get("user_request") or ""),
             section_keys=requested_sections,
+            brief_state=(
+                report.get("brief_state")
+                if isinstance(report.get("brief_state"), dict)
+                else {}
+            ),
         )
 
     deadline = time.monotonic() + REPORT_GENERATION_BUDGET_SECONDS
