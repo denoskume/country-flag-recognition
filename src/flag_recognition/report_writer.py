@@ -1046,7 +1046,7 @@ def _local_initial_interpretation(message: str) -> dict[str, str]:
     normalized = re.sub(r"\s+", " ", normalized).strip()
 
     if normalized in {
-        "hi", "hello", "hey", "hello there", "bonjour", "bonsoir",
+        "hi", "hello", "hey", "hey there", "hello there", "bonjour", "bonsoir",
         "salut", "good morning", "good afternoon", "good evening",
     }:
         greeting_reply = (
@@ -1083,7 +1083,8 @@ def _local_initial_interpretation(message: str) -> dict[str, str]:
         "country": "",
         "request": text,
         "reply": (
-            "Tell me which country you would like to explore, or upload its flag."
+            "I can help you explore a country or identify one from its flag. "
+            "Tell me what you would like to explore."
         ),
     }
 
