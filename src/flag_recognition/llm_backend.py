@@ -92,7 +92,11 @@ def _schema_from_text_config(text_config: Any) -> dict[str, Any] | None:
 
 class _OllamaResponses:
     def __init__(self, timeout: float | None = None):
-        self.timeout = float(timeout or 120.0)
+        requested = float(timeout or 120.0)
+        self.timeout = max(
+            requested,
+            float(os.getenv("FLAG_INTELLIGENCE_OLLAMA_TIMEOUT", "180")),
+        )
 
     def create(
         self,
@@ -114,7 +118,7 @@ class _OllamaResponses:
             "model": selected_model,
             "messages": messages,
             "stream": False,
-            "keep_alive": "10m",
+            "keep_alive": "30m",
             "options": {
                 "temperature": 0.2,
             },
@@ -126,13 +130,19 @@ class _OllamaResponses:
         if schema is not None:
             payload["format"] = schema
 
-        response = requests.post(
-            f"{ollama_base_url()}/api/chat",
-            headers=_ollama_headers(),
-            json=payload,
-            timeout=self.timeout,
-        )
-        response.raise_for_status()
+        try:
+            response = requests.post(
+                f"{ollama_base_url()}/api/chat",
+                headers=_ollama_headers(),
+                json=payload,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            raise RuntimeError(
+                f"Ollama request failed at {ollama_base_url()} "
+                f"after timeout={self.timeout:.0f}s: {exc}"
+            ) from exc
         data = response.json()
 
         message = data.get("message") if isinstance(data, dict) else None
