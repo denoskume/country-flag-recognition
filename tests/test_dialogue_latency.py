@@ -67,6 +67,18 @@ def test_follow_up_is_generated_by_llm(monkeypatch):
         "action": "ask",
         "normalized_request": "history",
         "reply": "Which period of French history interests you most?",
+        "brief_state": {
+            "subject": "history",
+            "topics": ["history"],
+            "period": "",
+            "angles": [],
+            "depth": "",
+            "exclusions": [],
+            "current_events": False,
+            "other_constraints": [],
+            "ready": False,
+            "missing": ["period"],
+        },
     }
     _FakeClient.instances = []
     monkeypatch.setattr(report_writer, "OpenAI", _FakeClient)
@@ -210,6 +222,18 @@ def test_time_range_does_not_force_generation_when_scope_can_still_be_refined(mo
         "action": "ask",
         "normalized_request": "History of France from 1950 to 2026",
         "reply": "Would you like political, economic, cultural developments, or all of them?",
+        "brief_state": {
+            "subject": "history",
+            "topics": ["history"],
+            "period": "1950 to 2026",
+            "angles": [],
+            "depth": "",
+            "exclusions": [],
+            "current_events": False,
+            "other_constraints": [],
+            "ready": False,
+            "missing": ["preferred emphasis"],
+        },
     }
     _FakeClient.instances = []
     monkeypatch.setattr(report_writer, "OpenAI", _FakeClient)
