@@ -986,6 +986,51 @@ def _emergency_full_report_pass(
     return {}
 
 
+def generate_report_follow_up(
+    country_name: str,
+    user_request: str,
+) -> str:
+    """Ask one concise, useful clarification before report generation."""
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        return (
+            "Would you like a concise or detailed report, and is there "
+            "anything you want me to prioritize or leave out?"
+        )
+
+    model = os.getenv("FLAG_INTELLIGENCE_WRITER_MODEL", "gpt-5.6-sol").strip()
+    client = OpenAI(
+        api_key=api_key,
+        timeout=25.0,
+        max_retries=1,
+    )
+    prompt = (
+        f"The user wants a country report about {country_name}. "
+        f"Their request is: {user_request!r}. "
+        "Ask exactly ONE short follow-up question that would materially improve "
+        "the final report. Do not repeat what the user already said. Prefer a "
+        "question about scope, depth, audience, priority, or exclusions. "
+        "Return only the question, no preamble."
+    )
+    try:
+        response = client.responses.create(
+            model=model,
+            reasoning={"effort": "none"},
+            input=prompt,
+            max_output_tokens=120,
+        )
+        question = str(response.output_text or "").strip()
+        if question:
+            return question
+    except Exception:
+        pass
+
+    return (
+        "Would you like a concise or detailed report, and is there "
+        "anything you want me to prioritize or leave out?"
+    )
+
+
 def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     """Author the complete report through independent model-written chapters."""
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
