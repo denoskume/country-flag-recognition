@@ -126,3 +126,20 @@ def test_history_only_scope_selects_history_sections():
 def test_broad_scope_keeps_full_report():
     keys = report_writer._requested_report_sections("complete country report")
     assert keys == report_writer.REPORT_SECTION_KEYS
+
+
+def test_plain_history_request_is_scoped_to_history():
+    keys = report_writer._requested_report_sections("Its history")
+    assert keys == report_writer.HISTORY_REPORT_SECTION_KEYS
+
+
+def test_history_request_with_country_name_is_scoped_to_history():
+    keys = report_writer._requested_report_sections("Tell me about the history of France")
+    assert keys == report_writer.HISTORY_REPORT_SECTION_KEYS
+
+
+def test_explicit_full_history_request_keeps_full_report():
+    keys = report_writer._requested_report_sections(
+        "Give me a complete report about France including its history"
+    )
+    assert keys == report_writer.REPORT_SECTION_KEYS
