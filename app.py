@@ -3929,266 +3929,7 @@ def _build_pdf_report_uncached(
     return buffer.getvalue()
 
 
-REPORT_WRITER_CACHE_VERSION = "2026-09-30-r34"
-
-def _fallback_authored_report(report: dict[str, object]) -> dict[str, object]:
-    """Build a complete local report when the external writer is unavailable."""
-    profile = report.get("country_profile")
-    if not isinstance(profile, dict):
-        profile = {}
-    intelligence = report.get("country_intelligence_v2")
-    if not isinstance(intelligence, dict):
-        intelligence = {}
-
-    country = str(
-        report.get("decision")
-        or report.get("top_candidate")
-        or profile.get("name")
-        or "This country"
-    ).strip()
-
-    def fact(value: object) -> str:
-        text = str(value or "").strip()
-        if not text or text.casefold() in {"not available", "none", "n/a"}:
-            return ""
-        return re.sub(r"\s+", " ", text)
-
-    def iv(section: str, key: str = "context") -> str:
-        block = intelligence.get(section)
-        if not isinstance(block, dict):
-            return ""
-        item = block.get(key)
-        if isinstance(item, dict):
-            return fact(item.get("value"))
-        return fact(item)
-
-    def join_parts(*parts: object) -> str:
-        cleaned = [fact(part) for part in parts if fact(part)]
-        return " ".join(cleaned)
-
-    def timeline_text(name: str) -> str:
-        items = intelligence.get(name)
-        if not isinstance(items, list):
-            return ""
-        chunks = []
-        for event in items:
-            if not isinstance(event, dict):
-                continue
-            period = fact(event.get("period"))
-            summary = fact(event.get("summary"))
-            if summary:
-                chunks.append(f"{period}: {summary}" if period else summary)
-        return " ".join(chunks)
-
-    capital = fact(profile.get("capital"))
-    language = fact(profile.get("official_languages"))
-    currency = fact(profile.get("currency"))
-    population = fact(profile.get("population"))
-    area = fact(profile.get("area_km2"))
-    government = fact(profile.get("government_form"))
-    national_day = fact(profile.get("national_day"))
-    emergency = fact(profile.get("emergency_numbers"))
-    cities = fact(profile.get("largest_cities"))
-    orgs = fact(profile.get("international_organizations"))
-    borders = fact(profile.get("borders"))
-    timezones = fact(profile.get("timezones"))
-
-    intro = (
-        f"{country} is presented through a structured country-intelligence profile."
-        + (f" Its capital is {capital}." if capital else "")
-        + (f" The principal official-language information is {language}." if language else "")
-        + (f" The currency is {currency}." if currency else "")
-        + (f" The recorded population is {population}." if population else "")
-        + (f" The recorded area is approximately {area} km²." if area else "")
-    )
-
-    geography = join_parts(
-        iv("geography"),
-        iv("geography", "mountains_relief"),
-        f"Major cities include {cities}." if cities else "",
-        f"Land-border information: {borders}." if borders else "",
-    ) or f"{country}'s geography is described from its territory, settlement pattern and regional physical features."
-
-    climate = join_parts(
-        iv("environment", "climate_seasons"),
-        iv("geography", "rivers_lakes"),
-        iv("environment", "natural_resources"),
-    ) or f"{country}'s climate, water resources and natural-resource patterns vary according to its geography and regional conditions."
-
-    seasons = iv("environment", "climate_seasons") or (
-        f"Seasonal conditions in {country} should be interpreted according to its latitude, altitude and regional climate rather than through a single universal seasonal model."
-    )
-
-    history = timeline_text("historical_timeline") or fact(profile.get("historical_context"))
-    origins = timeline_text("origins") or history or (
-        f"The early history of {country} is understood through the societies and political formations that preceded the modern state."
-    )
-    if not history:
-        history = f"The historical development of {country} connects earlier political formations, institutional change and the emergence of the modern state."
-
-    flag_text = iv("flag") or (
-        f"The national flag of {country} forms part of the country's official visual identity and is interpreted through its design, adoption history and symbolism."
-    )
-
-    state_identity = join_parts(
-        fact(profile.get("colonial_history")),
-        f"The national day is {national_day}." if national_day else "",
-        fact(profile.get("national_motto")),
-        fact(profile.get("national_anthem")),
-    ) or f"{country}'s modern national identity reflects its historical development, institutions and civic symbols."
-
-    government_text = join_parts(
-        iv("government"),
-        f"The documented form of government is {government}." if government else "",
-        fact(profile.get("head_of_state")),
-        fact(profile.get("head_of_government")),
-    ) or f"{country}'s government is organized through national institutions responsible for executive, legislative and administrative functions."
-
-    legal_text = iv("government") or (
-        f"The legal and constitutional order of {country} is shaped by its constitutional framework, courts and public-law institutions."
-    )
-    leadership_text = iv("government", "leadership_history") or (
-        f"Leadership in {country} has evolved alongside changes in the country's political institutions and constitutional arrangements."
-    )
-
-    people_text = iv("people_society") or (
-        f"Society in {country} is shaped by demographic change, urban and regional communities, migration patterns and national institutions."
-    )
-    demographics_text = iv("people_society") or (
-        f"Population distribution in {country} reflects the concentration of residents across major cities, regional centers and rural areas."
-    )
-    languages_text = iv("people_society", "languages_religion") or (
-        f"Language and religion in {country} reflect its historical and social development."
-        + (f" Official-language information includes {language}." if language else "")
-    )
-    health_text = iv("people_society", "health_system") or (
-        f"Public health in {country} is organized through national and local health institutions, with access and capacity varying by region."
-    )
-
-    culture_text = iv("culture") or (
-        f"The culture of {country} combines historical traditions with contemporary artistic, culinary, musical and sporting life."
-    )
-    festivals_text = iv("culture", "festivals_holidays") or (
-        f"Public holidays and traditions in {country} reflect national commemorations, religious observances and regional customs."
-    )
-    heritage_text = iv("culture", "heritage_landmarks") or (
-        f"{country}'s heritage includes historic sites, monuments, cultural landscapes and places associated with national memory."
-    )
-    literature_text = iv("culture", "literature_thought") or (
-        f"Literature and intellectual life in {country} include writers, thinkers and cultural movements that contributed to national and international debate."
-    )
-
-    cities_text = (
-        f"Major urban centers include {cities}. "
-        if cities else
-        f"The urban system of {country} includes the capital and other regional centers. "
-    ) + "Cities differ in administrative, economic, educational and cultural roles."
-
-    symbols_text = join_parts(
-        f"National day: {national_day}." if national_day else "",
-        f"National motto: {fact(profile.get('national_motto'))}." if fact(profile.get("national_motto")) else "",
-        f"National anthem: {fact(profile.get('national_anthem'))}." if fact(profile.get("national_anthem")) else "",
-    ) or f"National symbols in {country} include the flag and other civic symbols associated with state identity."
-
-    economy_text = join_parts(
-        iv("economy"),
-        iv("economy", "economic_drivers"),
-        f"Recorded GDP: {fact(profile.get('gdp_usd'))}." if fact(profile.get("gdp_usd")) else "",
-    ) or f"{country}'s economy combines services, productive sectors, trade and domestic infrastructure according to its national development pattern."
-
-    infrastructure_text = join_parts(
-        iv("infrastructure"),
-        iv("infrastructure", "transport_network"),
-        iv("infrastructure", "energy_connectivity"),
-    ) or f"Infrastructure in {country} includes transport, energy, communications and public-service networks linking major population centers."
-
-    education_text = iv("education_science") or (
-        f"Education in {country} includes primary and secondary schooling, higher education, vocational pathways and research institutions."
-    )
-    universities_text = iv("education_science") or (
-        f"Higher education in {country} is provided through universities and other tertiary institutions. Historically important and currently prominent institutions should be interpreted within the country's national higher-education system."
-    )
-    science_text = iv("education_science", "science_inventions") or (
-        f"Scientific and technical activity in {country} is connected to universities, research institutions, professional communities and innovation systems."
-    )
-    environment_text = iv("environment") or (
-        f"Environmental conditions in {country} reflect its ecosystems, land use, biodiversity and exposure to climate-related pressures."
-    )
-
-    practical_text = join_parts(
-        f"The currency is {currency}." if currency else "",
-        f"Emergency numbers: {emergency}." if emergency else "",
-        f"International calling code: {fact(profile.get('calling_code'))}." if fact(profile.get("calling_code")) else "",
-        f"Driving side: {fact(profile.get('driving_side'))}." if fact(profile.get("driving_side")) else "",
-        f"Internet domain: {fact(profile.get('internet_domain'))}." if fact(profile.get("internet_domain")) else "",
-        f"Time-zone information: {timezones}." if timezones else "",
-    ) or f"Practical information for {country} includes communications, transport conventions and public emergency services."
-
-    international_text = join_parts(
-        iv("international_relations"),
-        f"International organizations include {orgs}." if orgs else "",
-    ) or f"{country} participates in international relations through diplomacy, regional cooperation and multilateral institutions."
-
-    notable_text = iv("culture", "notable_people") or (
-        f"Notable figures associated with {country} span public life, literature, science, the arts and sport."
-    )
-
-    result = {
-        "introduction": intro,
-        "physical_geography": geography,
-        "climate_water_resources": climate,
-        "seasons_climate_calendar": seasons,
-        "flag_design_symbolism": flag_text,
-        "origins_early_history": origins,
-        "historical_journey": history,
-        "key_historical_timeline": timeline_text("historical_timeline"),
-        "state_formation_identity": state_identity,
-        "government_structure": government_text,
-        "legal_constitutional_system": legal_text,
-        "leadership_through_time": leadership_text,
-        "people_society": people_text,
-        "demographics_population_structure": demographics_text if demographics_text != people_text else "",
-        "languages_religion": languages_text if languages_text != people_text else "",
-        "health_public_health": health_text if health_text != people_text else "",
-        "culture_cuisine_music_sport": culture_text,
-        "festivals_holidays_traditions": festivals_text if festivals_text != culture_text else "",
-        "heritage_landmarks": heritage_text if heritage_text != culture_text else "",
-        "major_cities_regional_profiles": cities_text,
-        "national_symbols_identity": symbols_text,
-        "literature_philosophy_thought": literature_text if literature_text != culture_text else "",
-        "economy_trade_industries": economy_text,
-        "infrastructure_transport_energy": infrastructure_text,
-        "education_research": education_text,
-        "universities_higher_education": universities_text,
-        "science_discovery_invention": science_text,
-        "environment_biodiversity": environment_text,
-        "cost_of_living": f"Living costs in {country} vary by city, housing market, household size and lifestyle; current local prices should be interpreted with a reference date.",
-        "practical_emergency": practical_text,
-        "international_relations": international_text,
-        "notable_figures_philosophy": "",
-        "notable_figures_literature_poetry": "",
-        "notable_figures_mathematics": "",
-        "notable_figures_physics": "",
-        "notable_figures_science_medicine": "",
-        "notable_figures_invention_engineering": "",
-        "notable_figures_arts_architecture": "",
-        "notable_figures_music_cinema": "",
-        "notable_figures_public_life": "",
-        "notable_figures_sport": "",
-        "notable_public_figures": notable_text,
-        "conclusion": (
-            f"{country} is best understood through the interaction of geography, history, institutions, society, culture, education, science and its place in the wider world."
-        ),
-        "__qa_passed": False,
-        "__qa_issues": ["local fallback requires editorial completion"],
-        "__fallback_used": True,
-        "__substantial_sections": 0,
-        "__generation_mode": "local_support_only",
-    }
-    return prune_report_to_request(
-        result,
-        str(report.get("user_request") or ""),
-    )
+REPORT_WRITER_CACHE_VERSION = "2026-09-30-r35"
 
 def _cached_authored_report(
     evidence_json: str,
@@ -5077,6 +4818,7 @@ typed_country = ""
 conversation_text = ""
 initial_country_code = None
 initial_report_request = ""
+initial_assistant_reply = ""
 
 if prompt_submission is not None:
     prompt_text = str(getattr(prompt_submission, "text", "") or "").strip()
@@ -5146,67 +4888,73 @@ if pending_input is not None:
             conversation_text = prompt_text
             conversation_process = True
         else:
-            with st.spinner("Understanding your request..."):
-                interpretation = interpret_country_request(prompt_text)
-
-            intent = str(interpretation.get("intent") or "unknown")
-            interpreted_country = str(
-                interpretation.get("country") or ""
-            ).strip()
-            interpreted_request = str(
-                interpretation.get("request") or ""
-            ).strip()
-            interpreted_reply = str(
-                interpretation.get("reply") or ""
-            ).strip()
-
-            resolved_free_text_code = (
-                country_code_from_text(interpreted_country)
-                if interpreted_country
-                else None
-            )
-            if resolved_free_text_code is None:
-                resolved_free_text_code = _country_code_from_free_text(
-                    prompt_text
-                )
-
-            if (
-                intent in {"country_only", "country_request"}
-                and resolved_free_text_code is not None
-            ):
-                typed_country = prompt_text
-                initial_country_code = resolved_free_text_code
-                initial_report_request = (
-                    interpreted_request
-                    if intent == "country_request"
-                    else ""
-                )
-                text_process = True
-            elif intent in {"greeting", "general"} and interpreted_reply:
-                st.session_state.fi_messages.append(
-                    {"role": "assistant", "content": interpreted_reply}
-                )
-                _render_chat_message("assistant", interpreted_reply)
-            elif resolved_free_text_code is not None:
-                typed_country = prompt_text
-                initial_country_code = resolved_free_text_code
-                text_process = True
-            else:
+            try:
+                with st.spinner("Understanding your request..."):
+                    interpretation = interpret_country_request(prompt_text)
+            except Exception as exc:
                 assistant_text = (
-                    interpreted_reply
-                    or "Tell me which country you would like to explore, "
-                    "or upload its flag."
+                    "Ollama could not answer this turn. "
+                    f"{type(exc).__name__}: {str(exc)[:220]}"
                 )
                 st.session_state.fi_messages.append(
                     {"role": "assistant", "content": assistant_text}
                 )
                 _render_chat_message("assistant", assistant_text)
+            else:
+                intent = str(interpretation.get("intent") or "unknown")
+                interpreted_country = str(
+                    interpretation.get("country") or ""
+                ).strip()
+                interpreted_request = str(
+                    interpretation.get("request") or ""
+                ).strip()
+                interpreted_reply = str(
+                    interpretation.get("reply") or ""
+                ).strip()
+
+                resolved_free_text_code = (
+                    country_code_from_text(interpreted_country)
+                    if interpreted_country
+                    else None
+                )
+                if resolved_free_text_code is None:
+                    resolved_free_text_code = _country_code_from_free_text(
+                        prompt_text
+                    )
+
+                if (
+                    intent in {"country_only", "country_request"}
+                    and resolved_free_text_code is not None
+                ):
+                    typed_country = prompt_text
+                    initial_country_code = resolved_free_text_code
+                    initial_report_request = (
+                        interpreted_request
+                        if intent == "country_request"
+                        else ""
+                    )
+                    initial_assistant_reply = interpreted_reply
+                    text_process = True
+                elif interpreted_reply:
+                    st.session_state.fi_messages.append(
+                        {"role": "assistant", "content": interpreted_reply}
+                    )
+                    _render_chat_message("assistant", interpreted_reply)
+                else:
+                    assistant_text = (
+                        "Ollama returned an empty conversational response."
+                    )
+                    st.session_state.fi_messages.append(
+                        {"role": "assistant", "content": assistant_text}
+                    )
+                    _render_chat_message("assistant", assistant_text)
 
 
 def show_result(
     image: Image.Image | None = None,
     direct_code: str | None = None,
     user_request: str | None = None,
+    opening_reply: str | None = None,
 ):
     """Build the complete result inline and expose final downloads."""
     if direct_code is None:
@@ -5264,7 +5012,23 @@ def show_result(
         else:
             st.session_state.fi_image_bytes = None
 
-        assistant_text = f"What would you like to know about {country}?"
+        assistant_text = str(opening_reply or "").strip()
+        if not assistant_text:
+            try:
+                opening_turn = continue_report_conversation(
+                    country,
+                    "",
+                    "The country was identified from an uploaded flag. "
+                    "Start the live conversation by asking what the user wants to know.",
+                    turn_number=0,
+                )
+                assistant_text = str(opening_turn.get("reply") or "").strip()
+            except Exception as exc:
+                assistant_text = (
+                    "Ollama could not start the country conversation. "
+                    f"{type(exc).__name__}: {str(exc)[:220]}"
+                )
+
         st.session_state.fi_messages.append(
             {"role": "assistant", "content": assistant_text}
         )
@@ -5407,24 +5171,16 @@ def show_result(
     )
 
     if accepted and not authored_ready:
-        fallback_report = _fallback_authored_report(report)
-        if isinstance(fallback_report, dict):
-            report["authored_report"] = fallback_report
-            authored_report = fallback_report
-            authored_ready = any(
-                isinstance(value, str) and value.strip()
-                for key, value in fallback_report.items()
-                if not str(key).startswith("__")
-            )
-            if authored_ready:
-                fallback_message = (
-                    "The writer did not finish within the generation window, "
-                    "so I prepared the report from the local country data instead."
-                )
-                st.session_state.fi_messages.append(
-                    {"role": "assistant", "content": fallback_message}
-                )
-                _render_chat_message("assistant", fallback_message)
+        writer_error = str(report.get("authored_report_error") or "").strip()
+        assistant_text = (
+            "Ollama did not produce a usable report. "
+            + (writer_error if writer_error else "No report content was returned.")
+        )
+        st.session_state.fi_messages.append(
+            {"role": "assistant", "content": assistant_text}
+        )
+        _render_chat_message("assistant", assistant_text)
+
 
     report_ready = accepted and authored_ready
 
@@ -5507,7 +5263,10 @@ if text_process:
             )
             _render_chat_message("assistant", assistant_text)
     else:
-        show_result(direct_code=resolved_code)
+        show_result(
+            direct_code=resolved_code,
+            opening_reply=initial_assistant_reply,
+        )
 
 if conversation_process:
     country_name = str(st.session_state.fi_country_name or "")
