@@ -738,11 +738,15 @@ def _sanitize_report_text(value: str) -> str:
     return text.strip()
 
 
-def _normalize_output(payload: Any) -> dict[str, str]:
+def _normalize_output(
+    payload: Any,
+    allowed_keys: tuple[str, ...] | None = None,
+) -> dict[str, str]:
     if not isinstance(payload, dict):
         return {}
+    keys = allowed_keys or REPORT_SECTION_KEYS
     result: dict[str, str] = {}
-    for key in REPORT_SECTION_KEYS:
+    for key in keys:
         value = payload.get(key, "")
         if not isinstance(value, str):
             value = ""
@@ -846,7 +850,11 @@ def _structured_text_format(
     }
 
 
-def _parse_writer_response(raw: str) -> dict[str, str]:
+def _parse_writer_response(
+    raw: str,
+    *,
+    allowed_keys: tuple[str, ...] | None = None,
+) -> dict[str, str]:
     raw = _strip_code_fence(raw or "")
     if not raw:
         return {}
@@ -860,7 +868,7 @@ def _parse_writer_response(raw: str) -> dict[str, str]:
             parsed = json.loads(match.group(0))
         except json.JSONDecodeError:
             return {}
-    return _normalize_output(parsed)
+    return _normalize_output(parsed, allowed_keys=allowed_keys)
 
 
 SECTION_RECOVERY_GROUPS = (
@@ -1724,7 +1732,10 @@ def _review_scoped_report(
             ),
             max_output_tokens=4000,
         )
-        parsed = _parse_writer_response(response.output_text or "")
+        parsed = _parse_writer_response(
+            response.output_text or "",
+            allowed_keys=section_keys,
+        )
     except Exception as exc:
         strict_error = exc
         retry_prompt = (
@@ -1744,7 +1755,10 @@ def _review_scoped_report(
                 text={"format": {"type": "json_object"}},
                 max_output_tokens=5000,
             )
-            parsed = _parse_writer_response(response.output_text or "")
+            parsed = _parse_writer_response(
+                response.output_text or "",
+                allowed_keys=section_keys,
+            )
         except Exception as retry_exc:
             raise RuntimeError(
                 "LLM scoped report review failed after strict-schema and JSON-object "
@@ -1761,6 +1775,15 @@ def _review_scoped_report(
     }
     if not reviewed:
         raise RuntimeError("LLM scoped report review failed: empty reviewed report")
+    missing_sections = [
+        key for key in section_keys
+        if not str(reviewed.get(key, "") or "").strip()
+    ]
+    if missing_sections:
+        raise RuntimeError(
+            "LLM scoped report review failed: missing required sections: "
+            + ", ".join(missing_sections)
+        )
     return reviewed
 
 
@@ -1817,7 +1840,10 @@ def _generate_scoped_report(
             ),
             max_output_tokens=4000,
         )
-        parsed = _parse_writer_response(response.output_text or "")
+        parsed = _parse_writer_response(
+            response.output_text or "",
+            allowed_keys=section_keys,
+        )
     except Exception as exc:
         raise RuntimeError(
             "LLM scoped report generation failed: "
@@ -1831,6 +1857,16 @@ def _generate_scoped_report(
     }
     if not result:
         raise RuntimeError("LLM scoped report generation failed: empty report")
+
+    missing_sections = [
+        key for key in section_keys
+        if not str(result.get(key, "") or "").strip()
+    ]
+    if missing_sections:
+        raise RuntimeError(
+            "LLM scoped report generation failed: missing required sections: "
+            + ", ".join(missing_sections)
+        )
 
     result = _review_scoped_report(
         api_key=api_key,
