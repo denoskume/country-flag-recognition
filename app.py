@@ -4774,6 +4774,65 @@ def _render_chat_message(role: str, content: str) -> None:
         )
 
 
+def _initial_chat_reply(message: str) -> str | None:
+    """Handle greetings and common non-country openings naturally."""
+    normalized = re.sub(r"[^a-zà-ÿ0-9' ]+", " ", message.casefold())
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+
+    greetings = {
+        "hi", "hello", "hey", "bonjour", "bonsoir", "salut",
+        "good morning", "good afternoon", "good evening",
+        "coucou",
+    }
+    if normalized in greetings:
+        return (
+            "Hello! Tell me a country you are interested in, or upload a flag. "
+            "I can then help you define exactly what you want to know before "
+            "preparing the report."
+        )
+
+    if normalized in {
+        "what can you do",
+        "what do you do",
+        "how does this work",
+        "help",
+        "aide",
+        "que peux tu faire",
+        "que peux-tu faire",
+        "comment ça marche",
+        "comment ca marche",
+    }:
+        return (
+            "I can identify a country from its name, ISO code or flag, discuss "
+            "what you want to learn about it, ask one useful clarification, and "
+            "then prepare a tailored PDF report."
+        )
+
+    return None
+
+
+def _country_code_from_free_text(message: str) -> str | None:
+    """Resolve an exact country input or a country mentioned in a short sentence."""
+    direct = country_code_from_text(message)
+    if direct is not None:
+        return direct
+
+    cleaned = re.sub(r"[^A-Za-zÀ-ÿ0-9' -]+", " ", message)
+    words = cleaned.split()
+
+    # Try useful n-grams so inputs such as "tell me about France" work without
+    # requiring the user to submit only the country name.
+    for size in (4, 3, 2, 1):
+        for start in range(0, len(words) - size + 1):
+            candidate = " ".join(words[start:start + size]).strip()
+            if len(candidate) < 2:
+                continue
+            code = country_code_from_text(candidate)
+            if code is not None:
+                return code
+    return None
+
+
 # Conversation state: identify a country first, then clarify the report brief.
 if "fi_stage" not in st.session_state:
     st.session_state.fi_stage = "idle"
@@ -4828,8 +4887,39 @@ if prompt_submission is not None:
             conversation_text = prompt_text
             conversation_process = True
         else:
-            typed_country = prompt_text
-            text_process = True
+            simple_reply = _initial_chat_reply(prompt_text)
+            resolved_free_text_code = (
+                None
+                if simple_reply is not None
+                else _country_code_from_free_text(prompt_text)
+            )
+
+            if simple_reply is not None:
+                st.session_state.fi_messages.append(
+                    {"role": "user", "content": prompt_text}
+                )
+                _render_chat_message("user", prompt_text)
+                st.session_state.fi_messages.append(
+                    {"role": "assistant", "content": simple_reply}
+                )
+                _render_chat_message("assistant", simple_reply)
+            elif resolved_free_text_code is not None:
+                typed_country = prompt_text
+                text_process = True
+            else:
+                st.session_state.fi_messages.append(
+                    {"role": "user", "content": prompt_text}
+                )
+                _render_chat_message("user", prompt_text)
+                assistant_text = (
+                    "Tell me which country you would like to explore, or upload "
+                    "its flag. You can also write something like “I want to know "
+                    "about France”."
+                )
+                st.session_state.fi_messages.append(
+                    {"role": "assistant", "content": assistant_text}
+                )
+                _render_chat_message("assistant", assistant_text)
 
 
 def show_result(
@@ -5078,12 +5168,16 @@ if text_process:
     )
     _render_chat_message("user", typed_country)
 
-    resolved_code = country_code_from_text(typed_country)
+    resolved_code = _country_code_from_free_text(typed_country)
     if resolved_code is None:
-        st.error(
-            "Country not recognized. Enter a valid country name or "
-            "ISO alpha-2/alpha-3 code."
+        assistant_text = (
+            "I couldn't identify a country in that message. Tell me the country "
+            "name or ISO code, or upload its flag."
         )
+        st.session_state.fi_messages.append(
+            {"role": "assistant", "content": assistant_text}
+        )
+        _render_chat_message("assistant", assistant_text)
     else:
         show_result(direct_code=resolved_code)
 
