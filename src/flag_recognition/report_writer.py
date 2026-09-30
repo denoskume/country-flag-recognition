@@ -1433,11 +1433,16 @@ def interpret_country_request(message: str) -> dict[str, str]:
     prompt = (
         "You are Flag Intelligence, a fast conversational country assistant. "
         "Respond naturally to the user's message and interpret it at the same time. "
-        "Return compact JSON only. If a country is named, use its canonical English "
-        "name. If the user names only a country, ask naturally what they want to know. "
-        "If they ask about a country topic, preserve that scope in request. "
-        "For greetings or general questions, reply naturally and briefly. "
-        "Do not use canned wording and do not invent a country.\n\n"
+        "Return compact JSON only. Infer country context semantically from country names, "
+        "nationality adjectives, demonyms, and equivalent expressions in any language. "
+        "For example, a request about French/Français thinkers is a request about France. "
+        "When a country context and a substantive topic are both present, set country to "
+        "the canonical English country name, preserve the topic in request, and classify "
+        "the intent as country_request. If the user names only a country, classify it as "
+        "country_only and ask naturally what they want to know. "
+        "Reply in the same language as the user's message unless the user asks for another "
+        "language. For greetings or genuinely country-independent questions, reply naturally "
+        "and briefly. Do not use canned wording and do not invent a country.\n\n"
         f"USER MESSAGE: {text}"
     )
 
@@ -1471,6 +1476,10 @@ def interpret_country_request(message: str) -> dict[str, str]:
             "reply": str(payload.get("reply") or "").strip(),
             "_source": "model",
         }
+        if result["country"] and result["request"]:
+            result["intent"] = "country_request"
+        elif result["country"] and result["intent"] not in {"greeting", "country_request"}:
+            result["intent"] = "country_only"
         if not result["reply"]:
             raise ValueError("dialogue output contains no reply")
         return result
@@ -1578,6 +1587,8 @@ def continue_report_conversation(
         "concise, non-repetitive clarification question about the most important missing item.\n"
         "- normalized_request must be a faithful compact summary of the accumulated user "
         "intent, including all resolved constraints and no invented preferences.\n"
+        "- reply must use the same language as the latest user message unless the user "
+        "explicitly requests another language. Do not switch languages mid-conversation.\n"
         "Return JSON only."
     )
 
@@ -1678,45 +1689,11 @@ def _review_scoped_report(
     draft: dict[str, str],
     brief_state: dict[str, Any] | None = None,
 ) -> dict[str, str]:
-    """Run a second real-time model pass to validate chronology and scope."""
-    year_range = _extract_requested_year_range(user_request)
-    range_rule = ""
-    if year_range is not None:
-        start_year, end_year = year_range
-        range_rule = (
-            f"The requested historical window is {start_year}-{end_year}. "
-            "Keep substantive chronology inside that interval. Earlier material may "
-            "appear only as minimal context in the introduction when essential. "
-        )
-
+    """Fact-check focused report sections as ordinary prose, not JSON."""
     brief_json = json.dumps(
         brief_state if isinstance(brief_state, dict) else {},
         ensure_ascii=False,
         sort_keys=True,
-    )
-    prompt = (
-        f"Act as the final subject-matter editor for a focused report about {country_name}. "
-        f"User request: {user_request!r}. "
-        f"Semantic brief: {brief_json}. "
-        + range_rule
-        + "Audit every factual sentence independently rather than merely polishing the "
-        "draft. Check chronology, event dates, direction of independence or sovereignty "
-        "claims, geographic locations, host cities/countries, institutional names, named "
-        "people, and whether each person or event materially belongs inside the requested "
-        "time window. Remove claims that you cannot confidently verify. Do not keep a "
-        "famous person merely because they influenced the period if their life/work falls "
-        "outside the requested interval unless one brief contextual reference is essential. "
-        "Correct category errors, internal notes, placeholders, malformed escape sequences, "
-        "unsupported claims, and scope drift. Preserve only the requested section keys. "
-        "For history, distinguish clearly between the colonizing state and the territory "
-        "that gained independence. Return publication-ready English with no markdown, "
-        "citations, URLs, source labels, or editorial commentary. Return exactly the JSON "
-        "object requested.\n\n"
-        "DRAFT:\n"
-        + json.dumps(
-            {key: str(draft.get(key, "") or "") for key in section_keys},
-            ensure_ascii=False,
-        )
     )
 
     client = OpenAI(
@@ -1724,75 +1701,75 @@ def _review_scoped_report(
         timeout=float(os.getenv("FLAG_INTELLIGENCE_SCOPED_REVIEW_TIMEOUT", "30")),
         max_retries=0,
     )
-    strict_error: Exception | None = None
-    try:
-        response = client.responses.create(
-            model=model,
-            reasoning={"effort": "high"},
-            input=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ],
-            text=_structured_text_format(
-                section_keys,
-                name="flag_intelligence_scoped_report_review",
-            ),
-            max_output_tokens=4000,
-        )
-        parsed = _parse_writer_response(
-            response.output_text or "",
-            allowed_keys=section_keys,
-        )
-    except Exception as exc:
-        strict_error = exc
-        retry_prompt = (
-            prompt
-            + "\n\nIMPORTANT RETRY FORMAT RULE: Return one valid JSON object only. "
-            + "Use exactly these keys and string values; no extra keys: "
-            + json.dumps(list(section_keys), ensure_ascii=False)
-        )
-        try:
-            response = client.responses.create(
-                model=model,
-                reasoning={"effort": "medium"},
-                input=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": retry_prompt},
-                ],
-                text={"format": {"type": "json_object"}},
-                max_output_tokens=5000,
-            )
-            parsed = _parse_writer_response(
-                response.output_text or "",
-                allowed_keys=section_keys,
-            )
-        except Exception as retry_exc:
+
+    reviewed: dict[str, str] = {}
+    for key in section_keys:
+        draft_text = str(draft.get(key, "") or "").strip()
+        if not draft_text:
             raise RuntimeError(
-                "LLM scoped report review failed after strict-schema and JSON-object "
-                "attempts. strict="
-                + _api_error_detail(strict_error)
-                + " retry="
-                + _api_error_detail(retry_exc)
-            ) from retry_exc
+                "LLM scoped report review failed: missing draft section: " + key
+            )
 
-    reviewed = {
-        key: str(parsed.get(key, "") or "").strip()
-        for key in section_keys
-        if str(parsed.get(key, "") or "").strip()
-    }
-    if not reviewed:
-        raise RuntimeError("LLM scoped report review failed: empty reviewed report")
-    missing_sections = [
-        key for key in section_keys
-        if not str(reviewed.get(key, "") or "").strip()
-    ]
-    if missing_sections:
-        raise RuntimeError(
-            "LLM scoped report review failed: missing required sections: "
-            + ", ".join(missing_sections)
+        section_prompt = (
+            f"Country: {country_name}\n"
+            f"User request: {user_request}\n"
+            f"Semantic brief: {brief_json}\n"
+            f"Section key: {key}\n\n"
+            "Review the section below as a subject-matter expert. Independently verify "
+            "names, dates, chronology, attribution, institutions, works, concepts, places, "
+            "and causal claims. Remove anything uncertain, generic, unsupported, outside "
+            "the requested scope, or temporally misleading. Preserve useful concrete facts "
+            "and improve explanation where necessary. If the user requested a single year, "
+            "do not turn it into a decade-wide survey; nearby years may appear only when "
+            "needed for immediate context. Keep the same language as the draft unless the "
+            "semantic brief clearly requests another language. Return ONLY the corrected "
+            "section prose. No heading, JSON, markdown, citations, URLs, notes, or commentary.\n\n"
+            "DRAFT SECTION:\n"
+            + draft_text
         )
-    return reviewed
 
+        def _call_review(reasoning_effort: str):
+            return client.responses.create(
+                model=model,
+                reasoning={"effort": reasoning_effort},
+                input=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are the final factual and editorial verifier for a focused "
+                            "country report. Return only publication-ready section prose."
+                        ),
+                    },
+                    {"role": "user", "content": section_prompt},
+                ],
+                max_output_tokens=1800,
+            )
+
+        try:
+            response = _call_review("medium")
+        except Exception as first_exc:
+            try:
+                response = _call_review("low")
+            except Exception as retry_exc:
+                raise RuntimeError(
+                    "LLM scoped report review failed for section "
+                    + key
+                    + ". first="
+                    + _api_error_detail(first_exc)
+                    + " retry="
+                    + _api_error_detail(retry_exc)
+                ) from retry_exc
+
+        corrected = _sanitize_report_text(
+            _strip_code_fence(str(response.output_text or ""))
+        ).strip()
+        if not corrected:
+            raise RuntimeError(
+                "LLM scoped report review failed: empty reviewed section: " + key
+            )
+        reviewed[key] = corrected
+
+    return reviewed
 
 def _generate_scoped_report(
     *,
