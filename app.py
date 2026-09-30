@@ -4029,7 +4029,7 @@ def _build_pdf_report_uncached(
     return buffer.getvalue()
 
 
-REPORT_WRITER_CACHE_VERSION = "2026-09-30-r59"
+REPORT_WRITER_CACHE_VERSION = "2026-09-30-r60"
 
 def _cached_authored_report(
     evidence_json: str,
@@ -5078,17 +5078,13 @@ if pending_input is not None:
                         prompt_text
                     )
 
-                if (
+                if resolved_free_text_code is not None and (
                     intent in {"country_only", "country_request"}
-                    and resolved_free_text_code is not None
+                    or bool(interpreted_request)
                 ):
                     typed_country = prompt_text
                     initial_country_code = resolved_free_text_code
-                    initial_report_request = (
-                        interpreted_request
-                        if intent == "country_request"
-                        else ""
-                    )
+                    initial_report_request = interpreted_request
                     initial_assistant_reply = interpreted_reply
                     text_process = True
                 elif interpreted_reply:
@@ -5098,7 +5094,7 @@ if pending_input is not None:
                     _render_chat_message("assistant", interpreted_reply)
                 else:
                     assistant_text = (
-                        "Ollama returned an empty conversational response."
+                        "The language model returned an empty conversational response."
                     )
                     st.session_state.fi_messages.append(
                         {"role": "assistant", "content": assistant_text}
@@ -5397,7 +5393,7 @@ if text_process:
                 turn = continue_report_conversation(
                     country_name,
                     initial_report_request,
-                    initial_report_request,
+                    typed_country,
                     turn_number=1,
                     existing_state=st.session_state.fi_report_state,
                 )
