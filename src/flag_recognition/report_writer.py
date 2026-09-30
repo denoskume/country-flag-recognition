@@ -97,6 +97,36 @@ HISTORY_REPORT_SECTION_KEYS = (
 )
 
 
+HISTORY_PERIOD_REPORT_SECTION_KEYS = (
+    "introduction",
+    "historical_journey",
+    "key_historical_timeline",
+    "state_formation_identity",
+    "conclusion",
+)
+
+
+def _extract_requested_year_range(user_request: str) -> tuple[int, int] | None:
+    """Extract a plausible explicit year range such as 1950 to 2026."""
+    text = str(user_request or "")
+    match = re.search(
+        r"\b(1[5-9]\d{2}|20\d{2})\s*(?:-|–|—|to|until|through|au|à)\s*"
+        r"(1[5-9]\d{2}|20\d{2})\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+    start, end = int(match.group(1)), int(match.group(2))
+    if start > end:
+        start, end = end, start
+    return start, end
+
+
+def _has_explicit_time_range(user_request: str) -> bool:
+    return _extract_requested_year_range(user_request) is not None
+
+
 def _requested_report_sections(user_request: str) -> tuple[str, ...]:
     """Return only the sections explicitly needed for a narrow report request."""
     normalized = re.sub(
@@ -146,6 +176,8 @@ def _requested_report_sections(user_request: str) -> tuple[str, ...]:
     if history_requested and not any(
         marker in normalized for marker in other_topic_markers
     ):
+        if _has_explicit_time_range(user_request):
+            return HISTORY_PERIOD_REPORT_SECTION_KEYS
         return HISTORY_REPORT_SECTION_KEYS
 
     return REPORT_SECTION_KEYS
@@ -1242,8 +1274,10 @@ def continue_report_conversation(
         f"Clarification turn: {int(turn_number)}. "
         "Understand the user's meaning naturally. Merge the latest instruction into "
         "normalized_request. Ask one short clarification only if it materially improves "
-        "the requested report; otherwise set action='generate'. After two clarification "
-        "turns, prefer generate unless the request is genuinely ambiguous. "
+        "the requested report; otherwise set action='generate'. If the user has already "
+        "given both a clear topic and an explicit time range such as 1950 to 2026, "
+        "DO NOT ask for another aspect or subtopic: set action='generate'. After two "
+        "clarification turns, prefer generate unless the request is genuinely ambiguous. "
         "Your reply must be natural, concise, and freshly written for this turn. "
         "Return compact JSON only."
     )
@@ -1288,6 +1322,79 @@ def continue_report_conversation(
             "LLM dialogue request failed: " + _api_error_detail(exc)
         ) from exc
 
+def _review_scoped_report(
+    *,
+    api_key: str,
+    model: str,
+    country_name: str,
+    user_request: str,
+    section_keys: tuple[str, ...],
+    draft: dict[str, str],
+) -> dict[str, str]:
+    """Run a second real-time model pass to validate chronology and scope."""
+    year_range = _extract_requested_year_range(user_request)
+    range_rule = ""
+    if year_range is not None:
+        start_year, end_year = year_range
+        range_rule = (
+            f"The requested historical window is {start_year}-{end_year}. "
+            "Keep substantive chronology inside that interval. Earlier material may "
+            "appear only as minimal context in the introduction when essential. "
+        )
+
+    prompt = (
+        f"Act as the final historical editor for a report about {country_name}. "
+        f"User request: {user_request!r}. "
+        + range_rule
+        + "Audit the draft for factual chronology, impossible dates, category errors, "
+        "internal notes, malformed escape sequences, unsupported claims, and scope drift. "
+        "Correct errors directly. For French modern history, do not misdate the end of "
+        "the Algerian War or decolonisation. Preserve only the requested section keys. "
+        "Return publication-ready English with no markdown, citations, URLs, source "
+        "labels, or editorial commentary. Return exactly the JSON object requested.\n\n"
+        "DRAFT:\n"
+        + json.dumps(
+            {key: str(draft.get(key, "") or "") for key in section_keys},
+            ensure_ascii=False,
+        )
+    )
+
+    client = OpenAI(
+        api_key=api_key,
+        timeout=float(os.getenv("FLAG_INTELLIGENCE_SCOPED_REVIEW_TIMEOUT", "30")),
+        max_retries=0,
+    )
+    try:
+        response = client.responses.create(
+            model=model,
+            reasoning={"effort": "medium"},
+            input=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            text=_structured_text_format(
+                section_keys,
+                name="flag_intelligence_scoped_report_review",
+            ),
+            max_output_tokens=4000,
+        )
+        parsed = _parse_writer_response(response.output_text or "")
+    except Exception as exc:
+        raise RuntimeError(
+            "LLM scoped report review failed: "
+            + _api_error_detail(exc)
+        ) from exc
+
+    reviewed = {
+        key: str(parsed.get(key, "") or "").strip()
+        for key in section_keys
+        if str(parsed.get(key, "") or "").strip()
+    }
+    if not reviewed:
+        raise RuntimeError("LLM scoped report review failed: empty reviewed report")
+    return reviewed
+
+
 def _generate_scoped_report(
     *,
     api_key: str,
@@ -1298,14 +1405,26 @@ def _generate_scoped_report(
     section_keys: tuple[str, ...],
 ) -> dict[str, str]:
     """Generate a narrow report in one bounded call instead of the full report pipeline."""
+    year_range = _extract_requested_year_range(user_request)
+    range_rule = ""
+    if year_range is not None:
+        start_year, end_year = year_range
+        range_rule = (
+            f"The requested time window is strictly {start_year}-{end_year}. "
+            "Do not add a separate early-history section or substantive events before "
+            f"{start_year}. Use earlier history only as one or two contextual sentences "
+            "in the introduction if indispensable. "
+        )
+
     prompt = (
         f"Write a focused Flag Intelligence report about {country_name}. "
         f"The user request is: {user_request!r}. "
-        "Respect that scope strictly. Do not add unrelated country chapters. "
+        + range_rule
+        + "Respect that scope strictly. Do not add unrelated country chapters. "
         "Return exactly the requested JSON keys with concise, factual, "
-        "publication-ready English prose. For history, use a clear chronology "
-        "from early origins through major turning points to the modern state. "
-        "Do not include markdown, citations, URLs, or source labels.\n\n"
+        "publication-ready English prose. Verify historical dates and chronology before "
+        "returning the answer. Do not include markdown, citations, URLs, source labels, "
+        "internal notes, or literal escape sequences such as \\n.\n\n"
         "REQUESTED KEYS:\n"
         + json.dumps({key: "" for key in section_keys}, ensure_ascii=False)
         + f"\n\nCOUNTRY CODE: {country_code}"
@@ -1341,12 +1460,22 @@ def _generate_scoped_report(
         for key in section_keys
         if str(parsed.get(key, "") or "").strip()
     }
-    if result:
-        result["__qa_passed"] = True
-        result["__qa_issues"] = []
-        result["__substantial_sections"] = len(result)
-        result["__generation_mode"] = "scoped_single_pass"
-        result["__scope_sections"] = section_keys
+    if not result:
+        raise RuntimeError("LLM scoped report generation failed: empty report")
+
+    result = _review_scoped_report(
+        api_key=api_key,
+        model=model,
+        country_name=country_name,
+        user_request=user_request,
+        section_keys=section_keys,
+        draft=result,
+    )
+    result["__qa_passed"] = True
+    result["__qa_issues"] = []
+    result["__substantial_sections"] = len(result)
+    result["__generation_mode"] = "scoped_generate_then_review"
+    result["__scope_sections"] = section_keys
     return result
 
 
