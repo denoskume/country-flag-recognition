@@ -1737,11 +1737,14 @@ def _review_scoped_report(
                         "role": "system",
                         "content": (
                             "You are the final factual and editorial verifier for a focused "
-                            "country report. Return only publication-ready section prose."
+                            "country report. Use web search when useful to verify claims. "
+                            "Return only publication-ready section prose."
                         ),
                     },
                     {"role": "user", "content": section_prompt},
                 ],
+                tools=[{"type": "browser_search"}],
+                tool_choice="auto",
                 max_output_tokens=1800,
             )
 
