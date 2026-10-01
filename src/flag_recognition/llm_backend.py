@@ -132,6 +132,7 @@ class _ResilientResponses:
     def __init__(self, raw_responses: Any, *, backend: str):
         self._raw = raw_responses
         self._backend = backend
+        self._review_circuit_open_until = 0.0
 
     def _attempt(self, kwargs: dict[str, Any], *, attempts: int = 2):
         last_exc: Exception | None = None
@@ -153,6 +154,10 @@ class _ResilientResponses:
 
         primary_kwargs = dict(kwargs)
         primary_model = str(primary_kwargs.get("model") or DEFAULT_GROQ_MODEL)
+        review_draft = _extract_review_draft(primary_kwargs)
+
+        if review_draft and time.monotonic() < self._review_circuit_open_until:
+            return SimpleNamespace(output_text=review_draft)
 
         try:
             return self._attempt(primary_kwargs, attempts=2)
@@ -174,13 +179,17 @@ class _ResilientResponses:
                     if not _is_rate_limit_error(fallback_exc):
                         raise
 
-            draft = _extract_review_draft(primary_kwargs)
-            if draft:
+            if review_draft:
+                cooldown = float(
+                    os.getenv("FLAG_INTELLIGENCE_REVIEW_RATE_LIMIT_COOLDOWN", "60")
+                )
+                self._review_circuit_open_until = time.monotonic() + max(1.0, cooldown)
                 print(
                     "[Flag Intelligence LLM] Review deferred after Groq rate limits; "
-                    "preserving the already generated draft section."
+                    "preserving the already generated draft section and pausing further "
+                    "review calls for this report."
                 )
-                return SimpleNamespace(output_text=draft)
+                return SimpleNamespace(output_text=review_draft)
 
             raise RuntimeError(
                 "The language service is temporarily busy after retrying both Groq models."
