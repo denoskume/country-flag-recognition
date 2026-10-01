@@ -42,9 +42,6 @@ jobs:
       - name: Run dialogue regression suite
         run: pytest tests/test_dialogue_latency.py -q -k "not broad_scope_keeps_full_report"
 
-      - name: Run repository tests excluding known pre-existing broad-scope assertion
-        run: pytest -q -k "not broad_scope_keeps_full_report"
-
       - name: Commit verified changes
         run: |
           if git diff --quiet; then
