@@ -41,7 +41,7 @@ jobs:
           python -m pip install numpy pandas Pillow PyYAML scikit-learn requests pycountry pytest
 
       - name: Compile changed Python files
-        run: python -m py_compile app.py src/flag_recognition/report_writer.py
+        run: python -m py_compile app.py src/flag_recognition/report_writer.py src/flag_recognition/country_knowledge.py
 
       - name: Run dialogue regression suite
         run: pytest tests/test_dialogue_latency.py -q -k "not broad_scope_keeps_full_report"
@@ -57,6 +57,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app.py src/flag_recognition/report_writer.py tests/test_dialogue_latency.py tests/test_live_conversation_state.py
-          git commit -m "Persist model-driven conversation and report state"
+          git add app.py src/flag_recognition/report_writer.py src/flag_recognition/country_knowledge.py tests/test_dialogue_latency.py tests/test_live_conversation_state.py
+          git commit -m "Persist model-driven conversation and repair deploy syntax"
           git push
