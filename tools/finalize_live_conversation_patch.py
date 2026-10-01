@@ -2,6 +2,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app.py"
+KNOWLEDGE = ROOT / "src/flag_recognition/country_knowledge.py"
 TEST = ROOT / "tests/test_live_conversation_state.py"
 
 
@@ -38,4 +39,13 @@ app = replace_once(
 
 APP.write_text(app, encoding="utf-8")
 
-TEST.write_text('''from pathlib import Path\n\n\ndef test_app_persists_report_and_live_context():\n    app = (Path(__file__).resolve().parents[1] / "app.py").read_text(encoding="utf-8")\n    assert '"report_ready"' in app\n    assert 'persistent_report_download' in app\n    assert 'conversation_history=st.session_state.fi_messages[:-1]' in app\n    assert 'report_available=bool(st.session_state.fi_report_available)' in app\n    assert 'turn.get("country")' in app\n    assert 'if st.session_state.fi_report_available' in app\n''', encoding="utf-8")
+knowledge = KNOWLEDGE.read_text(encoding="utf-8")
+knowledge = replace_once(
+    knowledge,
+    '''            if motivation:\n                detail += f" for {motivation.strip('"')}"\n''',
+    '''            if motivation:\n                clean_motivation = motivation.strip('"')\n                detail += f" for {clean_motivation}"\n''',
+    "Nobel motivation quoting",
+)
+KNOWLEDGE.write_text(knowledge, encoding="utf-8")
+
+TEST.write_text('''from pathlib import Path\n\n\ndef test_app_persists_report_and_live_context():\n    root = Path(__file__).resolve().parents[1]\n    app = (root / "app.py").read_text(encoding="utf-8")\n    assert '"report_ready"' in app\n    assert 'persistent_report_download' in app\n    assert 'conversation_history=st.session_state.fi_messages[:-1]' in app\n    assert 'report_available=bool(st.session_state.fi_report_available)' in app\n    assert 'turn.get("country")' in app\n    assert 'if st.session_state.fi_report_available' in app\n\ndef test_country_knowledge_module_has_valid_nobel_motivation_code():\n    root = Path(__file__).resolve().parents[1]\n    text = (root / "src/flag_recognition/country_knowledge.py").read_text(encoding="utf-8")\n    assert "clean_motivation = motivation.strip" in text\n''', encoding="utf-8")
