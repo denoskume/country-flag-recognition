@@ -1605,7 +1605,8 @@ def fetch_nobel_country_context(
             elif category:
                 detail += f" received the Nobel Prize in {category}"
             if motivation:
-                detail += f" for {motivation.strip('"')}"
+                clean_motivation = motivation.strip('"')
+                detail += f" for {clean_motivation}"
             detail += "."
 
             lowered = category.casefold()
