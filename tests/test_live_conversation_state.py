@@ -10,6 +10,7 @@ def test_app_persists_report_and_live_context():
     assert 'report_available=bool(st.session_state.fi_report_available)' in app
     assert 'turn.get("country")' in app
     assert 'if st.session_state.fi_report_available' in app
+    assert 'st.session_state.fi_country_code = None' not in app.split('if conversation_process:')[-1]
 
 def test_country_knowledge_module_has_valid_nobel_motivation_code():
     root = Path(__file__).resolve().parents[1]

@@ -5042,20 +5042,12 @@ if pending_input is not None:
         try:
             image = Image.open(BytesIO(file_bytes)).convert("RGB")
         except Exception:
-            assistant_text = "I couldn't read that image. Please upload another flag image."
-            st.session_state.fi_messages.append(
-                {"role": "assistant", "content": assistant_text}
-            )
-            _render_chat_message("assistant", assistant_text)
+            st.error("Image processing failed. Please upload a valid flag image.")
         else:
             if MODEL_PATH.is_file():
                 process = True
             else:
-                assistant_text = "The flag recognition model is currently unavailable."
-                st.session_state.fi_messages.append(
-                    {"role": "assistant", "content": assistant_text}
-                )
-                _render_chat_message("assistant", assistant_text)
+                st.error("Flag recognition model unavailable.")
 
     elif prompt_text:
         if st.session_state.fi_stage in {
@@ -5070,14 +5062,10 @@ if pending_input is not None:
                 with st.spinner("Understanding your request..."):
                     interpretation = interpret_country_request(prompt_text)
             except Exception as exc:
-                assistant_text = (
-                    "The language model could not answer this turn. "
+                st.error(
+                    "LLM request failed: "
                     f"{type(exc).__name__}: {str(exc)[:220]}"
                 )
-                st.session_state.fi_messages.append(
-                    {"role": "assistant", "content": assistant_text}
-                )
-                _render_chat_message("assistant", assistant_text)
             else:
                 intent = str(interpretation.get("intent") or "unknown")
                 interpreted_country = str(
@@ -5115,13 +5103,7 @@ if pending_input is not None:
                     )
                     _render_chat_message("assistant", interpreted_reply)
                 else:
-                    assistant_text = (
-                        "The language model returned an empty conversational response."
-                    )
-                    st.session_state.fi_messages.append(
-                        {"role": "assistant", "content": assistant_text}
-                    )
-                    _render_chat_message("assistant", assistant_text)
+                    st.error("LLM returned an empty response.")
 
 
 def show_result(
@@ -5203,15 +5185,17 @@ def show_result(
                 )
                 assistant_text = str(opening_turn.get("reply") or "").strip()
             except Exception as exc:
-                assistant_text = (
-                    "The language model could not start the country conversation. "
+                st.error(
+                    "LLM request failed while starting the country conversation: "
                     f"{type(exc).__name__}: {str(exc)[:220]}"
                 )
+                assistant_text = ""
 
-        st.session_state.fi_messages.append(
-            {"role": "assistant", "content": assistant_text}
-        )
-        _render_chat_message("assistant", assistant_text)
+        if assistant_text:
+            st.session_state.fi_messages.append(
+                {"role": "assistant", "content": assistant_text}
+            )
+            _render_chat_message("assistant", assistant_text)
         return
 
     report = {
@@ -5356,14 +5340,10 @@ def show_result(
 
     if accepted and not authored_ready:
         writer_error = str(report.get("authored_report_error") or "").strip()
-        assistant_text = (
-            "The language model did not produce a usable report. "
+        st.error(
+            "Report generation failed. "
             + (writer_error if writer_error else "No report content was returned.")
         )
-        st.session_state.fi_messages.append(
-            {"role": "assistant", "content": assistant_text}
-        )
-        _render_chat_message("assistant", assistant_text)
 
 
     report_ready = accepted and authored_ready
@@ -5400,13 +5380,7 @@ if text_process:
         or _country_code_from_free_text(typed_country)
     )
     if resolved_code is None:
-        assistant_text = (
-            "The language model returned a country reference that the application could not resolve."
-        )
-        st.session_state.fi_messages.append(
-            {"role": "assistant", "content": assistant_text}
-        )
-        _render_chat_message("assistant", assistant_text)
+        st.error("Country resolution failed for the model response.")
     elif initial_report_request:
         country_name = display_country_name(resolved_code)
         st.session_state.fi_country_code = resolved_code
@@ -5426,14 +5400,10 @@ if text_process:
                     existing_state=st.session_state.fi_report_state,
                 )
         except Exception as exc:
-            assistant_text = (
-                "The language model could not answer this turn. "
+            st.error(
+                "LLM request failed: "
                 f"{type(exc).__name__}: {str(exc)[:220]}"
             )
-            st.session_state.fi_messages.append(
-                {"role": "assistant", "content": assistant_text}
-            )
-            _render_chat_message("assistant", assistant_text)
         else:
             normalized_request = str(
                 turn.get("normalized_request") or initial_report_request
@@ -5488,14 +5458,10 @@ if conversation_process:
                 report_available=bool(st.session_state.fi_report_available),
             )
     except Exception as exc:
-        assistant_text = (
-            "The language model could not answer this turn. "
+        st.error(
+            "LLM request failed: "
             f"{type(exc).__name__}: {str(exc)[:220]}"
         )
-        st.session_state.fi_messages.append(
-            {"role": "assistant", "content": assistant_text}
-        )
-        _render_chat_message("assistant", assistant_text)
     else:
         normalized_request = str(
             turn.get("normalized_request")

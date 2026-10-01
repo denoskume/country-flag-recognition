@@ -7,6 +7,11 @@ from flag_recognition import llm_backend
 from flag_recognition import report_writer
 
 
+@pytest.fixture(autouse=True)
+def _mock_report_writer_auth(monkeypatch):
+    monkeypatch.setattr(report_writer, "llm_auth_token", lambda: "test-key")
+
+
 class _FakeResponses:
     def __init__(self, payload):
         self.payload = payload

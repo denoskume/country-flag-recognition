@@ -387,7 +387,9 @@ def _requested_report_sections(user_request: str) -> tuple[str, ...]:
 
     broad_markers = {
         "complete report",
+        "complete country report",
         "full report",
+        "full country report",
         "everything",
         "all topics",
         "whole country",
@@ -1439,10 +1441,12 @@ def interpret_country_request(message: str) -> dict[str, str]:
         "When a country context and a substantive topic are both present, set country to "
         "the canonical English country name, preserve the topic in request, and classify "
         "the intent as country_request. If the user names only a country, classify it as "
-        "country_only and ask naturally what they want to know. "
+        "country_only and choose a natural context-aware response without using a stock question. "
         "Reply in the same language as the user's message unless the user asks for another "
         "language. For greetings or genuinely country-independent questions, reply naturally "
-        "and briefly. Do not use canned wording and do not invent a country.\n\n"
+        "and briefly. Every reply must be freshly generated from the user's exact message "
+        "and current context. Never use a stock greeting, stock clarification, canned "
+        "confirmation, or template wording. Do not invent a country.\n\n"
         f"USER MESSAGE: {text}"
     )
 
@@ -1567,7 +1571,8 @@ def continue_report_conversation(
         "Interpret the user's latest message using the recent dialogue, preserved semantic brief, "
         "current country, and report availability. User wording is unpredictable: resolve pronouns, "
         "ellipsis, fragments, corrections, short reactions, and follow-ups from context. Do not use "
-        "canned wording and do not behave like a questionnaire.\n\n"
+        "canned wording and do not behave like a questionnaire. Every reply must be freshly "
+        "generated from the exact latest message and accumulated context; never use stock dialogue.\n\n"
         f"CURRENT COUNTRY: {country or '(none)'}\n"
         f"TURN: {int(turn_number)}\n"
         f"REPORT AVAILABLE: {bool(report_available)}\n"
