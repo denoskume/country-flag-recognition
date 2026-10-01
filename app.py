@@ -4965,6 +4965,21 @@ if "fi_report_available" not in st.session_state:
 for message in st.session_state.fi_messages:
     _render_chat_message(message["role"], message["content"])
 
+# Keep the generated artifact visible during later conversational turns.
+if st.session_state.fi_report_available and st.session_state.fi_report_pdf:
+    st.download_button(
+        "Download PDF Report",
+        data=st.session_state.fi_report_pdf,
+        file_name=(
+            st.session_state.fi_report_filename
+            or "flag_intelligence_report.pdf"
+        ),
+        mime="application/pdf",
+        use_container_width=True,
+        type="primary",
+        key="persistent_report_download",
+    )
+
 prompt_submission = st.chat_input(
     "Ask Flag Intelligence",
     key="flag_intelligence_prompt",
@@ -5489,6 +5504,23 @@ if conversation_process:
         ).strip()
         assistant_text = str(turn.get("reply") or "").strip()
         action = str(turn.get("action") or "").strip()
+        turn_country = str(turn.get("country") or country_name).strip()
+
+        # The model may resolve a natural country switch mid-conversation.
+        if turn_country and turn_country.casefold() != country_name.casefold():
+            switched_code = (
+                country_code_from_text(turn_country)
+                or _country_code_from_free_text(turn_country)
+            )
+            if switched_code is not None:
+                country_code = switched_code
+                country_name = display_country_name(switched_code)
+                st.session_state.fi_country_code = switched_code
+                st.session_state.fi_country_name = country_name
+                st.session_state.fi_report_pdf = None
+                st.session_state.fi_report_filename = ""
+                st.session_state.fi_report_available = False
+                st.session_state.fi_image_bytes = None
 
         st.session_state.fi_report_request = normalized_request
         turn_state = turn.get("brief_state")
@@ -5517,5 +5549,11 @@ if conversation_process:
             )
 
             st.session_state.fi_stage = "report_ready"
-        else:
+        elif action == "ask":
             st.session_state.fi_stage = "clarifying"
+        else:
+            st.session_state.fi_stage = (
+                "report_ready"
+                if st.session_state.fi_report_available
+                else "clarifying"
+            )
