@@ -4955,6 +4955,12 @@ if "fi_clarification_turn" not in st.session_state:
     st.session_state.fi_clarification_turn = 0
 if "fi_pending_input" not in st.session_state:
     st.session_state.fi_pending_input = None
+if "fi_report_pdf" not in st.session_state:
+    st.session_state.fi_report_pdf = None
+if "fi_report_filename" not in st.session_state:
+    st.session_state.fi_report_filename = ""
+if "fi_report_available" not in st.session_state:
+    st.session_state.fi_report_available = False
 
 for message in st.session_state.fi_messages:
     _render_chat_message(message["role"], message["content"])
@@ -5040,6 +5046,7 @@ if pending_input is not None:
         if st.session_state.fi_stage in {
             "awaiting_interest",
             "clarifying",
+            "report_ready",
         }:
             conversation_text = prompt_text
             conversation_process = True
@@ -5154,6 +5161,9 @@ def show_result(
         st.session_state.fi_report_request = ""
         st.session_state.fi_report_state = {}
         st.session_state.fi_clarification_turn = 0
+        st.session_state.fi_report_pdf = None
+        st.session_state.fi_report_filename = ""
+        st.session_state.fi_report_available = False
 
         if image is not None:
             image_buffer = BytesIO()
@@ -5351,15 +5361,18 @@ def show_result(
             # failure after the writer has produced report prose.
             pdf_bytes = _build_pdf_report_uncached(report, image)
 
+        report_filename = f"{_report_filename_country(country)}_report.pdf"
+        st.session_state.fi_report_pdf = pdf_bytes
+        st.session_state.fi_report_filename = report_filename
+        st.session_state.fi_report_available = True
         st.download_button(
             "Download PDF Report",
             data=pdf_bytes,
-            file_name=(
-                f"{_report_filename_country(country)}_report.pdf"
-            ),
+            file_name=report_filename,
             mime="application/pdf",
             use_container_width=True,
             type="primary",
+            key="fresh_report_download",
         )
 
 
@@ -5428,12 +5441,7 @@ if text_process:
                     user_request=normalized_request,
                     brief_state=st.session_state.fi_report_state,
                 )
-                st.session_state.fi_stage = "idle"
-                st.session_state.fi_country_code = None
-                st.session_state.fi_country_name = None
-                st.session_state.fi_report_request = ""
-                st.session_state.fi_report_state = {}
-                st.session_state.fi_clarification_turn = 0
+                st.session_state.fi_stage = "report_ready"
             else:
                 st.session_state.fi_stage = "clarifying"
     else:
@@ -5461,6 +5469,8 @@ if conversation_process:
                 conversation_text,
                 turn_number=turn_number,
                 existing_state=st.session_state.fi_report_state,
+                conversation_history=st.session_state.fi_messages[:-1],
+                report_available=bool(st.session_state.fi_report_available),
             )
     except Exception as exc:
         assistant_text = (
@@ -5506,12 +5516,6 @@ if conversation_process:
                 brief_state=st.session_state.fi_report_state,
             )
 
-            st.session_state.fi_stage = "idle"
-            st.session_state.fi_country_code = None
-            st.session_state.fi_country_name = None
-            st.session_state.fi_report_request = ""
-            st.session_state.fi_report_state = {}
-            st.session_state.fi_image_bytes = None
-            st.session_state.fi_clarification_turn = 0
+            st.session_state.fi_stage = "report_ready"
         else:
             st.session_state.fi_stage = "clarifying"

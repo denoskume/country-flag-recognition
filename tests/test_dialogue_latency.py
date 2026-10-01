@@ -522,3 +522,42 @@ def test_scoped_review_uses_plain_prose_per_section(monkeypatch):
     assert all("text" not in call for call in calls)
     assert all(call["tools"] == [{"type": "browser_search"}] for call in calls)
     assert all(call["tool_choice"] == "auto" for call in calls)
+
+
+def test_post_report_followup_can_reply_without_regeneration(monkeypatch):
+    _FakeClient.payload = {
+        "action": "reply",
+        "country": "France",
+        "normalized_request": "France history and public figures",
+        "reply": "The report is ready and remains available in this conversation.",
+        "brief_state": {
+            "subject": "history and public figures",
+            "topics": ["history", "public figures"],
+            "period": "",
+            "angles": [],
+            "depth": "",
+            "exclusions": [],
+            "current_events": False,
+            "other_constraints": [],
+            "ready": True,
+            "missing": [],
+        },
+    }
+    _FakeClient.instances = []
+    monkeypatch.setattr(report_writer, "OpenAI", _FakeClient)
+    result = report_writer.continue_report_conversation(
+        "France",
+        "France history and public figures",
+        "where...?",
+        turn_number=4,
+        existing_state=_FakeClient.payload["brief_state"],
+        conversation_history=[
+            {"role": "user", "content": "Its history and public figures"},
+            {"role": "assistant", "content": "I will prepare that report."},
+            {"role": "user", "content": "I am waiting..."},
+        ],
+        report_available=True,
+    )
+    assert result["action"] == "reply"
+    assert result["country"] == "France"
+    assert result["normalized_request"] == "France history and public figures"

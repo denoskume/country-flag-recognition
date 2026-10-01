@@ -1495,8 +1495,10 @@ def continue_report_conversation(
     latest_message: str,
     turn_number: int = 1,
     existing_state: dict[str, Any] | None = None,
+    conversation_history: list[dict[str, str]] | None = None,
+    report_available: bool = False,
 ) -> dict[str, Any]:
-    """Update the report brief semantically with one real-time model turn."""
+    """Run one model-driven live conversation turn with preserved context."""
     api_key = llm_auth_token()
     if not api_key:
         raise RuntimeError("LLM dialogue request failed: LLM backend unavailable")
@@ -1505,6 +1507,12 @@ def continue_report_conversation(
     latest = str(latest_message or "").strip()
     existing = str(existing_request or "").strip()
     state = existing_state if isinstance(existing_state, dict) else {}
+    history = conversation_history if isinstance(conversation_history, list) else []
+    recent_history = [
+        {"role": str(item.get("role") or ""), "content": str(item.get("content") or "")}
+        for item in history[-12:]
+        if isinstance(item, dict)
+    ]
 
     brief_state_schema = {
         "type": "object",
@@ -1538,13 +1546,15 @@ def continue_report_conversation(
     schema = {
         "type": "object",
         "properties": {
-            "action": {"type": "string", "enum": ["ask", "generate"]},
+            "action": {"type": "string", "enum": ["reply", "ask", "generate"]},
+            "country": {"type": "string"},
             "normalized_request": {"type": "string"},
             "reply": {"type": "string"},
             "brief_state": brief_state_schema,
         },
         "required": [
             "action",
+            "country",
             "normalized_request",
             "reply",
             "brief_state",
@@ -1553,42 +1563,36 @@ def continue_report_conversation(
     }
 
     prompt = (
-        "You are Flag Intelligence managing a live report-planning conversation. "
-        "Interpret the user's meaning semantically; user wording is unpredictable and "
-        "must never be handled as a fixed template. Update the structured brief from the "
-        "previous state and the latest message.\n\n"
-        f"COUNTRY: {country}\n"
+        "You are Flag Intelligence conducting a live, natural conversation about countries. "
+        "Interpret the user's latest message using the recent dialogue, preserved semantic brief, "
+        "current country, and report availability. User wording is unpredictable: resolve pronouns, "
+        "ellipsis, fragments, corrections, short reactions, and follow-ups from context. Do not use "
+        "canned wording and do not behave like a questionnaire.\n\n"
+        f"CURRENT COUNTRY: {country or '(none)'}\n"
         f"TURN: {int(turn_number)}\n"
+        f"REPORT AVAILABLE: {bool(report_available)}\n"
         f"PREVIOUS NORMALIZED REQUEST: {existing or '(none)'}\n"
         "PREVIOUS BRIEF STATE:\n"
         + json.dumps(state, ensure_ascii=False, sort_keys=True)
+        + "\nRECENT CONVERSATION:\n"
+        + json.dumps(recent_history, ensure_ascii=False)
         + "\nLATEST USER MESSAGE:\n"
         + latest
         + "\n\nRULES:\n"
-        "- Previous resolved facts are conversation memory. Preserve them unless the "
-        "latest user message explicitly changes, narrows, removes, or corrects them.\n"
-        "- Understand natural language, paraphrases, relative dates, vague concepts, and "
-        "unusual topics by meaning rather than keyword matching.\n"
-        "- Do not ask again for information already resolved in the brief.\n"
-        "- Do not require every field to be filled. Ask a clarification only when the "
-        "missing information would materially change the usefulness or scope of the report.\n"
-        "- If the user delegates a choice ('you decide', 'whatever is useful', etc.), "
-        "choose a sensible scope and mark the brief ready instead of asking again.\n"
-        "- current_events=true when the user explicitly asks for latest/current/recent/"
-        "today developments. Preserve that intent in normalized_request.\n"
-        "- topics and angles may contain any concise natural-language concepts; do not "
-        "force them into a predefined taxonomy.\n"
-        "- period should preserve the user's intended temporal scope in natural language.\n"
-        "- exclusions must preserve explicit 'do not include' constraints.\n"
-        "- ready=true when there is enough information to produce a useful focused report.\n"
-        "- missing contains only genuinely material unresolved items.\n"
-        "- If ready=true, action must be generate and reply should briefly confirm the "
-        "understood scope. If ready=false, action must be ask and reply must contain one "
-        "concise, non-repetitive clarification question about the most important missing item.\n"
-        "- normalized_request must be a faithful compact summary of the accumulated user "
-        "intent, including all resolved constraints and no invented preferences.\n"
-        "- reply must use the same language as the latest user message unless the user "
-        "explicitly requests another language. Do not switch languages mid-conversation.\n"
+        "- Preserve resolved country and brief facts unless the user explicitly changes them.\n"
+        "- If the user switches country, return the new canonical English country name.\n"
+        "- action='reply' for ordinary conversation, acknowledgements, questions about an existing "
+        "report, requests to explain previously discussed material, or any turn that does not need a "
+        "new or updated PDF. Never regenerate merely because brief_state.ready is true.\n"
+        "- action='ask' only when a material ambiguity prevents a requested new/updated report. "
+        "Ask one concise non-repetitive question.\n"
+        "- action='generate' only when the user requests a new or materially updated report and the "
+        "brief is sufficiently clear.\n"
+        "- If REPORT AVAILABLE is true, references such as 'where?', 'I am waiting', 'is it ready?', "
+        "or 'show me more' should be resolved against the existing report when context supports it.\n"
+        "- normalized_request and brief_state are persistent semantic memory. Keep them unchanged on "
+        "ordinary conversational follow-ups unless the user changes scope.\n"
+        "- reply naturally in the same language as the latest user message unless another language is requested.\n"
         "Return JSON only."
     )
 
@@ -1629,7 +1633,7 @@ def continue_report_conversation(
                 input=(
                     prompt
                     + "\n\nReturn a single valid JSON object with exactly these top-level "
-                    "keys: action, normalized_request, reply, brief_state."
+                    "keys: action, country, normalized_request, reply, brief_state."
                 ),
                 text={"format": {"type": "json_object"}},
                 max_output_tokens=900,
@@ -1653,15 +1657,22 @@ def continue_report_conversation(
     if not isinstance(brief_state, dict):
         raise RuntimeError("LLM dialogue request failed: missing semantic brief state")
 
-    normalized_request = str(parsed.get("normalized_request") or "").strip()
+    turn_country = str(parsed.get("country") or country).strip() or country
+    normalized_request = str(parsed.get("normalized_request") or existing or latest).strip()
     reply = str(parsed.get("reply") or "").strip()
     if not normalized_request:
         raise RuntimeError("LLM dialogue request failed: empty normalized request")
     if not reply:
         raise RuntimeError("LLM dialogue request failed: empty reply")
 
+    requested_action = str(parsed.get("action") or "reply").strip().lower()
     ready = bool(brief_state.get("ready"))
-    action = "generate" if ready else "ask"
+    if requested_action == "generate" and not ready:
+        action = "ask"
+    elif requested_action in {"reply", "ask", "generate"}:
+        action = requested_action
+    else:
+        action = "reply"
 
     missing = brief_state.get("missing")
     if not isinstance(missing, list):
@@ -1674,6 +1685,7 @@ def continue_report_conversation(
 
     return {
         "action": action,
+        "country": turn_country,
         "normalized_request": normalized_request,
         "reply": reply,
         "brief_state": brief_state,
