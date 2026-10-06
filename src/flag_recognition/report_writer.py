@@ -298,6 +298,95 @@ def _canonicalize_report_brief(
     return model_value or latest or existing
 
 
+def _reconcile_report_brief_state(
+    existing_request: str,
+    latest_message: str,
+    previous_state: dict[str, Any],
+    model_state: dict[str, Any],
+) -> dict[str, Any]:
+    """Keep previously resolved report constraints when a later model turn omits them."""
+    reconciled = dict(model_state)
+    previous = previous_state if isinstance(previous_state, dict) else {}
+
+    for key in ("subject", "period", "depth"):
+        current_value = str(reconciled.get(key) or "").strip()
+        previous_value = str(previous.get(key) or "").strip()
+        if not current_value and previous_value:
+            reconciled[key] = previous_value
+
+    for key in ("topics", "angles", "exclusions", "other_constraints"):
+        merged: list[str] = []
+        for values in (previous.get(key), reconciled.get(key)):
+            if not isinstance(values, list):
+                continue
+            for value in values:
+                text = str(value or "").strip()
+                if text and text not in merged:
+                    merged.append(text)
+        reconciled[key] = merged
+
+    if not str(reconciled.get("period") or "").strip():
+        year_range = (
+            _extract_requested_year_range(latest_message)
+            or _extract_requested_year_range(existing_request)
+        )
+        if year_range is not None:
+            reconciled["period"] = f"{year_range[0]} to {year_range[1]}"
+
+    if not reconciled.get("topics"):
+        topic_groups = (
+            _requested_topic_groups(latest_message)
+            or _requested_topic_groups(existing_request)
+        )
+        if topic_groups:
+            reconciled["topics"] = list(topic_groups)
+
+    if not str(reconciled.get("depth") or "").strip():
+        depth = _extract_depth_label(latest_message) or _extract_depth_label(existing_request)
+        if depth:
+            reconciled["depth"] = depth
+
+    raw_missing = reconciled.get("missing")
+    filtered_missing: list[str] = []
+    if isinstance(raw_missing, list):
+        for value in raw_missing:
+            item = str(value or "").strip().casefold()
+            if not item:
+                continue
+            if item == "period" and str(reconciled.get("period") or "").strip():
+                continue
+            if item in {"depth", "detail"} and str(reconciled.get("depth") or "").strip():
+                continue
+            if item in {"angle", "angles"} and reconciled.get("angles"):
+                continue
+            if item in {"topic", "topics"} and reconciled.get("topics"):
+                continue
+            filtered_missing.append(item)
+    reconciled["missing"] = filtered_missing
+    return reconciled
+
+
+def _brief_missing_dimension_from_state(
+    brief_state: dict[str, Any],
+    existing_request: str,
+    latest_message: str,
+) -> str:
+    topics = [str(item).strip().casefold() for item in brief_state.get("topics", [])]
+    period = str(brief_state.get("period") or "").strip()
+    angles = [str(item).strip() for item in brief_state.get("angles", []) if str(item).strip()]
+    depth = str(brief_state.get("depth") or "").strip()
+
+    if not topics:
+        return "topic"
+    if "history" in topics and not period:
+        return "period"
+    if "history" in topics and period and not angles:
+        return "angle"
+    if not depth:
+        return "depth"
+    return _brief_missing_dimension(existing_request, latest_message)
+
+
 def _brief_missing_dimension(existing_request: str, latest_message: str) -> str:
     brief = _canonicalize_report_brief(existing_request, latest_message)
     groups = _requested_topic_groups(brief)
@@ -1719,6 +1808,7 @@ def continue_report_conversation(
     brief_state = parsed.get("brief_state")
     if not isinstance(brief_state, dict):
         raise RuntimeError("LLM dialogue request failed: missing semantic brief state")
+    brief_state = _reconcile_report_brief_state(existing, latest, state, brief_state)
 
     turn_country = str(parsed.get("country") or country).strip() or country
     normalized_request = str(parsed.get("normalized_request") or existing or latest).strip()
@@ -1774,19 +1864,41 @@ def continue_report_conversation(
         action = "reply"
 
     if action == "ask":
-        is_concise_question = reply.endswith("?") and len(reply) < 220
-        if not is_concise_question:
-            raw_missing = brief_state.get("missing")
-            missing_items = (
-                [str(item).strip().casefold() for item in raw_missing if str(item).strip()]
-                if isinstance(raw_missing, list)
-                else []
-            )
-            missing_dimension = (
-                missing_items[0]
-                if missing_items
-                else _brief_missing_dimension(existing or normalized_request, latest)
-            )
+        missing_dimension = _brief_missing_dimension_from_state(
+            brief_state,
+            existing or normalized_request,
+            latest,
+        )
+        if missing_dimension:
+            brief_state["missing"] = [missing_dimension]
+
+        normalized_reply = reply.casefold()
+        resolved_markers: list[str] = []
+        if (
+            missing_dimension != "period"
+            and str(brief_state.get("period") or "").strip()
+        ):
+            resolved_markers.extend(("time span", "time period", "period", "year", "date"))
+        if (
+            missing_dimension not in {"angle", "angles"}
+            and brief_state.get("angles")
+        ):
+            resolved_markers.extend(("angle", "focus", "aspect", "emphas", "policy area"))
+        if (
+            missing_dimension != "depth"
+            and str(brief_state.get("depth") or "").strip()
+        ):
+            resolved_markers.extend(("detail", "depth", "brief", "balanced", "in-depth", "overview"))
+
+        reasks_resolved_requirement = any(
+            marker in normalized_reply for marker in resolved_markers
+        )
+        is_valid_question = (
+            reply.endswith("?")
+            and len(reply) < 220
+            and not reasks_resolved_requirement
+        )
+        if not is_valid_question:
             questions = {
                 "period": "What time period should the report cover?",
                 "depth": "How detailed should the report be: brief, balanced, or in-depth?",
