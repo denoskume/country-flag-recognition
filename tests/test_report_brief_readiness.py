@@ -135,3 +135,40 @@ def test_new_model_scope_replaces_stale_previous_topic_when_user_changes_directi
 
     assert reconciled["topics"] == ["traditional cuisine"]
     assert reconciled["subject"] == "French cuisine"
+
+
+def test_explicit_semantic_change_can_clear_a_previous_constraint():
+    previous_state = {
+        "subject": "French Republics",
+        "topics": ["history"],
+        "period": "",
+        "angles": ["constitutional changes"],
+        "depth": "",
+        "exclusions": [],
+        "current_events": False,
+        "other_constraints": [],
+        "ready": False,
+        "missing": [],
+    }
+    model_state = {
+        "subject": "French Republics",
+        "topics": ["history"],
+        "period": "",
+        "angles": [],
+        "depth": "",
+        "exclusions": [],
+        "current_events": False,
+        "other_constraints": [],
+        "ready": True,
+        "missing": [],
+        "changed_fields": ["angles"],
+    }
+
+    reconciled = report_writer._reconcile_report_brief_state(
+        "French Republics with emphasis on constitutional changes",
+        "remove that emphasis; just cover the Republics generally",
+        previous_state,
+        model_state,
+    )
+
+    assert reconciled["angles"] == []
