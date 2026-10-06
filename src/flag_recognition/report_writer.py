@@ -309,28 +309,27 @@ def _reconcile_report_brief_state(
     previous_state: dict[str, Any],
     model_state: dict[str, Any],
 ) -> dict[str, Any]:
-    """Keep previously resolved report constraints when a later model turn omits them."""
+    "Reconcile semantic report state while allowing explicit user scope changes."
     reconciled = dict(model_state)
     previous = previous_state if isinstance(previous_state, dict) else {}
 
     for key in ("subject", "period", "depth"):
-        current_value = str(reconciled.get(key) or "").strip()
-        previous_value = str(previous.get(key) or "").strip()
-        if not current_value and previous_value:
-            reconciled[key] = previous_value
+        if key in model_state:
+            reconciled[key] = str(model_state.get(key) or "").strip()
+        else:
+            reconciled[key] = str(previous.get(key) or "").strip()
 
     for key in ("topics", "angles", "exclusions", "other_constraints"):
-        merged: list[str] = []
-        for values in (previous.get(key), reconciled.get(key)):
-            if not isinstance(values, list):
-                continue
-            for value in values:
-                text = str(value or "").strip()
-                if text and text not in merged:
-                    merged.append(text)
-        reconciled[key] = merged
+        source = model_state.get(key) if key in model_state else previous.get(key)
+        cleaned: list[str] = []
+        if isinstance(source, list):
+            for value in source:
+                item = str(value or "").strip()
+                if item and item not in cleaned:
+                    cleaned.append(item)
+        reconciled[key] = cleaned
 
-    if not str(reconciled.get("period") or "").strip():
+    if "period" not in model_state and not str(reconciled.get("period") or "").strip():
         year_range = (
             _extract_requested_year_range(latest_message)
             or _extract_requested_year_range(existing_request)
@@ -338,7 +337,7 @@ def _reconcile_report_brief_state(
         if year_range is not None:
             reconciled["period"] = f"{year_range[0]} to {year_range[1]}"
 
-    if not reconciled.get("topics"):
+    if "topics" not in model_state and not reconciled.get("topics"):
         topic_groups = (
             _requested_topic_groups(latest_message)
             or _requested_topic_groups(existing_request)
@@ -346,7 +345,7 @@ def _reconcile_report_brief_state(
         if topic_groups:
             reconciled["topics"] = list(topic_groups)
 
-    if not str(reconciled.get("depth") or "").strip():
+    if "depth" not in model_state and not str(reconciled.get("depth") or "").strip():
         depth = _extract_depth_label(latest_message) or _extract_depth_label(existing_request)
         if depth:
             reconciled["depth"] = depth
@@ -370,21 +369,42 @@ def _reconcile_report_brief_state(
     reconciled["missing"] = filtered_missing
     return reconciled
 
+def _semantic_brief_has_scope(brief_state: dict[str, Any]) -> bool:
+    "Return True for any meaningful model-derived report scope."
+    if not isinstance(brief_state, dict):
+        return False
+
+    for key in ("subject", "period", "depth"):
+        if str(brief_state.get(key) or "").strip():
+            return True
+
+    for key in ("topics", "angles", "exclusions", "other_constraints"):
+        values = brief_state.get(key)
+        if isinstance(values, list) and any(str(value or "").strip() for value in values):
+            return True
+
+    return bool(brief_state.get("current_events"))
+
 
 def _brief_missing_dimension_from_state(
     brief_state: dict[str, Any],
     existing_request: str,
     latest_message: str,
 ) -> str:
-    topics = [str(item).strip().casefold() for item in brief_state.get("topics", [])]
-    period = str(brief_state.get("period") or "").strip()
+    "Trust semantic state; deterministic rules must not invent missing requirements."
+    if bool(brief_state.get("ready")):
+        return ""
 
-    if not topics:
+    raw_missing = brief_state.get("missing")
+    if isinstance(raw_missing, list):
+        for value in raw_missing:
+            item = str(value or "").strip().casefold()
+            if item:
+                return item
+
+    if not _semantic_brief_has_scope(brief_state):
         return "topic"
-    if "history" in topics and not period:
-        return "period"
     return ""
-
 
 def _brief_missing_dimension(existing_request: str, latest_message: str) -> str:
     brief = _canonicalize_report_brief(existing_request, latest_message)
@@ -1878,18 +1898,9 @@ def continue_report_conversation(
     report_confirmation = _is_report_generation_confirmation(latest, recent_history)
     accepts_current_scope = _user_accepts_current_report_scope(latest)
 
-    scope_fields = (
-        brief_state.get("topics"),
-        str(brief_state.get("period") or "").strip(),
-        brief_state.get("angles"),
-        str(brief_state.get("depth") or "").strip(),
-        brief_state.get("exclusions"),
-        bool(brief_state.get("current_events")),
-        brief_state.get("other_constraints"),
-    )
     has_report_scope = (
         bool(existing)
-        or any(bool(value) for value in scope_fields)
+        or _semantic_brief_has_scope(brief_state)
         or bool(_requested_topic_groups(latest))
     )
     deterministic_ready = _brief_is_sufficiently_specific(
