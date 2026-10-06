@@ -191,7 +191,7 @@ def _requested_topic_groups(user_request: str) -> tuple[str, ...]:
 
     markers = {
         "history": ("history", "historical", "histoire"),
-        "economy": ("economy", "economic", "trade", "industry", "industrial"),
+        "economy": ("economy", "economic", "economical", "trade", "industry", "industrial"),
         "culture": ("culture", "cultural", "arts", "literature", "music", "cinema"),
         "politics": ("politics", "political", "government", "constitutional"),
         "society": ("society", "social", "demographic", "health"),
@@ -1624,7 +1624,7 @@ def continue_report_conversation(
     }
 
     prompt = (
-        "You are Flag Intelligence conducting a live, natural conversation about countries. "
+        "You are Flag Intelligence gathering requirements for a tailored country report. "
         "Interpret the user's latest message using the recent dialogue, preserved semantic brief, "
         "current country, and report availability. User wording is unpredictable: resolve pronouns, "
         "ellipsis, fragments, corrections, short reactions, and follow-ups from context. Do not use "
@@ -1643,13 +1643,14 @@ def continue_report_conversation(
         + "\n\nRULES:\n"
         "- Preserve resolved country and brief facts unless the user explicitly changes them.\n"
         "- If the user switches country, return the new canonical English country name.\n"
-        "- action='reply' for ordinary conversation, acknowledgements, questions about an existing "
-        "report, requests to explain previously discussed material, or any turn that does not need a "
-        "new or updated PDF. Never regenerate merely because brief_state.ready is true.\n"
-        "- action='ask' only when a material ambiguity prevents a requested new/updated report. "
-        "Ask one concise non-repetitive question.\n"
-        "- action='generate' only when the user requests a new or materially updated report and the "
-        "brief is sufficiently clear.\n"
+        "- When REPORT AVAILABLE is false, do not answer substantive country knowledge in chat. "
+        "Treat country-topic input as requirements for the report.\n"
+        "- action='reply' only for greetings, acknowledgements, or non-substantive interaction before "
+        "a report scope exists, and for questions or status about an existing report.\n"
+        "- action='ask' when the report need is not yet sufficiently specific. Ask exactly one concise "
+        "question about the most important missing requirement and include no explanatory country facts.\n"
+        "- action='generate' as soon as the report brief is sufficiently clear; the user does not need "
+        "to say the word report or PDF.\n"
         "- If REPORT AVAILABLE is true, references such as 'where?', 'I am waiting', 'is it ready?', "
         "or 'show me more' should be resolved against the existing report when context supports it.\n"
         "- normalized_request and brief_state are persistent semantic memory. Keep them unchanged on "
@@ -1730,34 +1731,75 @@ def continue_report_conversation(
     requested_action = str(parsed.get("action") or "reply").strip().lower()
     ready = bool(brief_state.get("ready"))
     prior_ready = bool(state.get("ready"))
-    known_scope = bool(existing) or bool(str(brief_state.get("subject") or "").strip()) or bool(
-        brief_state.get("topics")
-    )
     explicit_report_request = _is_explicit_report_request(latest)
     report_confirmation = _is_report_generation_confirmation(latest, recent_history)
 
-    # The PDF is a real application artifact, not conversational prose. When a
-    # user explicitly asks for it (or confirms a direct offer), never allow an
-    # LLM reply to impersonate generation. A sufficiently specific first brief
-    # should also go straight to the report pipeline, which is Flag
-    # Intelligence's primary product behavior.
-    force_generation = (
-        not report_available
-        and (
-            (explicit_report_request and (known_scope or ready or prior_ready))
-            or (report_confirmation and (known_scope or ready or prior_ready))
-            or (ready and int(turn_number) <= 1)
-        )
+    scope_fields = (
+        brief_state.get("topics"),
+        str(brief_state.get("period") or "").strip(),
+        brief_state.get("angles"),
+        str(brief_state.get("depth") or "").strip(),
+        brief_state.get("exclusions"),
+        bool(brief_state.get("current_events")),
+        brief_state.get("other_constraints"),
     )
+    has_report_scope = (
+        bool(existing)
+        or any(bool(value) for value in scope_fields)
+        or bool(_requested_topic_groups(latest))
+    )
+    deterministic_ready = _brief_is_sufficiently_specific(
+        existing or normalized_request,
+        latest,
+    )
+    brief_ready = ready or prior_ready or deterministic_ready
 
-    if force_generation:
+    # Flag Intelligence is report-first: before a report exists, substantive
+    # country requests are requirements to gather, not prose questions to answer
+    # in chat. Once the brief is ready, generation begins automatically.
+    if report_available:
+        if requested_action in {"reply", "ask", "generate"}:
+            action = requested_action
+        else:
+            action = "reply"
+    elif brief_ready and has_report_scope:
         action = "generate"
-    elif requested_action == "generate" and not ready:
+    elif has_report_scope or explicit_report_request or report_confirmation:
         action = "ask"
-    elif requested_action in {"reply", "ask", "generate"}:
+    elif requested_action == "generate":
+        action = "ask"
+    elif requested_action in {"reply", "ask"}:
         action = requested_action
     else:
         action = "reply"
+
+    if action == "ask":
+        is_concise_question = reply.endswith("?") and len(reply) < 220
+        if not is_concise_question:
+            raw_missing = brief_state.get("missing")
+            missing_items = (
+                [str(item).strip().casefold() for item in raw_missing if str(item).strip()]
+                if isinstance(raw_missing, list)
+                else []
+            )
+            missing_dimension = (
+                missing_items[0]
+                if missing_items
+                else _brief_missing_dimension(existing or normalized_request, latest)
+            )
+            questions = {
+                "period": "What time period should the report cover?",
+                "depth": "How detailed should the report be: brief, balanced, or in-depth?",
+                "angle": "Which aspects should the report emphasize?",
+                "angles": "Which aspects should the report emphasize?",
+                "topic": "What should the report focus on?",
+                "topics": "What should the report focus on?",
+                "exclusions": "Is there anything you want the report to leave out?",
+            }
+            reply = questions.get(
+                missing_dimension,
+                "What specific scope should the report follow?",
+            )
 
     # Short commands such as "give me a report" or "pdf report" are artifact
     # requests, not a replacement for the already-resolved research brief.
