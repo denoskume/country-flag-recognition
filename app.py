@@ -4842,13 +4842,34 @@ with brand_col:
 
 st.markdown("<div style='height:0.2rem'></div>", unsafe_allow_html=True)
 
-def _render_chat_message(role: str, content: str) -> None:
+def _render_chat_message(role: str, content: str, image_bytes: bytes | None = None) -> None:
     """Render user messages right-aligned and assistant messages left-aligned."""
     safe = xml_escape(str(content or "")).replace("\n", "<br/>")
+    image_html = ""
+    if role == "user" and image_bytes:
+        try:
+            raw_image_bytes = bytes(image_bytes)
+            mime_type = "image/png"
+            if raw_image_bytes.startswith(b"\xff\xd8\xff"):
+                mime_type = "image/jpeg"
+            elif raw_image_bytes.startswith(b"RIFF") and raw_image_bytes[8:12] == b"WEBP":
+                mime_type = "image/webp"
+            elif raw_image_bytes.startswith(b"GIF8"):
+                mime_type = "image/gif"
+            encoded_image = base64.b64encode(raw_image_bytes).decode("ascii")
+            image_margin = ".55rem" if safe else "0"
+            image_html = (
+                f'<img class="fi-user-uploaded-image" '
+                f'src="data:{mime_type};base64,{encoded_image}" alt="Uploaded flag" '
+                f'style="display:block;max-width:280px;max-height:190px;width:auto;height:auto;'
+                f'object-fit:contain;border-radius:12px;margin:0 0 {image_margin} 0;" />'
+            )
+        except Exception:
+            image_html = ""
     if role == "user":
         st.markdown(
             f'<div class="fi-user-message-row">'
-            f'<div class="fi-user-message">{safe}</div>'
+            f'<div class="fi-user-message">{image_html}{safe}</div>'
             f'</div>',
             unsafe_allow_html=True,
         )
@@ -4963,7 +4984,7 @@ if "fi_report_available" not in st.session_state:
     st.session_state.fi_report_available = False
 
 for message in st.session_state.fi_messages:
-    _render_chat_message(message["role"], message["content"])
+    _render_chat_message(message["role"], message["content"], message.get("image_bytes"))
 
 # Keep the generated artifact visible during later conversational turns.
 if st.session_state.fi_report_available and st.session_state.fi_report_pdf:
@@ -5017,13 +5038,13 @@ if prompt_submission is not None:
             except Exception:
                 pending["file_bytes"] = None
 
-    if prompt_text:
+    if prompt_text or prompt_files:
         st.session_state.fi_messages.append(
-            {"role": "user", "content": prompt_text}
-        )
-    elif prompt_files:
-        st.session_state.fi_messages.append(
-            {"role": "user", "content": "Flag image uploaded"}
+            {
+                "role": "user",
+                "content": prompt_text,
+                "image_bytes": pending["file_bytes"],
+            }
         )
 
     st.session_state.fi_pending_input = pending
