@@ -448,6 +448,53 @@ def _extract_requested_year_range(user_request: str) -> tuple[int, int] | None:
     return None
 
 
+def _enforce_requested_year_range(
+    report: dict[str, Any],
+    year_range: tuple[int, int] | None,
+) -> dict[str, Any]:
+    """Remove explicitly dated material that falls outside a requested time window."""
+    if year_range is None:
+        return dict(report)
+
+    start_year, end_year = year_range
+    year_pattern = re.compile(r"\b((?:1[5-9]|20)\d{2})(?:s)?\b")
+    scoped: dict[str, Any] = {}
+
+    for key, raw_value in report.items():
+        if str(key).startswith("__") or not isinstance(raw_value, str):
+            scoped[key] = raw_value
+            continue
+
+        paragraphs: list[str] = []
+        for raw_paragraph in re.split(r"\n{2,}", raw_value):
+            paragraph = raw_paragraph.strip()
+            if not paragraph:
+                continue
+
+            clauses: list[str] = []
+            for raw_clause in re.split(r";\s*", paragraph):
+                sentences = [
+                    item.strip()
+                    for item in re.split(r"(?<=[.!?])\s+", raw_clause.strip())
+                    if item.strip()
+                ]
+                kept_sentences: list[str] = []
+                for sentence in sentences:
+                    years = [int(value) for value in year_pattern.findall(sentence)]
+                    if years and any(year < start_year or year > end_year for year in years):
+                        continue
+                    kept_sentences.append(sentence)
+                if kept_sentences:
+                    clauses.append(" ".join(kept_sentences))
+
+            if clauses:
+                paragraphs.append("; ".join(clauses))
+
+        scoped[key] = "\n\n".join(paragraphs).strip()
+
+    return scoped
+
+
 def _has_explicit_time_range(user_request: str) -> bool:
     return _extract_requested_year_range(user_request) is not None
 
@@ -1963,10 +2010,12 @@ def _review_scoped_report(
             f"User request: {user_request}\n"
             f"Semantic brief: {brief_json}\n"
             f"Section key: {key}\n\n"
-            "Review the section below as a subject-matter expert. Independently verify "
-            "names, dates, chronology, attribution, institutions, works, concepts, places, "
-            "and causal claims. Remove anything uncertain, generic, unsupported, outside "
-            "the requested scope, or temporally misleading. Preserve useful concrete facts "
+            "Review the section below as a subject-matter expert. Verify every concrete factual claim "
+            "with browser search before retaining it, especially names, dates, laws, institutions, "
+            "works, concepts, places, quantitative statements, chronology, attribution, and causal claims. "
+            "Prefer primary or official sources, then major international institutions and reputable "
+            "academic or reference sources. Remove or qualify any claim you cannot verify. Remove anything "
+            "generic, unsupported, outside the requested scope, or temporally misleading. Preserve useful concrete facts "
             "and improve explanation where necessary. If the user requested a single year, "
             "do not turn it into a decade-wide survey; nearby years may appear only when "
             "needed for immediate context. Keep the same language as the draft unless the "
@@ -2039,9 +2088,10 @@ def _generate_scoped_report(
         start_year, end_year = year_range
         range_rule = (
             f"The requested time window is strictly {start_year}-{end_year}. "
-            "Do not add a separate early-history section or substantive events before "
-            f"{start_year}. Use earlier history only as one or two contextual sentences "
-            "in the introduction if indispensable. "
+            f"Do not include any explicitly dated fact, event, law, statistic, timeline entry, "
+            f"or person-specific milestone before {start_year} or after {end_year}. "
+            "Do not mention out-of-range years even as background. If earlier context is essential, "
+            "state it briefly without dated details. "
         )
 
     brief_json = json.dumps(
@@ -2106,6 +2156,8 @@ def _generate_scoped_report(
     if not result:
         raise RuntimeError("LLM scoped report generation failed: empty report")
 
+    result = _enforce_requested_year_range(result, year_range)
+
     missing_sections = [
         key for key in section_keys
         if not str(result.get(key, "") or "").strip()
@@ -2125,6 +2177,7 @@ def _generate_scoped_report(
         draft=result,
         brief_state=brief_state,
     )
+    result = _enforce_requested_year_range(result, year_range)
     result["__qa_passed"] = True
     result["__qa_issues"] = []
     result["__substantial_sections"] = len(result)

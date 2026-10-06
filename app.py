@@ -4983,6 +4983,23 @@ if "fi_report_filename" not in st.session_state:
 if "fi_report_available" not in st.session_state:
     st.session_state.fi_report_available = False
 
+
+def _reset_flag_intelligence_session_for_new_upload() -> None:
+    """Start a clean country session while preserving the current upload turn."""
+    st.session_state.fi_stage = "idle"
+    st.session_state.fi_country_code = None
+    st.session_state.fi_country_name = None
+    st.session_state.fi_report_request = ""
+    st.session_state.fi_report_state = {}
+    st.session_state.fi_messages = []
+    st.session_state.fi_image_bytes = None
+    st.session_state.fi_clarification_turn = 0
+    st.session_state.fi_pending_input = None
+    st.session_state.fi_report_pdf = None
+    st.session_state.fi_report_filename = ""
+    st.session_state.fi_report_available = False
+
+
 for message in st.session_state.fi_messages:
     _render_chat_message(message["role"], message["content"], message.get("image_bytes"))
 
@@ -5029,6 +5046,7 @@ if prompt_submission is not None:
     }
 
     if prompt_files:
+        _reset_flag_intelligence_session_for_new_upload()
         uploaded_image = prompt_files[0]
         try:
             pending["file_bytes"] = uploaded_image.getvalue()
