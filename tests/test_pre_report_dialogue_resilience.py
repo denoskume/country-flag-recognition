@@ -3,6 +3,8 @@ from types import SimpleNamespace
 
 from flag_recognition import report_conversation, report_writer
 
+# Regression coverage for the Côte d'Ivoire live-chat failure reproduced on 6 Oct 2026.
+
 
 class _CountryOnlyResponses:
     def create(self, **kwargs):
