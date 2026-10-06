@@ -1,0 +1,74 @@
+name: Apply context preservation fix
+on:
+  push:
+    branches: [fix/dynamic-contextual-dialogue]
+permissions:
+  contents: write
+jobs:
+  apply-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/dynamic-contextual-dialogue
+      - name: Preserve resolved context on refinements
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/flag_recognition/report_writer.py')
+          text = path.read_text(encoding='utf-8')
+
+          old = '''    for key in ("subject", "period", "depth"):
+        if key in model_state:
+            reconciled[key] = str(model_state.get(key) or "").strip()
+        else:
+            reconciled[key] = str(previous.get(key) or "").strip()
+
+    for key in ("topics", "angles", "exclusions", "other_constraints"):
+        source = model_state.get(key) if key in model_state else previous.get(key)
+        cleaned: list[str] = []
+        if isinstance(source, list):
+            for value in source:
+                item = str(value or "").strip()
+                if item and item not in cleaned:
+                    cleaned.append(item)
+        reconciled[key] = cleaned
+'''
+          new = '''    for key in ("subject", "period", "depth"):
+        model_value = str(model_state.get(key) or "").strip() if key in model_state else ""
+        previous_value = str(previous.get(key) or "").strip()
+        reconciled[key] = model_value or previous_value
+
+    for key in ("topics", "angles", "exclusions", "other_constraints"):
+        model_source = model_state.get(key) if key in model_state else None
+        previous_source = previous.get(key)
+        model_items = [
+            str(value or "").strip()
+            for value in model_source
+            if str(value or "").strip()
+        ] if isinstance(model_source, list) else []
+        source = model_items if model_items else previous_source
+        cleaned: list[str] = []
+        if isinstance(source, list):
+            for value in source:
+                item = str(value or "").strip()
+                if item and item not in cleaned:
+                    cleaned.append(item)
+        reconciled[key] = cleaned
+'''
+
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected one reconciliation target, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+      - name: Compile controller
+        run: python -m py_compile src/flag_recognition/report_writer.py
+      - name: Commit source fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/flag_recognition/report_writer.py
+          git diff --cached --quiet && exit 0
+          git commit -m "Preserve resolved context during refinements"
+          git push origin HEAD:fix/dynamic-contextual-dialogue
