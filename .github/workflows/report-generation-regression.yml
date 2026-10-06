@@ -6,6 +6,8 @@ on:
       - "src/flag_recognition/report_writer.py"
       - "tests/test_report_generation_intent.py"
       - "tests/test_report_brief_readiness.py"
+      - "tests/test_scoped_report_period_guard.py"
+      - "tests/test_scoped_report_claim_verification.py"
       - ".github/workflows/report-generation-regression.yml"
   push:
     branches: ["main"]
@@ -13,6 +15,8 @@ on:
       - "src/flag_recognition/report_writer.py"
       - "tests/test_report_generation_intent.py"
       - "tests/test_report_brief_readiness.py"
+      - "tests/test_scoped_report_period_guard.py"
+      - "tests/test_scoped_report_claim_verification.py"
       - ".github/workflows/report-generation-regression.yml"
 
 jobs:
@@ -37,4 +41,4 @@ jobs:
         run: python -m py_compile src/flag_recognition/report_writer.py
 
       - name: Run report-generation regression tests
-        run: pytest tests/test_report_generation_intent.py tests/test_report_brief_readiness.py tests/test_dialogue_latency.py tests/test_live_conversation_state.py -q
+        run: pytest tests/test_report_generation_intent.py tests/test_report_brief_readiness.py tests/test_dialogue_latency.py tests/test_live_conversation_state.py tests/test_scoped_report_period_guard.py tests/test_scoped_report_claim_verification.py -q
