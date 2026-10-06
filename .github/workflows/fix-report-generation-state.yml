@@ -42,7 +42,21 @@ jobs:
         run: pytest tests/test_report_generation_intent.py tests/test_dialogue_latency.py tests/test_live_conversation_state.py -q
 
       - name: Run full test suite
-        run: pytest -q
+        id: full_tests
+        continue-on-error: true
+        run: pytest -q --junitxml=pytest-results.xml
+
+      - name: Upload pytest diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-generation-pytest-results
+          path: pytest-results.xml
+          if-no-files-found: error
+
+      - name: Require full test suite success
+        if: steps.full_tests.outcome != 'success'
+        run: exit 1
 
       - name: Commit verified production change
         run: |
