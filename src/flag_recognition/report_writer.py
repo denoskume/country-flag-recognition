@@ -312,11 +312,17 @@ def _reconcile_report_brief_state(
     "Reconcile semantic report state while allowing explicit user scope changes."
     reconciled = dict(model_state)
     previous = previous_state if isinstance(previous_state, dict) else {}
+    changed_fields_raw = model_state.get("changed_fields")
+    changed_fields = {
+        str(value or "").strip().casefold()
+        for value in changed_fields_raw
+        if str(value or "").strip()
+    } if isinstance(changed_fields_raw, list) else set()
 
     for key in ("subject", "period", "depth"):
         model_value = str(model_state.get(key) or "").strip() if key in model_state else ""
         previous_value = str(previous.get(key) or "").strip()
-        reconciled[key] = model_value or previous_value
+        reconciled[key] = model_value if key in changed_fields else (model_value or previous_value)
 
     for key in ("topics", "angles", "exclusions", "other_constraints"):
         model_source = model_state.get(key) if key in model_state else None
@@ -326,7 +332,10 @@ def _reconcile_report_brief_state(
             for value in model_source
             if str(value or "").strip()
         ] if isinstance(model_source, list) else []
-        source = model_items if model_items else previous_source
+        if key in changed_fields:
+            source = model_source if isinstance(model_source, list) else []
+        else:
+            source = model_items if model_items else previous_source
         cleaned: list[str] = []
         if isinstance(source, list):
             for value in source:
@@ -334,6 +343,15 @@ def _reconcile_report_brief_state(
                 if item and item not in cleaned:
                     cleaned.append(item)
         reconciled[key] = cleaned
+
+    previous_current_events = bool(previous.get("current_events"))
+    model_current_events = bool(model_state.get("current_events"))
+    reconciled["current_events"] = (
+        model_current_events
+        if "current_events" in changed_fields
+        else (model_current_events or previous_current_events)
+    )
+    reconciled["changed_fields"] = []
 
     if "period" not in model_state and not str(reconciled.get("period") or "").strip():
         year_range = (
@@ -1754,6 +1772,22 @@ def continue_report_conversation(
             "exclusions": {"type": "array", "items": {"type": "string"}},
             "current_events": {"type": "boolean"},
             "other_constraints": {"type": "array", "items": {"type": "string"}},
+            "changed_fields": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "enum": [
+                        "subject",
+                        "topics",
+                        "period",
+                        "angles",
+                        "depth",
+                        "exclusions",
+                        "current_events",
+                        "other_constraints",
+                    ],
+                },
+            },
             "ready": {"type": "boolean"},
             "missing": {"type": "array", "items": {"type": "string"}},
         },
@@ -1766,6 +1800,7 @@ def continue_report_conversation(
             "exclusions",
             "current_events",
             "other_constraints",
+            "changed_fields",
             "ready",
             "missing",
         ],
@@ -1810,6 +1845,8 @@ def continue_report_conversation(
         + latest
         + "\n\nRULES:\n"
         "- Preserve resolved country and brief facts unless the user explicitly changes them.\n"
+        "- changed_fields must contain only semantic brief fields that the latest user message explicitly adds, replaces, or clears. Use an empty list when a field is merely carried forward from context.\n"
+        "- If the user explicitly clears a constraint, put that field in changed_fields and return its empty value instead of restoring the old value.\n"
         "- If the user switches country, return the new canonical English country name.\n"
         "- When REPORT AVAILABLE is false, do not answer substantive country knowledge in chat. "
         "Treat country-topic input as requirements for the report.\n"
