@@ -1,0 +1,203 @@
+name: Apply dynamic dialogue fix
+
+on:
+  push:
+    branches:
+      - fix/dynamic-contextual-dialogue
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: fix/dynamic-contextual-dialogue
+
+      - name: Apply context-adaptive dialogue changes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/flag_recognition/report_writer.py')
+          text = path.read_text(encoding='utf-8')
+
+          reconcile_start = text.index('def _reconcile_report_brief_state(')
+          reconcile_end = text.index('\ndef _brief_missing_dimension_from_state(', reconcile_start)
+          reconcile = '''def _reconcile_report_brief_state(
+              existing_request: str,
+              latest_message: str,
+              previous_state: dict[str, Any],
+              model_state: dict[str, Any],
+          ) -> dict[str, Any]:
+              """Reconcile semantic report state while allowing explicit user scope changes."""
+              reconciled = dict(model_state)
+              previous = previous_state if isinstance(previous_state, dict) else {}
+
+              # Structured model output is authoritative when a field is present, including
+              # an intentionally empty value. Previous values are only a fallback for a
+              # malformed/partial model response that omitted the field entirely.
+              for key in ("subject", "period", "depth"):
+                  if key in model_state:
+                      reconciled[key] = str(model_state.get(key) or "").strip()
+                  else:
+                      reconciled[key] = str(previous.get(key) or "").strip()
+
+              for key in ("topics", "angles", "exclusions", "other_constraints"):
+                  source = model_state.get(key) if key in model_state else previous.get(key)
+                  cleaned: list[str] = []
+                  if isinstance(source, list):
+                      for value in source:
+                          item = str(value or "").strip()
+                          if item and item not in cleaned:
+                              cleaned.append(item)
+                  reconciled[key] = cleaned
+
+              # Deterministic extraction is only a compatibility fallback when the model
+              # did not provide the corresponding semantic field. It must never override
+              # a context-aware model decision or reintroduce a constraint the user removed.
+              if "period" not in model_state and not str(reconciled.get("period") or "").strip():
+                  year_range = (
+                      _extract_requested_year_range(latest_message)
+                      or _extract_requested_year_range(existing_request)
+                  )
+                  if year_range is not None:
+                      reconciled["period"] = f"{year_range[0]} to {year_range[1]}"
+
+              if "topics" not in model_state and not reconciled.get("topics"):
+                  topic_groups = (
+                      _requested_topic_groups(latest_message)
+                      or _requested_topic_groups(existing_request)
+                  )
+                  if topic_groups:
+                      reconciled["topics"] = list(topic_groups)
+
+              if "depth" not in model_state and not str(reconciled.get("depth") or "").strip():
+                  depth = _extract_depth_label(latest_message) or _extract_depth_label(existing_request)
+                  if depth:
+                      reconciled["depth"] = depth
+
+              raw_missing = reconciled.get("missing")
+              filtered_missing: list[str] = []
+              if isinstance(raw_missing, list):
+                  for value in raw_missing:
+                      item = str(value or "").strip().casefold()
+                      if not item:
+                          continue
+                      if item == "period" and str(reconciled.get("period") or "").strip():
+                          continue
+                      if item in {"depth", "detail"} and str(reconciled.get("depth") or "").strip():
+                          continue
+                      if item in {"angle", "angles"} and reconciled.get("angles"):
+                          continue
+                      if item in {"topic", "topics"} and reconciled.get("topics"):
+                          continue
+                      filtered_missing.append(item)
+              reconciled["missing"] = filtered_missing
+              return reconciled
+
+'''
+          text = text[:reconcile_start] + reconcile + text[reconcile_end + 1:]
+
+          missing_start = text.index('def _brief_missing_dimension_from_state(')
+          missing_end = text.index('\ndef _brief_missing_dimension(', missing_start)
+          missing = '''def _semantic_brief_has_scope(brief_state: dict[str, Any]) -> bool:
+              """Return True for any meaningful model-derived report scope, without a fixed taxonomy."""
+              if not isinstance(brief_state, dict):
+                  return False
+
+              for key in ("subject", "period", "depth"):
+                  if str(brief_state.get(key) or "").strip():
+                      return True
+
+              for key in ("topics", "angles", "exclusions", "other_constraints"):
+                  values = brief_state.get(key)
+                  if isinstance(values, list) and any(str(value or "").strip() for value in values):
+                      return True
+
+              return bool(brief_state.get("current_events"))
+
+
+          def _brief_missing_dimension_from_state(
+              brief_state: dict[str, Any],
+              existing_request: str,
+              latest_message: str,
+          ) -> str:
+              """Use semantic state first; deterministic rules must not invent missing requirements."""
+              if bool(brief_state.get("ready")):
+                  return ""
+
+              raw_missing = brief_state.get("missing")
+              if isinstance(raw_missing, list):
+                  for value in raw_missing:
+                      item = str(value or "").strip().casefold()
+                      if item:
+                          return item
+
+              if not _semantic_brief_has_scope(brief_state):
+                  return "topic"
+              return ""
+
+'''
+          text = text[:missing_start] + missing + text[missing_end + 1:]
+
+          old_intro = (
+              '        "Interpret the user\'s latest message using the recent dialogue, preserved semantic brief, "\n'
+              '        "current country, and report availability. User wording is unpredictable: resolve pronouns, "\n'
+              '        "ellipsis, fragments, corrections, short reactions, and follow-ups from context. Do not use "\n'
+              '        "canned wording and do not behave like a questionnaire. Every reply must be freshly "\n'
+          )
+          new_intro = (
+              '        "Interpret the user\'s latest message using the recent dialogue, preserved semantic brief, "\n'
+              '        "current country, and report availability. User wording is unpredictable: resolve pronouns, "\n'
+              '        "ellipsis, fragments, corrections, short reactions, numeric ranges, ordinal references, and "\n'
+              '        "follow-ups from context. Treat the semantic brief as open vocabulary rather than a fixed "\n'
+              '        "topic taxonomy. Do not use canned wording and do not behave like a questionnaire. Every reply must be freshly "\n'
+          )
+          if old_intro not in text:
+              raise SystemExit('dialogue intro target not found')
+          text = text.replace(old_intro, new_intro, 1)
+
+          rule_anchor = '        "- Preserve resolved country and brief facts unless the user explicitly changes them.\\n"\n'
+          rule_insert = (
+              rule_anchor
+              + '        "- Topics, subjects, and constraints are open-ended. Preserve the user\'s specific concepts even when they do not match any predefined category.\\n"\n'
+              + '        "- Resolve short numeric or ordinal fragments against the immediately discussed subject before treating them as dates or ambiguity. For example, after discussing numbered republics, \'1 to 5\' naturally means the first through fifth republics.\\n"\n'
+              + '        "- Do not require a calendar period merely because a topic is historical. A bounded event, era, institution, dynasty, numbered sequence, or named subject can already define sufficient historical scope.\\n"\n'
+              + '        "- When the latest message naturally refines, corrects, narrows, broadens, or replaces the existing scope, update the semantic brief directly instead of asking the user to restate information that context already resolves.\\n"\n'
+          )
+          if rule_anchor not in text:
+              raise SystemExit('rule anchor not found')
+          text = text.replace(rule_anchor, rule_insert, 1)
+
+          scope_start = text.index('    scope_fields = (', text.index('def continue_report_conversation('))
+          scope_end = text.index('    deterministic_ready = ', scope_start)
+          scope = '''    has_report_scope = (
+              bool(existing)
+              or _semantic_brief_has_scope(brief_state)
+              or bool(_requested_topic_groups(latest))
+          )
+'''
+          text = text[:scope_start] + scope + text[scope_end:]
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Compile controller
+        run: python -m py_compile src/flag_recognition/report_writer.py
+
+      - name: Commit source change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/flag_recognition/report_writer.py
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Make report dialogue context-adaptive"
+          git push origin HEAD:fix/dynamic-contextual-dialogue
