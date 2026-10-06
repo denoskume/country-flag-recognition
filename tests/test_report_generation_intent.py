@@ -1,0 +1,147 @@
+import json
+from types import SimpleNamespace
+
+import pytest
+
+from flag_recognition import report_writer
+
+
+READY_BRIEF = {
+    "subject": "Côte d’Ivoire historical and cultural developments",
+    "topics": ["history", "culture"],
+    "period": "1950 to 2020",
+    "angles": ["major historical developments", "major cultural developments"],
+    "depth": "balanced overview",
+    "exclusions": [],
+    "current_events": False,
+    "other_constraints": [],
+    "ready": True,
+    "missing": [],
+}
+
+
+class _FakeResponses:
+    payload = {}
+
+    def create(self, **kwargs):
+        return SimpleNamespace(output_text=json.dumps(type(self).payload))
+
+
+class _FakeClient:
+    def __init__(self, *args, **kwargs):
+        self.responses = _FakeResponses()
+
+
+def _configure_model(monkeypatch, *, latest_payload):
+    _FakeResponses.payload = latest_payload
+    monkeypatch.setattr(report_writer, "OpenAI", _FakeClient)
+    monkeypatch.setattr(report_writer, "llm_auth_token", lambda: "test-key")
+    monkeypatch.setattr(report_writer, "llm_model_name", lambda: "test-model")
+
+
+def _payload(reply: str, action: str = "reply"):
+    return {
+        "action": action,
+        "country": "Côte d’Ivoire",
+        "normalized_request": (
+            "history and culture from 1950 to 2020; balanced overview"
+        ),
+        "reply": reply,
+        "brief_state": dict(READY_BRIEF),
+    }
+
+
+def test_explicit_report_request_forces_generation_even_if_model_only_replies(monkeypatch):
+    _configure_model(
+        monkeypatch,
+        latest_payload=_payload("Here is a concise report covering that period."),
+    )
+
+    result = report_writer.continue_report_conversation(
+        "Côte d’Ivoire",
+        "history and culture from 1950 to 2020; balanced overview",
+        "give me a report",
+        existing_state=dict(READY_BRIEF),
+        report_available=False,
+    )
+
+    assert result["action"] == "generate"
+
+
+def test_explicit_pdf_request_forces_generation_even_if_model_only_replies(monkeypatch):
+    _configure_model(
+        monkeypatch,
+        latest_payload=_payload("Here is a concise PDF report."),
+    )
+
+    result = report_writer.continue_report_conversation(
+        "Côte d’Ivoire",
+        "history and culture from 1950 to 2020; balanced overview",
+        "pdf report",
+        existing_state=dict(READY_BRIEF),
+        report_available=False,
+    )
+
+    assert result["action"] == "generate"
+
+
+def test_clear_country_scope_generates_report_without_requiring_report_keyword(monkeypatch):
+    _configure_model(
+        monkeypatch,
+        latest_payload=_payload(
+            "From the 1950s onward, Côte d’Ivoire underwent major changes."
+        ),
+    )
+
+    result = report_writer.continue_report_conversation(
+        "Côte d’Ivoire",
+        "",
+        (
+            "Explore Côte d’Ivoire from 1950 to 2020, focusing on major "
+            "historical and cultural developments"
+        ),
+        existing_state={},
+        report_available=False,
+    )
+
+    assert result["action"] == "generate"
+
+
+def test_yes_after_pdf_offer_generates_when_no_report_exists(monkeypatch):
+    _configure_model(
+        monkeypatch,
+        latest_payload=_payload("Sure! I’m generating the PDF report now."),
+    )
+
+    result = report_writer.continue_report_conversation(
+        "Côte d’Ivoire",
+        "history and culture from 1950 to 2020; balanced overview",
+        "yes",
+        existing_state=dict(READY_BRIEF),
+        conversation_history=[
+            {
+                "role": "assistant",
+                "content": "Would you like me to create the PDF report now?",
+            }
+        ],
+        report_available=False,
+    )
+
+    assert result["action"] == "generate"
+
+
+def test_existing_report_status_question_does_not_regenerate(monkeypatch):
+    _configure_model(
+        monkeypatch,
+        latest_payload=_payload("The report is ready above.", action="reply"),
+    )
+
+    result = report_writer.continue_report_conversation(
+        "Côte d’Ivoire",
+        "history and culture from 1950 to 2020; balanced overview",
+        "where is it?",
+        existing_state=dict(READY_BRIEF),
+        report_available=True,
+    )
+
+    assert result["action"] == "reply"
