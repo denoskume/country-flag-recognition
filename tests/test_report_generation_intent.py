@@ -107,6 +107,68 @@ def test_clear_country_scope_generates_report_without_requiring_report_keyword(m
     assert result["action"] == "generate"
 
 
+def test_incomplete_country_need_is_clarified_instead_of_answered_in_chat(monkeypatch):
+    incomplete_brief = {
+        "subject": "Côte d’Ivoire economic history",
+        "topics": ["economy", "history"],
+        "period": "",
+        "angles": [],
+        "depth": "",
+        "exclusions": [],
+        "current_events": False,
+        "other_constraints": [],
+        "ready": False,
+        "missing": ["period", "depth"],
+    }
+    _configure_model(
+        monkeypatch,
+        latest_payload={
+            "action": "reply",
+            "country": "Côte d’Ivoire",
+            "normalized_request": "economic history",
+            "reply": (
+                "Côte d’Ivoire’s economic history is a tale of boom, bust, and resilience. "
+                "It began in the early twentieth century as a colonial cash-crop economy."
+            ),
+            "brief_state": incomplete_brief,
+        },
+    )
+
+    result = report_writer.continue_report_conversation(
+        "Côte d’Ivoire",
+        "",
+        "Its economical history",
+        existing_state={},
+        report_available=False,
+    )
+
+    assert result["action"] == "ask"
+    assert result["reply"].endswith("?")
+    assert len(result["reply"]) < 220
+    assert "economic history is" not in result["reply"].casefold()
+
+
+def test_ready_brief_generates_automatically_after_requirement_gathering(monkeypatch):
+    _configure_model(
+        monkeypatch,
+        latest_payload=_payload(
+            "That gives me everything I need.",
+            action="reply",
+        ),
+    )
+
+    result = report_writer.continue_report_conversation(
+        "Côte d’Ivoire",
+        "history and culture from 1950 to 2020; balanced overview",
+        "balanced overview",
+        turn_number=3,
+        existing_state=dict(READY_BRIEF),
+        report_available=False,
+    )
+
+    assert result["action"] == "generate"
+
+
 def test_yes_after_pdf_offer_generates_when_no_report_exists(monkeypatch):
     _configure_model(
         monkeypatch,
