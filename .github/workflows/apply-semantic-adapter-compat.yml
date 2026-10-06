@@ -78,9 +78,16 @@ jobs:
 
           writer = replace_once(
               writer,
-              '''        report_available=report_available,\n    )\n''',
-              '''        report_available=report_available,\n        client_factory=OpenAI,\n        auth_token_fn=llm_auth_token,\n        model_name_fn=llm_model_name,\n    )\n''',
+              '''    result = continue_semantic_conversation(\n        country_name,\n        existing_request,\n        latest_message,\n        turn_number=turn_number,\n        existing_state=existing_state,\n        conversation_history=conversation_history,\n        report_available=report_available,\n    )\n''',
+              '''    semantic_kwargs = {\n        "turn_number": turn_number,\n        "existing_state": existing_state,\n        "conversation_history": conversation_history,\n        "report_available": report_available,\n    }\n    if getattr(continue_semantic_conversation, "__module__", "") == "flag_recognition.report_conversation":\n        semantic_kwargs.update(\n            client_factory=OpenAI,\n            auth_token_fn=llm_auth_token,\n            model_name_fn=llm_model_name,\n        )\n    result = continue_semantic_conversation(\n        country_name,\n        existing_request,\n        latest_message,\n        **semantic_kwargs,\n    )\n''',
               'writer dependency bridge',
+          )
+
+          writer = replace_once(
+              writer,
+              '''    adapted = dict(result)\n    adapted["semantic_action"] = semantic_action\n    adapted["action"] = legacy_action\n    return adapted\n''',
+              '''    adapted = dict(result)\n    brief_state = adapted.get("brief_state")\n    if isinstance(brief_state, dict):\n        brief_state = dict(brief_state)\n        if "missing" not in brief_state:\n            brief_state["missing"] = list(brief_state.get("ambiguities") or [])\n        adapted["brief_state"] = brief_state\n    if semantic_action == "status" and str(existing_request or "").strip():\n        adapted["normalized_request"] = str(existing_request).strip()\n    adapted["semantic_action"] = semantic_action\n    adapted["action"] = legacy_action\n    return adapted\n''',
+              'legacy adapter output compatibility',
           )
 
           conv_path.write_text(conv, encoding='utf-8')
