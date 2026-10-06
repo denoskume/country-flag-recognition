@@ -260,3 +260,46 @@ def test_existing_report_status_question_does_not_regenerate(monkeypatch):
     )
 
     assert result["action"] == "reply"
+
+
+def test_anything_is_fine_accepts_existing_cuisine_scope_and_generates(monkeypatch):
+    previous_state = {
+        "subject": "Japanese cuisine",
+        "topics": ["cuisine"],
+        "period": "",
+        "angles": ["regional specialties"],
+        "depth": "",
+        "exclusions": [],
+        "current_events": False,
+        "other_constraints": [],
+        "ready": False,
+        "missing": ["region"],
+    }
+    _configure_model(
+        monkeypatch,
+        latest_payload={
+            "action": "ask",
+            "country": "Japan",
+            "normalized_request": "Japanese cuisine; regional specialties",
+            "reply": "Which regional specialties or prefectures would you like to focus on in the report?",
+            "brief_state": dict(previous_state),
+        },
+    )
+
+    result = report_writer.continue_report_conversation(
+        "Japan",
+        "Japanese cuisine; regional specialties",
+        "anything is fine",
+        turn_number=4,
+        existing_state=previous_state,
+        conversation_history=[
+            {"role": "assistant", "content": "Which regional specialties or prefecture-level focuses are you most interested in for the report?"},
+            {"role": "user", "content": "anything is fine"},
+        ],
+        report_available=False,
+    )
+
+    assert result["action"] == "generate"
+    assert result["brief_state"]["ready"] is True
+    assert result["brief_state"]["missing"] == []
+    assert not result["reply"].endswith("?")
