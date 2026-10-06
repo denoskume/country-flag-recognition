@@ -1,0 +1,51 @@
+name: Apply semantic conversation adapter
+
+on:
+  push:
+    branches:
+      - fix/dynamic-contextual-dialogue
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: fix/dynamic-contextual-dialogue
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Apply semantic adapter
+        run: python tools/apply_semantic_conversation_adapter.py
+
+      - name: Compile affected modules
+        run: python -m py_compile src/flag_recognition/report_conversation.py src/flag_recognition/report_writer.py
+
+      - name: Install focused test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . --no-deps
+          python -m pip install requests pycountry pytest
+
+      - name: Run focused semantic tests
+        run: |
+          pytest tests/test_semantic_report_conversation.py -q
+          pytest tests/test_semantic_report_writer_integration.py -q
+
+      - name: Commit verified adapter
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/flag_recognition/report_writer.py
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "refactor: delegate report dialogue to semantic engine"
+          git push origin HEAD:fix/dynamic-contextual-dialogue
