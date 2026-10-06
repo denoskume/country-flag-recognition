@@ -2408,3 +2408,42 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     draft["__substantial_sections"] = substantial
     draft["__generation_mode"] = "authored_chapters_with_targeted_completion"
     return draft
+
+
+# SEMANTIC_CONVERSATION_ADAPTER_V1
+# Conversation meaning lives in report_conversation. Keep this public adapter
+# so the Streamlit app and existing callers do not need a simultaneous API migration.
+from .report_conversation import continue_semantic_conversation
+
+
+def continue_report_conversation(
+    country_name: str,
+    existing_request: str,
+    latest_message: str,
+    turn_number: int = 1,
+    existing_state: dict[str, Any] | None = None,
+    conversation_history: list[dict[str, str]] | None = None,
+    report_available: bool = False,
+) -> dict[str, Any]:
+    """Adapt semantic conversation actions to the app's legacy action names."""
+    result = continue_semantic_conversation(
+        country_name,
+        existing_request,
+        latest_message,
+        turn_number=turn_number,
+        existing_state=existing_state,
+        conversation_history=conversation_history,
+        report_available=report_available,
+    )
+    semantic_action = str(result.get("action") or "converse").strip().casefold()
+    legacy_action = {
+        "clarify": "ask",
+        "generate": "generate",
+        "status": "reply",
+        "converse": "reply",
+    }.get(semantic_action, "reply")
+
+    adapted = dict(result)
+    adapted["semantic_action"] = semantic_action
+    adapted["action"] = legacy_action
+    return adapted
