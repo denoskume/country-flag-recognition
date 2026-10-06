@@ -197,6 +197,8 @@ def test_follow_up_angle_refines_complete_brief_and_generates(monkeypatch):
     assert result["action"] == "generate"
     assert result["brief_state"]["period"] == "1950 to 2020"
     assert "policy impact" in result["brief_state"]["angles"]
+    assert not result["reply"].endswith("?")
+    assert "specify" not in result["reply"].casefold()
 
 
 def test_ready_brief_generates_automatically_after_requirement_gathering(monkeypatch):

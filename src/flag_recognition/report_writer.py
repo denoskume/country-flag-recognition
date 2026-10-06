@@ -1845,6 +1845,12 @@ def continue_report_conversation(
     else:
         action = "reply"
 
+    # The deterministic controller may promote a model clarification turn to
+    # generation once the report brief is already complete. Do not surface the
+    # obsolete clarification text beside a generated PDF.
+    if action == "generate" and requested_action != "generate":
+        reply = "Generating your report now."
+
     if action == "ask":
         missing_dimension = _brief_missing_dimension_from_state(
             brief_state,
