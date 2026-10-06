@@ -36,7 +36,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e . --no-deps
-          python -m pip install numpy pandas Pillow PyYAML scikit-learn requests pycountry pytest
+          python -m pip install numpy pandas Pillow PyYAML scikit-learn requests pycountry reportlab pytest
 
       - name: Run regression tests
         run: pytest tests/test_report_generation_intent.py tests/test_dialogue_latency.py tests/test_live_conversation_state.py -q
