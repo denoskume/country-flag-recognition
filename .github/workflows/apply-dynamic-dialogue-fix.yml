@@ -1,202 +1,25 @@
 name: Apply dynamic dialogue fix
-
 on:
   push:
-    branches:
-      - fix/dynamic-contextual-dialogue
-
+    branches: [fix/dynamic-contextual-dialogue]
 permissions:
   contents: write
-
 jobs:
   apply-fix:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: fix/dynamic-contextual-dialogue
-
-      - name: Apply context-adaptive dialogue changes
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('src/flag_recognition/report_writer.py')
-          text = path.read_text(encoding='utf-8')
-
-          reconcile_start = text.index('def _reconcile_report_brief_state(')
-          reconcile_end = text.index('\ndef _brief_missing_dimension_from_state(', reconcile_start)
-          reconcile = '''def _reconcile_report_brief_state(
-              existing_request: str,
-              latest_message: str,
-              previous_state: dict[str, Any],
-              model_state: dict[str, Any],
-          ) -> dict[str, Any]:
-              """Reconcile semantic report state while allowing explicit user scope changes."""
-              reconciled = dict(model_state)
-              previous = previous_state if isinstance(previous_state, dict) else {}
-
-              # Structured model output is authoritative when a field is present, including
-              # an intentionally empty value. Previous values are only a fallback for a
-              # malformed/partial model response that omitted the field entirely.
-              for key in ("subject", "period", "depth"):
-                  if key in model_state:
-                      reconciled[key] = str(model_state.get(key) or "").strip()
-                  else:
-                      reconciled[key] = str(previous.get(key) or "").strip()
-
-              for key in ("topics", "angles", "exclusions", "other_constraints"):
-                  source = model_state.get(key) if key in model_state else previous.get(key)
-                  cleaned: list[str] = []
-                  if isinstance(source, list):
-                      for value in source:
-                          item = str(value or "").strip()
-                          if item and item not in cleaned:
-                              cleaned.append(item)
-                  reconciled[key] = cleaned
-
-              # Deterministic extraction is only a compatibility fallback when the model
-              # did not provide the corresponding semantic field. It must never override
-              # a context-aware model decision or reintroduce a constraint the user removed.
-              if "period" not in model_state and not str(reconciled.get("period") or "").strip():
-                  year_range = (
-                      _extract_requested_year_range(latest_message)
-                      or _extract_requested_year_range(existing_request)
-                  )
-                  if year_range is not None:
-                      reconciled["period"] = f"{year_range[0]} to {year_range[1]}"
-
-              if "topics" not in model_state and not reconciled.get("topics"):
-                  topic_groups = (
-                      _requested_topic_groups(latest_message)
-                      or _requested_topic_groups(existing_request)
-                  )
-                  if topic_groups:
-                      reconciled["topics"] = list(topic_groups)
-
-              if "depth" not in model_state and not str(reconciled.get("depth") or "").strip():
-                  depth = _extract_depth_label(latest_message) or _extract_depth_label(existing_request)
-                  if depth:
-                      reconciled["depth"] = depth
-
-              raw_missing = reconciled.get("missing")
-              filtered_missing: list[str] = []
-              if isinstance(raw_missing, list):
-                  for value in raw_missing:
-                      item = str(value or "").strip().casefold()
-                      if not item:
-                          continue
-                      if item == "period" and str(reconciled.get("period") or "").strip():
-                          continue
-                      if item in {"depth", "detail"} and str(reconciled.get("depth") or "").strip():
-                          continue
-                      if item in {"angle", "angles"} and reconciled.get("angles"):
-                          continue
-                      if item in {"topic", "topics"} and reconciled.get("topics"):
-                          continue
-                      filtered_missing.append(item)
-              reconciled["missing"] = filtered_missing
-              return reconciled
-
-'''
-          text = text[:reconcile_start] + reconcile + text[reconcile_end + 1:]
-
-          missing_start = text.index('def _brief_missing_dimension_from_state(')
-          missing_end = text.index('\ndef _brief_missing_dimension(', missing_start)
-          missing = '''def _semantic_brief_has_scope(brief_state: dict[str, Any]) -> bool:
-              """Return True for any meaningful model-derived report scope, without a fixed taxonomy."""
-              if not isinstance(brief_state, dict):
-                  return False
-
-              for key in ("subject", "period", "depth"):
-                  if str(brief_state.get(key) or "").strip():
-                      return True
-
-              for key in ("topics", "angles", "exclusions", "other_constraints"):
-                  values = brief_state.get(key)
-                  if isinstance(values, list) and any(str(value or "").strip() for value in values):
-                      return True
-
-              return bool(brief_state.get("current_events"))
-
-
-          def _brief_missing_dimension_from_state(
-              brief_state: dict[str, Any],
-              existing_request: str,
-              latest_message: str,
-          ) -> str:
-              """Use semantic state first; deterministic rules must not invent missing requirements."""
-              if bool(brief_state.get("ready")):
-                  return ""
-
-              raw_missing = brief_state.get("missing")
-              if isinstance(raw_missing, list):
-                  for value in raw_missing:
-                      item = str(value or "").strip().casefold()
-                      if item:
-                          return item
-
-              if not _semantic_brief_has_scope(brief_state):
-                  return "topic"
-              return ""
-
-'''
-          text = text[:missing_start] + missing + text[missing_end + 1:]
-
-          old_intro = (
-              '        "Interpret the user\'s latest message using the recent dialogue, preserved semantic brief, "\n'
-              '        "current country, and report availability. User wording is unpredictable: resolve pronouns, "\n'
-              '        "ellipsis, fragments, corrections, short reactions, and follow-ups from context. Do not use "\n'
-              '        "canned wording and do not behave like a questionnaire. Every reply must be freshly "\n'
-          )
-          new_intro = (
-              '        "Interpret the user\'s latest message using the recent dialogue, preserved semantic brief, "\n'
-              '        "current country, and report availability. User wording is unpredictable: resolve pronouns, "\n'
-              '        "ellipsis, fragments, corrections, short reactions, numeric ranges, ordinal references, and "\n'
-              '        "follow-ups from context. Treat the semantic brief as open vocabulary rather than a fixed "\n'
-              '        "topic taxonomy. Do not use canned wording and do not behave like a questionnaire. Every reply must be freshly "\n'
-          )
-          if old_intro in text:
-              text = text.replace(old_intro, new_intro, 1)
-
-          rule_anchor = '        "- Preserve resolved country and brief facts unless the user explicitly changes them.\\n"\n'
-          if rule_anchor in text and 'Topics, subjects, and constraints are open-ended' not in text:
-              rule_insert = (
-                  rule_anchor
-                  + '        "- Topics, subjects, and constraints are open-ended. Preserve the user\'s specific concepts even when they do not match any predefined category.\\n"\n'
-                  + '        "- Resolve short numeric or ordinal fragments against the immediately discussed subject before treating them as dates or ambiguity. For example, after discussing numbered republics, \'1 to 5\' naturally means the first through fifth republics.\\n"\n'
-                  + '        "- Do not require a calendar period merely because a topic is historical. A bounded event, era, institution, dynasty, numbered sequence, or named subject can already define sufficient historical scope.\\n"\n'
-                  + '        "- When the latest message naturally refines, corrects, narrows, broadens, or replaces the existing scope, update the semantic brief directly instead of asking the user to restate information that context already resolves.\\n"\n'
-              )
-              text = text.replace(rule_anchor, rule_insert, 1)
-
-          scope_marker = '    scope_fields = ('
-          if scope_marker in text:
-              scope_start = text.index(scope_marker, text.index('def continue_report_conversation('))
-              scope_end = text.index('    deterministic_ready = ', scope_start)
-              scope = '''    has_report_scope = (
-              bool(existing)
-              or _semantic_brief_has_scope(brief_state)
-              or bool(_requested_topic_groups(latest))
-          )
-'''
-              text = text[:scope_start] + scope + text[scope_end:]
-
-          path.write_text(text, encoding='utf-8')
-          PY
-
-      - name: Compile controller
+      - name: Patch controller
+        run: python -c "import base64;exec(base64.b64decode('ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCgpwYXRoID0gUGF0aCgic3JjL2ZsYWdfcmVjb2duaXRpb24vcmVwb3J0X3dyaXRlci5weSIpCnRleHQgPSBwYXRoLnJlYWRfdGV4dChlbmNvZGluZz0idXRmLTgiKQoKcmVjb25jaWxlX3N0YXJ0ID0gdGV4dC5pbmRleCgiZGVmIF9yZWNvbmNpbGVfcmVwb3J0X2JyaWVmX3N0YXRlKCIpCnJlY29uY2lsZV9lbmQgPSB0ZXh0LmluZGV4KCJcbmRlZiBfYnJpZWZfbWlzc2luZ19kaW1lbnNpb25fZnJvbV9zdGF0ZSgiLCByZWNvbmNpbGVfc3RhcnQpCnJlY29uY2lsZSA9ICdkZWYgX3JlY29uY2lsZV9yZXBvcnRfYnJpZWZfc3RhdGUoXG4gICAgZXhpc3RpbmdfcmVxdWVzdDogc3RyLFxuICAgIGxhdGVzdF9tZXNzYWdlOiBzdHIsXG4gICAgcHJldmlvdXNfc3RhdGU6IGRpY3Rbc3RyLCBBbnldLFxuICAgIG1vZGVsX3N0YXRlOiBkaWN0W3N0ciwgQW55XSxcbikgLT4gZGljdFtzdHIsIEFueV06XG4gICAgIiIiUmVjb25jaWxlIHNlbWFudGljIHJlcG9ydCBzdGF0ZSB3aGlsZSBhbGxvd2luZyBleHBsaWNpdCB1c2VyIHNjb3BlIGNoYW5nZXMuIiIiXG4gICAgcmVjb25jaWxlZCA9IGRpY3QobW9kZWxfc3RhdGUpXG4gICAgcHJldmlvdXMgPSBwcmV2aW91c19zdGF0ZSBpZiBpc2luc3RhbmNlKHByZXZpb3VzX3N0YXRlLCBkaWN0KSBlbHNlIHt9XG5cbiAgICAjIFN0cnVjdHVyZWQgbW9kZWwgb3V0cHV0IGlzIGF1dGhvcml0YXRpdmUgd2hlbiBhIGZpZWxkIGlzIHByZXNlbnQsIGluY2x1ZGluZ1xuICAgICMgYW4gaW50ZW50aW9uYWxseSBlbXB0eSB2YWx1ZS4gUHJldmlvdXMgdmFsdWVzIGFyZSBvbmx5IGEgZmFsbGJhY2sgZm9yIGFcbiAgICAjIG1hbGZvcm1lZC9wYXJ0aWFsIG1vZGVsIHJlc3BvbnNlIHRoYXQgb21pdHRlZCB0aGUgZmllbGQgZW50aXJlbHkuXG4gICAgZm9yIGtleSBpbiAoInN1YmplY3QiLCAicGVyaW9kIiwgImRlcHRoIik6XG4gICAgICAgIGlmIGtleSBpbiBtb2RlbF9zdGF0ZTpcbiAgICAgICAgICAgIHJlY29uY2lsZWRba2V5XSA9IHN0cihtb2RlbF9zdGF0ZS5nZXQoa2V5KSBvciAiIikuc3RyaXAoKVxuICAgICAgICBlbHNlOlxuICAgICAgICAgICAgcmVjb25jaWxlZFtrZXldID0gc3RyKHByZXZpb3VzLmdldChrZXkpIG9yICIiKS5zdHJpcCgpXG5cbiAgICBmb3Iga2V5IGluICgidG9waWNzIiwgImFuZ2xlcyIsICJleGNsdXNpb25zIiwgIm90aGVyX2NvbnN0cmFpbnRzIik6XG4gICAgICAgIHNvdXJjZSA9IG1vZGVsX3N0YXRlLmdldChrZXkpIGlmIGtleSBpbiBtb2RlbF9zdGF0ZSBlbHNlIHByZXZpb3VzLmdldChrZXkpXG4gICAgICAgIGNsZWFuZWQ6IGxpc3Rbc3RyXSA9IFtdXG4gICAgICAgIGlmIGlzaW5zdGFuY2Uoc291cmNlLCBsaXN0KTpcbiAgICAgICAgICAgIGZvciB2YWx1ZSBpbiBzb3VyY2U6XG4gICAgICAgICAgICAgICAgaXRlbSA9IHN0cih2YWx1ZSBvciAiIikuc3RyaXAoKVxuICAgICAgICAgICAgICAgIGlmIGl0ZW0gYW5kIGl0ZW0gbm90IGluIGNsZWFuZWQ6XG4gICAgICAgICAgICAgICAgICAgIGNsZWFuZWQuYXBwZW5kKGl0ZW0pXG4gICAgICAgIHJlY29uY2lsZWRba2V5XSA9IGNsZWFuZWRcblxuICAgICMgRGV0ZXJtaW5pc3RpYyBleHRyYWN0aW9uIGlzIG9ubHkgYSBjb21wYXRpYmlsaXR5IGZhbGxiYWNrIHdoZW4gdGhlIG1vZGVsXG4gICAgIyBkaWQgbm90IHByb3ZpZGUgdGhlIGNvcnJlc3BvbmRpbmcgc2VtYW50aWMgZmllbGQuIEl0IG11c3QgbmV2ZXIgb3ZlcnJpZGVcbiAgICAjIGEgY29udGV4dC1hd2FyZSBtb2RlbCBkZWNpc2lvbiBvciByZWludHJvZHVjZSBhIGNvbnN0cmFpbnQgdGhlIHVzZXIgcmVtb3ZlZC5cbiAgICBpZiAicGVyaW9kIiBub3QgaW4gbW9kZWxfc3RhdGUgYW5kIG5vdCBzdHIocmVjb25jaWxlZC5nZXQoInBlcmlvZCIpIG9yICIiKS5zdHJpcCgpOlxuICAgICAgICB5ZWFyX3JhbmdlID0gKFxuICAgICAgICAgICAgX2V4dHJhY3RfcmVxdWVzdGVkX3llYXJfcmFuZ2UobGF0ZXN0X21lc3NhZ2UpXG4gICAgICAgICAgICBvciBfZXh0cmFjdF9yZXF1ZXN0ZWRfeWVhcl9yYW5nZShleGlzdGluZ19yZXF1ZXN0KVxuICAgICAgICApXG4gICAgICAgIGlmIHllYXJfcmFuZ2UgaXMgbm90IE5vbmU6XG4gICAgICAgICAgICByZWNvbmNpbGVkWyJwZXJpb2QiXSA9IGYie3llYXJfcmFuZ2VbMF19IHRvIHt5ZWFyX3JhbmdlWzFdfSJcblxuICAgIGlmICJ0b3BpY3MiIG5vdCBpbiBtb2RlbF9zdGF0ZSBhbmQgbm90IHJlY29uY2lsZWQuZ2V0KCJ0b3BpY3MiKTpcbiAgICAgICAgdG9waWNfZ3JvdXBzID0gKFxuICAgICAgICAgICAgX3JlcXVlc3RlZF90b3BpY19ncm91cHMobGF0ZXN0X21lc3NhZ2UpXG4gICAgICAgICAgICBvciBfcmVxdWVzdGVkX3RvcGljX2dyb3VwcyhleGlzdGluZ19yZXF1ZXN0KVxuICAgICAgICApXG4gICAgICAgIGlmIHRvcGljX2dyb3VwczpcbiAgICAgICAgICAgIHJlY29uY2lsZWRbInRvcGljcyJdID0gbGlzdCh0b3BpY19ncm91cHMpXG5cbiAgICBpZiAiZGVwdGgiIG5vdCBpbiBtb2RlbF9zdGF0ZSBhbmQgbm90IHN0cihyZWNvbmNpbGVkLmdldCgiZGVwdGgiKSBvciAiIikuc3RyaXAoKTpcbiAgICAgICAgZGVwdGggPSBfZXh0cmFjdF9kZXB0aF9sYWJlbChsYXRlc3RfbWVzc2FnZSkgb3IgX2V4dHJhY3RfZGVwdGhfbGFiZWwoZXhpc3RpbmdfcmVxdWVzdClcbiAgICAgICAgaWYgZGVwdGg6XG4gICAgICAgICAgICByZWNvbmNpbGVkWyJkZXB0aCJdID0gZGVwdGhcblxuICAgIHJhd19taXNzaW5nID0gcmVjb25jaWxlZC5nZXQoIm1pc3NpbmciKVxuICAgIGZpbHRlcmVkX21pc3Npbmc6IGxpc3Rbc3RyXSA9IFtdXG4gICAgaWYgaXNpbnN0YW5jZShyYXdfbWlzc2luZywgbGlzdCk6XG4gICAgICAgIGZvciB2YWx1ZSBpbiByYXdfbWlzc2luZzpcbiAgICAgICAgICAgIGl0ZW0gPSBzdHIodmFsdWUgb3IgIiIpLnN0cmlwKCkuY2FzZWZvbGQoKVxuICAgICAgICAgICAgaWYgbm90IGl0ZW06XG4gICAgICAgICAgICAgICAgY29udGludWVcbiAgICAgICAgICAgIGlmIGl0ZW0gPT0gInBlcmlvZCIgYW5kIHN0cihyZWNvbmNpbGVkLmdldCgicGVyaW9kIikgb3IgIiIpLnN0cmlwKCk6XG4gICAgICAgICAgICAgICAgY29udGludWVcbiAgICAgICAgICAgIGlmIGl0ZW0gaW4geyJkZXB0aCIsICJkZXRhaWwifSBhbmQgc3RyKHJlY29uY2lsZWQuZ2V0KCJkZXB0aCIpIG9yICIiKS5zdHJpcCgpOlxuICAgICAgICAgICAgICAgIGNvbnRpbnVlXG4gICAgICAgICAgICBpZiBpdGVtIGluIHsiYW5nbGUiLCAiYW5nbGVzIn0gYW5kIHJlY29uY2lsZWQuZ2V0KCJhbmdsZXMiKTpcbiAgICAgICAgICAgICAgICBjb250aW51ZVxuICAgICAgICAgICAgaWYgaXRlbSBpbiB7InRvcGljIiwgInRvcGljcyJ9IGFuZCByZWNvbmNpbGVkLmdldCgidG9waWNzIik6XG4gICAgICAgICAgICAgICAgY29udGludWVcbiAgICAgICAgICAgIGZpbHRlcmVkX21pc3NpbmcuYXBwZW5kKGl0ZW0pXG4gICAgcmVjb25jaWxlZFsibWlzc2luZyJdID0gZmlsdGVyZWRfbWlzc2luZ1xuICAgIHJldHVybiByZWNvbmNpbGVkXG5cbicKdGV4dCA9IHRleHRbOnJlY29uY2lsZV9zdGFydF0gKyByZWNvbmNpbGUgKyB0ZXh0W3JlY29uY2lsZV9lbmQgKyAxOl0KCm1pc3Npbmdfc3RhcnQgPSB0ZXh0LmluZGV4KCJkZWYgX2JyaWVmX21pc3NpbmdfZGltZW5zaW9uX2Zyb21fc3RhdGUoIikKbWlzc2luZ19lbmQgPSB0ZXh0LmluZGV4KCJcbmRlZiBfYnJpZWZfbWlzc2luZ19kaW1lbnNpb24oIiwgbWlzc2luZ19zdGFydCkKbWlzc2luZyA9ICdkZWYgX3NlbWFudGljX2JyaWVmX2hhc19zY29wZShicmllZl9zdGF0ZTogZGljdFtzdHIsIEFueV0pIC0+IGJvb2w6XG4gICAgIiIiUmV0dXJuIFRydWUgZm9yIGFueSBtZWFuaW5nZnVsIG1vZGVsLWRlcml2ZWQgcmVwb3J0IHNjb3BlLCB3aXRob3V0IGEgZml4ZWQgdGF4b25vbXkuIiIiXG4gICAgaWYgbm90IGlzaW5zdGFuY2UoYnJpZWZfc3RhdGUsIGRpY3QpOlxuICAgICAgICByZXR1cm4gRmFsc2VcblxuICAgIGZvciBrZXkgaW4gKCJzdWJqZWN0IiwgInBlcmlvZCIsICJkZXB0aCIpOlxuICAgICAgICBpZiBzdHIoYnJpZWZfc3RhdGUuZ2V0KGtleSkgb3IgIiIpLnN0cmlwKCk6XG4gICAgICAgICAgICByZXR1cm4gVHJ1ZVxuXG4gICAgZm9yIGtleSBpbiAoInRvcGljcyIsICJhbmdsZXMiLCAiZXhjbHVzaW9ucyIsICJvdGhlcl9jb25zdHJhaW50cyIpOlxuICAgICAgICB2YWx1ZXMgPSBicmllZl9zdGF0ZS5nZXQoa2V5KVxuICAgICAgICBpZiBpc2luc3RhbmNlKHZhbHVlcywgbGlzdCkgYW5kIGFueShzdHIodmFsdWUgb3IgIiIpLnN0cmlwKCkgZm9yIHZhbHVlIGluIHZhbHVlcyk6XG4gICAgICAgICAgICByZXR1cm4gVHJ1ZVxuXG4gICAgcmV0dXJuIGJvb2woYnJpZWZfc3RhdGUuZ2V0KCJjdXJyZW50X2V2ZW50cyIpKVxuXG5cbmRlZiBfYnJpZWZfbWlzc2luZ19kaW1lbnNpb25fZnJvbV9zdGF0ZShcbiAgICBicmllZl9zdGF0ZTogZGljdFtzdHIsIEFueV0sXG4gICAgZXhpc3RpbmdfcmVxdWVzdDogc3RyLFxuICAgIGxhdGVzdF9tZXNzYWdlOiBzdHIsXG4pIC0+IHN0cjpcbiAgICAiIiJVc2Ugc2VtYW50aWMgc3RhdGUgZmlyc3Q7IGRldGVybWluaXN0aWMgcnVsZXMgbXVzdCBub3QgaW52ZW50IG1pc3NpbmcgcmVxdWlyZW1lbnRzLiIiIlxuICAgIGlmIGJvb2woYnJpZWZfc3RhdGUuZ2V0KCJyZWFkeSIpKTpcbiAgICAgICAgcmV0dXJuICIiXG5cbiAgICByYXdfbWlzc2luZyA9IGJyaWVmX3N0YXRlLmdldCgibWlzc2luZyIpXG4gICAgaWYgaXNpbnN0YW5jZShyYXdfbWlzc2luZywgbGlzdCk6XG4gICAgICAgIGZvciB2YWx1ZSBpbiByYXdfbWlzc2luZzpcbiAgICAgICAgICAgIGl0ZW0gPSBzdHIodmFsdWUgb3IgIiIpLnN0cmlwKCkuY2FzZWZvbGQoKVxuICAgICAgICAgICAgaWYgaXRlbTpcbiAgICAgICAgICAgICAgICByZXR1cm4gaXRlbVxuXG4gICAgaWYgbm90IF9zZW1hbnRpY19icmllZl9oYXNfc2NvcGUoYnJpZWZfc3RhdGUpOlxuICAgICAgICByZXR1cm4gInRvcGljIlxuICAgIHJldHVybiAiIlxuXG4nCnRleHQgPSB0ZXh0WzptaXNzaW5nX3N0YXJ0XSArIG1pc3NpbmcgKyB0ZXh0W21pc3NpbmdfZW5kICsgMTpdCgpvbGRfaW50cm8gPSAnICAgICAgICAiSW50ZXJwcmV0IHRoZSB1c2VyXFxcJ3MgbGF0ZXN0IG1lc3NhZ2UgdXNpbmcgdGhlIHJlY2VudCBkaWFsb2d1ZSwgcHJlc2VydmVkIHNlbWFudGljIGJyaWVmLCAiXFxuICAgICAgICAiY3VycmVudCBjb3VudHJ5LCBhbmQgcmVwb3J0IGF2YWlsYWJpbGl0eS4gVXNlciB3b3JkaW5nIGlzIHVucHJlZGljdGFibGU6IHJlc29sdmUgcHJvbm91bnMsICJcXG4gICAgICAgICJlbGxpcHNpcywgZnJhZ21lbnRzLCBjb3JyZWN0aW9ucywgc2hvcnQgcmVhY3Rpb25zLCBhbmQgZm9sbG93LXVwcyBmcm9tIGNvbnRleHQuIERvIG5vdCB1c2UgIlxcbiAgICAgICAgImNhbm5lZCB3b3JkaW5nIGFuZCBkbyBub3QgYmVoYXZlIGxpa2UgYSBxdWVzdGlvbm5haXJlLiBFdmVyeSByZXBseSBtdXN0IGJlIGZyZXNobHkgIlxcbicKbmV3X2ludHJvID0gJyAgICAgICAgIkludGVycHJldCB0aGUgdXNlclxcXCdzIGxhdGVzdCBtZXNzYWdlIHVzaW5nIHRoZSByZWNlbnQgZGlhbG9ndWUsIHByZXNlcnZlZCBzZW1hbnRpYyBicmllZiwgIlxcbiAgICAgICAgImN1cnJlbnQgY291bnRyeSwgYW5kIHJlcG9ydCBhdmFpbGFiaWxpdHkuIFVzZXIgd29yZGluZyBpcyB1bnByZWRpY3RhYmxlOiByZXNvbHZlIHByb25vdW5zLCAiXFxuICAgICAgICAiZWxsaXBzaXMsIGZyYWdtZW50cywgY29ycmVjdGlvbnMsIHNob3J0IHJlYWN0aW9ucywgbnVtZXJpYyByYW5nZXMsIG9yZGluYWwgcmVmZXJlbmNlcywgYW5kICJcXG4gICAgICAgICJmb2xsb3ctdXBzIGZyb20gY29udGV4dC4gVHJlYXQgdGhlIHNlbWFudGljIGJyaWVmIGFzIG9wZW4gdm9jYWJ1bGFyeSByYXRoZXIgdGhhbiBhIGZpeGVkICJcXG4gICAgICAgICJ0b3BpYyB0YXhvbm9teS4gRG8gbm90IHVzZSBjYW5uZWQgd29yZGluZyBhbmQgZG8gbm90IGJlaGF2ZSBsaWtlIGEgcXVlc3Rpb25uYWlyZS4gRXZlcnkgcmVwbHkgbXVzdCBiZSBmcmVzaGx5ICJcXG4nCmlmIG9sZF9pbnRybyBpbiB0ZXh0OgogICAgdGV4dCA9IHRleHQucmVwbGFjZShvbGRfaW50cm8sIG5ld19pbnRybywgMSkKCnJ1bGVfYW5jaG9yID0gJyAgICAgICAgIi0gUHJlc2VydmUgcmVzb2x2ZWQgY291bnRyeSBhbmQgYnJpZWYgZmFjdHMgdW5sZXNzIHRoZSB1c2VyIGV4cGxpY2l0bHkgY2hhbmdlcyB0aGVtLlxcXFxuIlxcbicKcnVsZV9pbnNlcnQgPSAnICAgICAgICAiLSBQcmVzZXJ2ZSByZXNvbHZlZCBjb3VudHJ5IGFuZCBicmllZiBmYWN0cyB1bmxlc3MgdGhlIHVzZXIgZXhwbGljaXRseSBjaGFuZ2VzIHRoZW0uXFxcXG4iXFxuICAgICAgICAiLSBUb3BpY3MsIHN1YmplY3RzLCBhbmQgY29uc3RyYWludHMgYXJlIG9wZW4tZW5kZWQuIFByZXNlcnZlIHRoZSB1c2VyXFxcJ3Mgc3BlY2lmaWMgY29uY2VwdHMgZXZlbiB3aGVuIHRoZXkgZG8gbm90IG1hdGNoIGFueSBwcmVkZWZpbmVkIGNhdGVnb3J5LlxcXFxuIlxcbiAgICAgICAgIi0gUmVzb2x2ZSBzaG9ydCBudW1lcmljIG9yIG9yZGluYWwgZnJhZ21lbnRzIGFnYWluc3QgdGhlIGltbWVkaWF0ZWx5IGRpc2N1c3NlZCBzdWJqZWN0IGJlZm9yZSB0cmVhdGluZyB0aGVtIGFzIGRhdGVzIG9yIGFtYmlndWl0eS4gRm9yIGV4YW1wbGUsIGFmdGVyIGRpc2N1c3NpbmcgbnVtYmVyZWQgcmVwdWJsaWNzLCBcXFwnMSB0byA1XFxcJyBuYXR1cmFsbHkgbWVhbnMgdGhlIGZpcnN0IHRocm91Z2ggZmlmdGggcmVwdWJsaWNzLlxcXFxuIlxcbiAgICAgICAgIi0gRG8gbm90IHJlcXVpcmUgYSBjYWxlbmRhciBwZXJpb2QgbWVyZWx5IGJlY2F1c2UgYSB0b3BpYyBpcyBoaXN0b3JpY2FsLiBBIGJvdW5kZWQgZXZlbnQsIGVyYSwgaW5zdGl0dXRpb24sIGR5bmFzdHksIG51bWJlcmVkIHNlcXVlbmNlLCBvciBuYW1lZCBzdWJqZWN0IGNhbiBhbHJlYWR5IGRlZmluZSBzdWZmaWNpZW50IGhpc3RvcmljYWwgc2NvcGUuXFxcXG4iXFxuICAgICAgICAiLSBXaGVuIHRoZSBsYXRlc3QgbWVzc2FnZSBuYXR1cmFsbHkgcmVmaW5lcywgY29ycmVjdHMsIG5hcnJvd3MsIGJyb2FkZW5zLCBvciByZXBsYWNlcyB0aGUgZXhpc3Rpbmcgc2NvcGUsIHVwZGF0ZSB0aGUgc2VtYW50aWMgYnJpZWYgZGlyZWN0bHkgaW5zdGVhZCBvZiBhc2tpbmcgdGhlIHVzZXIgdG8gcmVzdGF0ZSBpbmZvcm1hdGlvbiB0aGF0IGNvbnRleHQgYWxyZWFkeSByZXNvbHZlcy5cXFxcbiJcXG4nCmlmIHJ1bGVfYW5jaG9yIGluIHRleHQgYW5kICJUb3BpY3MsIHN1YmplY3RzLCBhbmQgY29uc3RyYWludHMgYXJlIG9wZW4tZW5kZWQiIG5vdCBpbiB0ZXh0OgogICAgdGV4dCA9IHRleHQucmVwbGFjZShydWxlX2FuY2hvciwgcnVsZV9pbnNlcnQsIDEpCgpzY29wZV9tYXJrZXIgPSAiICAgIHNjb3BlX2ZpZWxkcyA9ICgiCmlmIHNjb3BlX21hcmtlciBpbiB0ZXh0OgogICAgc2NvcGVfc3RhcnQgPSB0ZXh0LmluZGV4KHNjb3BlX21hcmtlciwgdGV4dC5pbmRleCgiZGVmIGNvbnRpbnVlX3JlcG9ydF9jb252ZXJzYXRpb24oIikpCiAgICBzY29wZV9lbmQgPSB0ZXh0LmluZGV4KCIgICAgZGV0ZXJtaW5pc3RpY19yZWFkeSA9ICIsIHNjb3BlX3N0YXJ0KQogICAgc2NvcGUgPSAnaGFzX3JlcG9ydF9zY29wZSA9IChcbiAgICBib29sKGV4aXN0aW5nKVxuICAgIG9yIF9zZW1hbnRpY19icmllZl9oYXNfc2NvcGUoYnJpZWZfc3RhdGUpXG4gICAgb3IgYm9vbChfcmVxdWVzdGVkX3RvcGljX2dyb3VwcyhsYXRlc3QpKVxuKVxuJwogICAgdGV4dCA9IHRleHRbOnNjb3BlX3N0YXJ0XSArIHNjb3BlICsgdGV4dFtzY29wZV9lbmQ6XQoKcGF0aC53cml0ZV90ZXh0KHRleHQsIGVuY29kaW5nPSJ1dGYtOCIpCg=='))"
+      - name: Compile
         run: python -m py_compile src/flag_recognition/report_writer.py
-
-      - name: Commit source change
+      - name: Commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/flag_recognition/report_writer.py
-          if git diff --cached --quiet; then
-            exit 0
-          fi
+          git diff --cached --quiet && exit 0
           git commit -m "Make report dialogue context-adaptive"
           git push origin HEAD:fix/dynamic-contextual-dialogue
