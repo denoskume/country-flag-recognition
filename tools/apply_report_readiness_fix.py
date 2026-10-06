@@ -1,7 +1,11 @@
 from pathlib import Path
 
 
-WRITER = Path(__file__).resolve().parents[1] / "src" / "flag_recognition" / "report_writer.py"
+ROOT = Path(__file__).resolve().parents[1]
+WRITER = ROOT / "src" / "flag_recognition" / "report_writer.py"
+GENERATION_TESTS = ROOT / "tests" / "test_report_generation_intent.py"
+DIALOGUE_TESTS = ROOT / "tests" / "test_dialogue_latency.py"
+
 source = WRITER.read_text(encoding="utf-8")
 
 old_state_helper = '''def _brief_missing_dimension_from_state(
@@ -116,3 +120,46 @@ for old, new, label in (
     source = source.replace(old, new, 1)
 
 WRITER.write_text(source, encoding="utf-8")
+
+
+generation_tests = GENERATION_TESTS.read_text(encoding="utf-8")
+generation_tests = generation_tests.replace(
+    'def test_follow_up_angle_does_not_reask_known_period(monkeypatch):',
+    'def test_follow_up_angle_refines_complete_brief_and_generates(monkeypatch):',
+    1,
+)
+old_generation_assertions = '''    assert result["action"] == "ask"\n    assert result["brief_state"]["period"] == "1950 to 2020"\n    assert "policy impact" in result["brief_state"]["angles"]\n    assert "time span" not in result["reply"].casefold()\n    assert "period" not in result["reply"].casefold()\n    assert "detailed" in result["reply"].casefold()\n'''
+new_generation_assertions = '''    assert result["action"] == "generate"\n    assert result["brief_state"]["period"] == "1950 to 2020"\n    assert "policy impact" in result["brief_state"]["angles"]\n'''
+if old_generation_assertions not in generation_tests:
+    raise RuntimeError("generation test assertion anchor not found")
+generation_tests = generation_tests.replace(
+    old_generation_assertions,
+    new_generation_assertions,
+    1,
+)
+GENERATION_TESTS.write_text(generation_tests, encoding="utf-8")
+
+
+dialogue_tests = DIALOGUE_TESTS.read_text(encoding="utf-8")
+dialogue_tests = dialogue_tests.replace(
+    'def test_time_range_does_not_force_generation_when_scope_can_still_be_refined(monkeypatch):',
+    'def test_time_range_generates_when_topic_and_period_are_clear(monkeypatch):',
+    1,
+)
+old_time_assertions = '''    assert result["action"] == "ask"\n    assert "political" in result["reply"].lower()\n'''
+new_time_assertions = '''    assert result["action"] == "generate"\n'''
+if old_time_assertions not in dialogue_tests:
+    raise RuntimeError("time-range test assertion anchor not found")
+dialogue_tests = dialogue_tests.replace(old_time_assertions, new_time_assertions, 1)
+
+dialogue_tests = dialogue_tests.replace(
+    'def test_brief_without_angle_still_needs_clarification():',
+    'def test_brief_without_angle_is_ready_when_topic_and_period_are_clear():',
+    1,
+)
+old_ready_assertion = '''    assert report_writer._brief_is_sufficiently_specific(\n        "France history from 1950 to 2020",\n        "",\n    ) is False\n'''
+new_ready_assertion = '''    assert report_writer._brief_is_sufficiently_specific(\n        "France history from 1950 to 2020",\n        "",\n    ) is True\n'''
+if old_ready_assertion not in dialogue_tests:
+    raise RuntimeError("brief readiness test assertion anchor not found")
+dialogue_tests = dialogue_tests.replace(old_ready_assertion, new_ready_assertion, 1)
+DIALOGUE_TESTS.write_text(dialogue_tests, encoding="utf-8")
