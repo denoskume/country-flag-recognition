@@ -258,6 +258,39 @@ def test_anything_is_fine_accepts_existing_scope(monkeypatch):
     assert result["brief_state"]["ambiguities"] == []
 
 
+def test_model_failure_preserves_previous_brief_and_degrades_to_clarification(monkeypatch):
+    conversation = _conversation_module()
+
+    class _FailingResponses:
+        def create(self, **kwargs):
+            raise RuntimeError("backend unavailable")
+
+    class _FailingClient:
+        def __init__(self, *args, **kwargs):
+            self.responses = _FailingResponses()
+
+    monkeypatch.setattr(conversation, "OpenAI", _FailingClient)
+    monkeypatch.setattr(conversation, "llm_auth_token", lambda: "test-key")
+    monkeypatch.setattr(conversation, "llm_model_name", lambda: "test-model")
+
+    previous = _brief(
+        subject="Senegalese music",
+        topics=["music"],
+        scope="traditional music",
+    )
+    result = conversation.continue_semantic_conversation(
+        "Senegal",
+        "Senegalese traditional music",
+        "after independence",
+        existing_state=previous,
+    )
+
+    assert result["action"] == "clarify"
+    assert result["brief_state"]["subject"] == "Senegalese music"
+    assert result["brief_state"]["topics"] == ["music"]
+    assert result["reply"].endswith("?")
+
+
 def test_opening_question_never_claims_generation():
     conversation = _conversation_module()
     reply = conversation.opening_question("Senegal")
