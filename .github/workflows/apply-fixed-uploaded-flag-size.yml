@@ -1,0 +1,48 @@
+name: Apply fixed uploaded flag size
+
+on:
+  push:
+    branches:
+      - fix/fixed-uploaded-flag-size
+    paths:
+      - tools/apply_fixed_uploaded_flag_size.py
+      - .github/workflows/apply-fixed-uploaded-flag-size.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-test-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/fixed-uploaded-flag-size
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Apply fixed uploaded flag size
+        run: python tools/apply_fixed_uploaded_flag_size.py
+
+      - name: Compile Streamlit app
+        run: python -m py_compile app.py
+
+      - name: Install pytest
+        run: python -m pip install pytest
+
+      - name: Run uploaded-flag chat regression test
+        run: pytest tests/test_chat_uploaded_flag_rendering.py -q
+
+      - name: Commit verified app change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.py
+          git diff --cached --check
+          git commit -m "Fix uploaded flag preview size to 2cm by 1cm"
+          git push origin HEAD:fix/fixed-uploaded-flag-size
