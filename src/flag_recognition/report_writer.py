@@ -1493,6 +1493,63 @@ def interpret_country_request(message: str) -> dict[str, str]:
         ) from exc
 
 
+def _is_explicit_report_request(message: str) -> bool:
+    """Return True when the user explicitly asks for a report artifact."""
+    normalized = _normalized_request_text(message)
+    if not normalized:
+        return False
+    return bool(re.search(r"\b(?:report|pdf)\b", normalized))
+
+
+def _is_report_command_only(message: str) -> bool:
+    """Detect short artifact commands that should keep the existing report scope."""
+    normalized = _normalized_request_text(message)
+    if not normalized:
+        return False
+
+    removable = {
+        "a", "an", "the", "me", "my", "please", "now", "it",
+        "report", "pdf", "document", "file",
+        "give", "create", "generate", "make", "prepare", "build",
+        "download", "export", "produce", "send", "show", "want",
+        "i", "would", "like", "get",
+    }
+    remaining = [word for word in normalized.split() if word not in removable]
+    return not remaining
+
+
+def _is_report_generation_confirmation(
+    latest_message: str,
+    recent_history: list[dict[str, str]],
+) -> bool:
+    """Resolve a short yes/okay against the assistant's immediately prior report offer."""
+    normalized = _normalized_request_text(latest_message)
+    confirmations = {
+        "yes", "yes please", "yeah", "yep", "ok", "okay", "sure",
+        "please do", "go ahead", "do it", "generate it", "create it",
+    }
+    if normalized not in confirmations:
+        return False
+
+    last_assistant = ""
+    for item in reversed(recent_history):
+        if str(item.get("role") or "").strip().lower() == "assistant":
+            last_assistant = _normalized_request_text(item.get("content") or "")
+            break
+
+    if not last_assistant:
+        return False
+
+    mentions_artifact = bool(re.search(r"\b(?:report|pdf)\b", last_assistant))
+    offers_generation = bool(
+        re.search(
+            r"\b(?:create|generate|prepare|build|make|produce|export)\w*\b",
+            last_assistant,
+        )
+    )
+    return mentions_artifact and offers_generation
+
+
 def continue_report_conversation(
     country_name: str,
     existing_request: str,
@@ -1672,12 +1729,44 @@ def continue_report_conversation(
 
     requested_action = str(parsed.get("action") or "reply").strip().lower()
     ready = bool(brief_state.get("ready"))
-    if requested_action == "generate" and not ready:
+    prior_ready = bool(state.get("ready"))
+    known_scope = bool(existing) or bool(str(brief_state.get("subject") or "").strip()) or bool(
+        brief_state.get("topics")
+    )
+    explicit_report_request = _is_explicit_report_request(latest)
+    report_confirmation = _is_report_generation_confirmation(latest, recent_history)
+
+    # The PDF is a real application artifact, not conversational prose. When a
+    # user explicitly asks for it (or confirms a direct offer), never allow an
+    # LLM reply to impersonate generation. A sufficiently specific first brief
+    # should also go straight to the report pipeline, which is Flag
+    # Intelligence's primary product behavior.
+    force_generation = (
+        not report_available
+        and (
+            (explicit_report_request and (known_scope or ready or prior_ready))
+            or (report_confirmation and (known_scope or ready or prior_ready))
+            or (ready and int(turn_number) <= 1)
+        )
+    )
+
+    if force_generation:
+        action = "generate"
+    elif requested_action == "generate" and not ready:
         action = "ask"
     elif requested_action in {"reply", "ask", "generate"}:
         action = requested_action
     else:
         action = "reply"
+
+    # Short commands such as "give me a report" or "pdf report" are artifact
+    # requests, not a replacement for the already-resolved research brief.
+    if (
+        action == "generate"
+        and existing
+        and (report_confirmation or _is_report_command_only(latest))
+    ):
+        normalized_request = existing
 
     missing = brief_state.get("missing")
     if not isinstance(missing, list):
