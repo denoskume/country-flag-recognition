@@ -125,6 +125,9 @@ TOPIC_SECTION_GROUPS: dict[str, tuple[str, ...]] = {
         "economy_trade_industries",
         "infrastructure_transport_energy",
     ),
+    "cuisine": (
+        "culture_cuisine_music_sport",
+    ),
     "culture": (
         "people_society",
         "culture_cuisine_music_sport",
@@ -192,6 +195,7 @@ def _requested_topic_groups(user_request: str) -> tuple[str, ...]:
     markers = {
         "history": ("history", "historical", "histoire"),
         "economy": ("economy", "economic", "economical", "trade", "industry", "industrial"),
+        "cuisine": ("cuisine", "culinary", "gastronomy", "food"),
         "culture": ("culture", "cultural", "arts", "literature", "music", "cinema"),
         "politics": ("politics", "political", "government", "constitutional"),
         "society": ("society", "social", "demographic", "health"),
@@ -267,6 +271,7 @@ def _canonicalize_report_brief(
         labels = {
             "history": "history",
             "economy": "economy",
+            "cuisine": "cuisine",
             "culture": "culture",
             "politics": "politics",
             "society": "society",
