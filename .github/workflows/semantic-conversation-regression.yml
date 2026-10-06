@@ -23,10 +23,27 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e . --no-deps
-          python -m pip install requests pycountry pytest
+          python -m pip install numpy pandas Pillow PyYAML scikit-learn requests pycountry reportlab pytest
 
-      - name: Run semantic conversation regressions
+      - name: Compile affected production files
         run: |
-          pytest tests/test_semantic_report_conversation.py -q
-          pytest tests/test_semantic_report_writer_integration.py -q
-          pytest tests/test_flag_upload_entry_behavior.py -q
+          python -m py_compile \
+            src/flag_recognition/report_conversation.py \
+            src/flag_recognition/report_writer.py \
+            app.py
+
+      - name: Run adaptive conversation and report regressions
+        run: |
+          pytest \
+            tests/test_semantic_report_conversation.py \
+            tests/test_semantic_report_writer_integration.py \
+            tests/test_report_generation_intent.py \
+            tests/test_report_brief_readiness.py \
+            tests/test_live_conversation_state.py \
+            tests/test_dialogue_latency.py \
+            tests/test_no_canned_chat.py \
+            tests/test_new_flag_session_reset.py \
+            tests/test_chat_uploaded_flag_rendering.py \
+            tests/test_flag_upload_entry_behavior.py \
+            tests/test_scoped_report_period_guard.py \
+            -q
