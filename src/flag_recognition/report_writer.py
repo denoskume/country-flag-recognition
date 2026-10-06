@@ -314,13 +314,19 @@ def _reconcile_report_brief_state(
     previous = previous_state if isinstance(previous_state, dict) else {}
 
     for key in ("subject", "period", "depth"):
-        if key in model_state:
-            reconciled[key] = str(model_state.get(key) or "").strip()
-        else:
-            reconciled[key] = str(previous.get(key) or "").strip()
+        model_value = str(model_state.get(key) or "").strip() if key in model_state else ""
+        previous_value = str(previous.get(key) or "").strip()
+        reconciled[key] = model_value or previous_value
 
     for key in ("topics", "angles", "exclusions", "other_constraints"):
-        source = model_state.get(key) if key in model_state else previous.get(key)
+        model_source = model_state.get(key) if key in model_state else None
+        previous_source = previous.get(key)
+        model_items = [
+            str(value or "").strip()
+            for value in model_source
+            if str(value or "").strip()
+        ] if isinstance(model_source, list) else []
+        source = model_items if model_items else previous_source
         cleaned: list[str] = []
         if isinstance(source, list):
             for value in source:
