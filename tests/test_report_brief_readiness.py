@@ -98,3 +98,40 @@ def test_arbitrary_model_topic_can_form_a_report_scope_without_keyword_registrat
     }
 
     assert report_writer._semantic_brief_has_scope(brief_state)
+
+
+def test_new_model_scope_replaces_stale_previous_topic_when_user_changes_direction():
+    previous_state = {
+        "subject": "French Republics",
+        "topics": ["history"],
+        "period": "",
+        "angles": ["First through Fifth Republic"],
+        "depth": "",
+        "exclusions": [],
+        "current_events": False,
+        "other_constraints": [],
+        "ready": True,
+        "missing": [],
+    }
+    model_state = {
+        "subject": "French cuisine",
+        "topics": ["traditional cuisine"],
+        "period": "",
+        "angles": [],
+        "depth": "",
+        "exclusions": [],
+        "current_events": False,
+        "other_constraints": [],
+        "ready": True,
+        "missing": [],
+    }
+
+    reconciled = report_writer._reconcile_report_brief_state(
+        "history about French republics from 1 to 5",
+        "actually, focus only on traditional cuisine",
+        previous_state,
+        model_state,
+    )
+
+    assert reconciled["topics"] == ["traditional cuisine"]
+    assert reconciled["subject"] == "French cuisine"
