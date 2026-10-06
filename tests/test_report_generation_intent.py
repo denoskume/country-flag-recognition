@@ -148,7 +148,7 @@ def test_incomplete_country_need_is_clarified_instead_of_answered_in_chat(monkey
     assert "economic history is" not in result["reply"].casefold()
 
 
-def test_follow_up_angle_does_not_reask_known_period(monkeypatch):
+def test_follow_up_angle_refines_complete_brief_and_generates(monkeypatch):
     _configure_model(
         monkeypatch,
         latest_payload={
@@ -194,12 +194,9 @@ def test_follow_up_angle_does_not_reask_known_period(monkeypatch):
         report_available=False,
     )
 
-    assert result["action"] == "ask"
+    assert result["action"] == "generate"
     assert result["brief_state"]["period"] == "1950 to 2020"
     assert "policy impact" in result["brief_state"]["angles"]
-    assert "time span" not in result["reply"].casefold()
-    assert "period" not in result["reply"].casefold()
-    assert "detailed" in result["reply"].casefold()
 
 
 def test_ready_brief_generates_automatically_after_requirement_gathering(monkeypatch):

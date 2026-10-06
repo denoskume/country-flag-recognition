@@ -222,7 +222,7 @@ def test_explicit_time_range_is_detected():
     assert report_writer._has_explicit_time_range("Its history") is False
 
 
-def test_time_range_does_not_force_generation_when_scope_can_still_be_refined(monkeypatch):
+def test_time_range_generates_when_topic_and_period_are_clear(monkeypatch):
     _FakeClient.payload = {
         "action": "ask",
         "normalized_request": "History of France from 1950 to 2026",
@@ -250,8 +250,7 @@ def test_time_range_does_not_force_generation_when_scope_can_still_be_refined(mo
         turn_number=2,
     )
 
-    assert result["action"] == "ask"
-    assert "political" in result["reply"].lower()
+    assert result["action"] == "generate"
 
 
 def test_economic_and_cultural_scope_is_not_full_report():
@@ -272,11 +271,11 @@ def test_complete_brief_detects_period_angles_and_depth():
     ) is True
 
 
-def test_brief_without_angle_still_needs_clarification():
+def test_brief_without_angle_is_ready_when_topic_and_period_are_clear():
     assert report_writer._brief_is_sufficiently_specific(
         "France history from 1950 to 2020",
         "",
-    ) is False
+    ) is True
 
 
 def test_canonical_brief_preserves_latest_explicit_topics():

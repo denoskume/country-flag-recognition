@@ -373,40 +373,23 @@ def _brief_missing_dimension_from_state(
 ) -> str:
     topics = [str(item).strip().casefold() for item in brief_state.get("topics", [])]
     period = str(brief_state.get("period") or "").strip()
-    angles = [str(item).strip() for item in brief_state.get("angles", []) if str(item).strip()]
-    depth = str(brief_state.get("depth") or "").strip()
 
     if not topics:
         return "topic"
     if "history" in topics and not period:
         return "period"
-    if "history" in topics and period and not angles:
-        return "angle"
-    if not depth:
-        return "depth"
-    return _brief_missing_dimension(existing_request, latest_message)
+    return ""
 
 
 def _brief_missing_dimension(existing_request: str, latest_message: str) -> str:
     brief = _canonicalize_report_brief(existing_request, latest_message)
     groups = _requested_topic_groups(brief)
-    latest_groups = _requested_topic_groups(latest_message)
     has_period = _has_explicit_time_range(brief)
-    has_depth = bool(_extract_depth_label(brief))
 
     if not groups:
         return "topic"
     if "history" in groups and not has_period:
         return "period"
-    if (
-        "history" in groups
-        and has_period
-        and not latest_groups
-        and not has_depth
-    ):
-        return "angle"
-    if not has_depth:
-        return "depth"
     return ""
 
 
@@ -417,9 +400,8 @@ def _brief_is_sufficiently_specific(
     brief = _canonicalize_report_brief(existing_request, latest_message)
     groups = _requested_topic_groups(brief)
     has_period = _has_explicit_time_range(brief)
-    has_depth = bool(_extract_depth_label(brief))
 
-    if not groups or not has_depth:
+    if not groups:
         return False
     if "history" in groups and not has_period:
         return False
