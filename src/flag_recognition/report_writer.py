@@ -1789,7 +1789,7 @@ def continue_report_conversation(
         "You are Flag Intelligence gathering requirements for a tailored country report. "
         "Interpret the user's latest message using the recent dialogue, preserved semantic brief, "
         "current country, and report availability. User wording is unpredictable: resolve pronouns, "
-        "ellipsis, fragments, corrections, short reactions, and follow-ups from context. Do not use "
+        "ellipsis, fragments, corrections, short reactions, numeric ranges, ordinal references, and follow-ups from context. Do not use "
         "canned wording and do not behave like a questionnaire. Every reply must be freshly "
         "generated from the exact latest message and accumulated context; never use stock dialogue.\n\n"
         f"CURRENT COUNTRY: {country or '(none)'}\n"
@@ -1816,7 +1816,7 @@ def continue_report_conversation(
         "- If REPORT AVAILABLE is true, references such as 'where?', 'I am waiting', 'is it ready?', "
         "or 'show me more' should be resolved against the existing report when context supports it.\n"
         "- normalized_request and brief_state are persistent semantic memory. Keep them unchanged on "
-        "ordinary conversational follow-ups unless the user changes scope.\n"
+        "ordinary conversational follow-ups unless the user changes scope. Resolve short numeric or ordinal fragments from recent context; a bounded historical subject does not require calendar years. Explicit corrections replace stale scope fields.\n"
         "- reply naturally in the same language as the latest user message unless another language is requested.\n"
         "Return JSON only."
     )
