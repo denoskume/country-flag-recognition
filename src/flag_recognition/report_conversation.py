@@ -149,8 +149,24 @@ def reconcile_semantic_brief(
         confidence = 0.0
     result["confidence"] = max(0.0, min(1.0, confidence))
 
-    result["ambiguities"] = _clean_list(model.get("ambiguities"))
-    result["ready"] = bool(model.get("ready")) and not result["ambiguities"]
+    ambiguities = _clean_list(model.get("ambiguities"))
+    if not ambiguities and isinstance(model.get("missing"), list):
+        optional_missing = {
+            "depth", "detail", "details", "angle", "angles", "emphasis",
+            "preferred emphasis", "region", "regions", "subtopic", "subtopics",
+        }
+        for value in model.get("missing", []):
+            item = _clean_text(value).casefold()
+            if not item:
+                continue
+            if item == "period" and result["period"]:
+                continue
+            if item in optional_missing:
+                continue
+            ambiguities.append(item)
+
+    result["ambiguities"] = ambiguities
+    result["ready"] = bool(model.get("ready")) and not ambiguities
     result["changed_fields"] = sorted(changed_fields)
     return result
 
@@ -330,6 +346,10 @@ def continue_semantic_conversation(
     existing_state: dict[str, Any] | None = None,
     conversation_history: list[dict[str, str]] | None = None,
     report_available: bool = False,
+    *,
+    client_factory=None,
+    auth_token_fn=None,
+    model_name_fn=None,
 ) -> dict[str, Any]:
     """Interpret one requirements-gathering turn from full conversational context."""
     country = _clean_text(country_name)
@@ -346,7 +366,11 @@ def continue_semantic_conversation(
         if isinstance(item, dict)
     ]
 
-    api_key = llm_auth_token()
+    auth_token = auth_token_fn or llm_auth_token
+    client_type = client_factory or OpenAI
+    model_name = model_name_fn or llm_model_name
+
+    api_key = auth_token()
     if not api_key:
         return _fallback_turn(
             country=country,
@@ -364,7 +388,7 @@ def continue_semantic_conversation(
         recent_history=recent_history,
         report_available=bool(report_available),
     )
-    client = OpenAI(
+    client = client_type(
         api_key=api_key,
         timeout=float(os.getenv("FLAG_INTELLIGENCE_DIALOGUE_TIMEOUT", "12")),
         max_retries=0,
@@ -373,7 +397,7 @@ def continue_semantic_conversation(
     parsed: dict[str, Any] | None = None
     try:
         response = client.responses.create(
-            model=llm_model_name(),
+            model=model_name(),
             reasoning={"effort": "low"},
             input=prompt,
             text={
@@ -395,7 +419,7 @@ def continue_semantic_conversation(
     if parsed is None:
         try:
             response = client.responses.create(
-                model=llm_model_name(),
+                model=model_name(),
                 reasoning={"effort": "low"},
                 input=prompt + "\nReturn one valid JSON object only.",
                 text={"format": {"type": "json_object"}},
@@ -421,7 +445,12 @@ def continue_semantic_conversation(
         latest_message=latest,
         existing_request=existing,
     )
-    action = _clean_text(parsed.get("action")).casefold()
+    raw_action = _clean_text(parsed.get("action")).casefold()
+    legacy_actions = {
+        "ask": "clarify",
+        "reply": "status" if report_available else "clarify",
+    }
+    action = legacy_actions.get(raw_action, raw_action)
     if action not in SEMANTIC_ACTIONS:
         action = "clarify"
 
@@ -437,11 +466,11 @@ def continue_semantic_conversation(
         action = "clarify"
     elif (
         action == "clarify"
-        and brief.get("ready")
         and has_scope
         and not brief.get("ambiguities")
         and normalized_request
     ):
+        brief["ready"] = True
         action = "generate"
 
     if action == "generate":

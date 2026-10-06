@@ -2426,14 +2426,23 @@ def continue_report_conversation(
     report_available: bool = False,
 ) -> dict[str, Any]:
     """Adapt semantic conversation actions to the app's legacy action names."""
+    semantic_kwargs = {
+        "turn_number": turn_number,
+        "existing_state": existing_state,
+        "conversation_history": conversation_history,
+        "report_available": report_available,
+    }
+    if getattr(continue_semantic_conversation, "__module__", "") == "flag_recognition.report_conversation":
+        semantic_kwargs.update(
+            client_factory=OpenAI,
+            auth_token_fn=llm_auth_token,
+            model_name_fn=llm_model_name,
+        )
     result = continue_semantic_conversation(
         country_name,
         existing_request,
         latest_message,
-        turn_number=turn_number,
-        existing_state=existing_state,
-        conversation_history=conversation_history,
-        report_available=report_available,
+        **semantic_kwargs,
     )
     semantic_action = str(result.get("action") or "converse").strip().casefold()
     legacy_action = {
@@ -2444,6 +2453,14 @@ def continue_report_conversation(
     }.get(semantic_action, "reply")
 
     adapted = dict(result)
+    brief_state = adapted.get("brief_state")
+    if isinstance(brief_state, dict):
+        brief_state = dict(brief_state)
+        if "missing" not in brief_state:
+            brief_state["missing"] = list(brief_state.get("ambiguities") or [])
+        adapted["brief_state"] = brief_state
+    if semantic_action == "status" and str(existing_request or "").strip():
+        adapted["normalized_request"] = str(existing_request).strip()
     adapted["semantic_action"] = semantic_action
     adapted["action"] = legacy_action
     return adapted
