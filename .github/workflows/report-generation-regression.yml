@@ -5,12 +5,14 @@ on:
     paths:
       - "src/flag_recognition/report_writer.py"
       - "tests/test_report_generation_intent.py"
+      - "tests/test_report_brief_readiness.py"
       - ".github/workflows/report-generation-regression.yml"
   push:
     branches: ["main"]
     paths:
       - "src/flag_recognition/report_writer.py"
       - "tests/test_report_generation_intent.py"
+      - "tests/test_report_brief_readiness.py"
       - ".github/workflows/report-generation-regression.yml"
 
 jobs:
@@ -35,4 +37,4 @@ jobs:
         run: python -m py_compile src/flag_recognition/report_writer.py
 
       - name: Run report-generation regression tests
-        run: pytest tests/test_report_generation_intent.py tests/test_dialogue_latency.py tests/test_live_conversation_state.py -q
+        run: pytest tests/test_report_generation_intent.py tests/test_report_brief_readiness.py tests/test_dialogue_latency.py tests/test_live_conversation_state.py -q
