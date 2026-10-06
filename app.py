@@ -4861,7 +4861,7 @@ def _render_chat_message(role: str, content: str, image_bytes: bytes | None = No
             image_html = (
                 f'<img class="fi-user-uploaded-image" '
                 f'src="data:{mime_type};base64,{encoded_image}" alt="Uploaded flag" '
-                f'style="display:block;max-width:280px;max-height:190px;width:auto;height:auto;'
+                f'style="display:block;width:2cm;height:1cm;'
                 f'object-fit:contain;border-radius:12px;margin:0 0 {image_margin} 0;" />'
             )
         except Exception:
