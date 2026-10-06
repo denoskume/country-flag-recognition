@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   apply-fix:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -159,31 +158,31 @@ jobs:
               '        "follow-ups from context. Treat the semantic brief as open vocabulary rather than a fixed "\n'
               '        "topic taxonomy. Do not use canned wording and do not behave like a questionnaire. Every reply must be freshly "\n'
           )
-          if old_intro not in text:
-              raise SystemExit('dialogue intro target not found')
-          text = text.replace(old_intro, new_intro, 1)
+          if old_intro in text:
+              text = text.replace(old_intro, new_intro, 1)
 
           rule_anchor = '        "- Preserve resolved country and brief facts unless the user explicitly changes them.\\n"\n'
-          rule_insert = (
-              rule_anchor
-              + '        "- Topics, subjects, and constraints are open-ended. Preserve the user\'s specific concepts even when they do not match any predefined category.\\n"\n'
-              + '        "- Resolve short numeric or ordinal fragments against the immediately discussed subject before treating them as dates or ambiguity. For example, after discussing numbered republics, \'1 to 5\' naturally means the first through fifth republics.\\n"\n'
-              + '        "- Do not require a calendar period merely because a topic is historical. A bounded event, era, institution, dynasty, numbered sequence, or named subject can already define sufficient historical scope.\\n"\n'
-              + '        "- When the latest message naturally refines, corrects, narrows, broadens, or replaces the existing scope, update the semantic brief directly instead of asking the user to restate information that context already resolves.\\n"\n'
-          )
-          if rule_anchor not in text:
-              raise SystemExit('rule anchor not found')
-          text = text.replace(rule_anchor, rule_insert, 1)
+          if rule_anchor in text and 'Topics, subjects, and constraints are open-ended' not in text:
+              rule_insert = (
+                  rule_anchor
+                  + '        "- Topics, subjects, and constraints are open-ended. Preserve the user\'s specific concepts even when they do not match any predefined category.\\n"\n'
+                  + '        "- Resolve short numeric or ordinal fragments against the immediately discussed subject before treating them as dates or ambiguity. For example, after discussing numbered republics, \'1 to 5\' naturally means the first through fifth republics.\\n"\n'
+                  + '        "- Do not require a calendar period merely because a topic is historical. A bounded event, era, institution, dynasty, numbered sequence, or named subject can already define sufficient historical scope.\\n"\n'
+                  + '        "- When the latest message naturally refines, corrects, narrows, broadens, or replaces the existing scope, update the semantic brief directly instead of asking the user to restate information that context already resolves.\\n"\n'
+              )
+              text = text.replace(rule_anchor, rule_insert, 1)
 
-          scope_start = text.index('    scope_fields = (', text.index('def continue_report_conversation('))
-          scope_end = text.index('    deterministic_ready = ', scope_start)
-          scope = '''    has_report_scope = (
+          scope_marker = '    scope_fields = ('
+          if scope_marker in text:
+              scope_start = text.index(scope_marker, text.index('def continue_report_conversation('))
+              scope_end = text.index('    deterministic_ready = ', scope_start)
+              scope = '''    has_report_scope = (
               bool(existing)
               or _semantic_brief_has_scope(brief_state)
               or bool(_requested_topic_groups(latest))
           )
 '''
-          text = text[:scope_start] + scope + text[scope_end:]
+              text = text[:scope_start] + scope + text[scope_end:]
 
           path.write_text(text, encoding='utf-8')
           PY
