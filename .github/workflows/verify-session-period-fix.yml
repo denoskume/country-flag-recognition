@@ -4,6 +4,15 @@ on:
   push:
     branches:
       - fix/new-session-and-period-scope
+    paths:
+      - tools/apply_session_period_scope_fix.py
+      - .github/workflows/verify-session-period-fix.yml
+      - tests/test_new_flag_session_reset.py
+      - tests/test_scoped_report_period_guard.py
+      - tests/test_scoped_report_claim_verification.py
+
+permissions:
+  contents: write
 
 jobs:
   focused-regressions:
@@ -11,11 +20,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: fix/new-session-and-period-scope
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Apply source fix
+        run: python tools/apply_session_period_scope_fix.py
+
+      - name: Compile changed Python
+        run: |
+          python -m py_compile app.py
+          python -m py_compile src/flag_recognition/report_writer.py
 
       - name: Install focused test dependencies
         run: |
@@ -28,4 +48,20 @@ jobs:
           pytest \
             tests/test_new_flag_session_reset.py \
             tests/test_scoped_report_period_guard.py \
-            tests/test_scoped_report_claim_verification.py -q
+            tests/test_scoped_report_claim_verification.py \
+            tests/test_chat_uploaded_flag_rendering.py \
+            tests/test_report_generation_intent.py \
+            tests/test_report_brief_readiness.py -q
+
+      - name: Commit verified production changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.py src/flag_recognition/report_writer.py
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo "No production changes to commit"
+            exit 0
+          fi
+          git commit -m "Reset new flag sessions and enforce report time scope"
+          git push origin HEAD:fix/new-session-and-period-scope
