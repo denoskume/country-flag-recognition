@@ -3,13 +3,14 @@ from pathlib import Path
 path = Path("app.py")
 text = path.read_text(encoding="utf-8")
 
-# Import the deterministic country-only opening question from the semantic layer.
+# Import the deterministic country-only opening question at top level, before
+# the optional report-writer try/except block.
 import_line = "from flag_recognition.report_conversation import opening_question\n"
 if import_line not in text:
-    marker = "from flag_recognition.report_writer import"
+    marker = "try:\n    from flag_recognition.report_writer import"
     index = text.find(marker)
     if index < 0:
-        raise SystemExit("Could not find report_writer import marker")
+        raise SystemExit("Could not find top-level report_writer try block")
     text = text[:index] + import_line + text[index:]
 
 # Allow flag recognition to establish country context without emitting an opening
