@@ -49,7 +49,7 @@ def test_greeting_is_generated_by_llm(monkeypatch):
     assert _FakeClient.instances[0].responses.calls == 1
 
 
-def test_country_only_reply_is_generated_by_llm(monkeypatch):
+def test_country_only_reply_is_suppressed_before_report_scope(monkeypatch):
     _FakeClient.payload = {
         "intent": "country_only",
         "country": "France",
@@ -63,7 +63,7 @@ def test_country_only_reply_is_generated_by_llm(monkeypatch):
 
     assert result["_source"] == "model"
     assert result["country"] == "France"
-    assert result["reply"]
+    assert result["reply"] == ""
     assert _FakeClient.instances[0].responses.calls == 1
 
 

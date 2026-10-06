@@ -320,8 +320,25 @@ def _fallback_turn(
         latest_message=latest_message,
         existing_request=existing_request,
     )
-    # Backend failure must not pretend the request is ready. Preserve the known
-    # brief and ask one neutral question so the user can continue safely.
+    # When the backend is temporarily unavailable, deterministic fallback may
+    # accept only facts that are explicit and unambiguous. A four-digit year range
+    # can therefore complete an already established report subject without forcing
+    # the user to repeat the same requirement.
+    explicit_year_range = _explicit_year_range(latest_message)
+    had_existing_scope = semantic_brief_has_scope(existing_state)
+    normalized_request = _request_from_brief(existing_request, brief)
+    if explicit_year_range is not None and had_existing_scope and normalized_request:
+        brief["ready"] = True
+        brief["ambiguities"] = []
+        return {
+            "action": "generate",
+            "country": country,
+            "normalized_request": normalized_request,
+            "reply": "Generating your report now.",
+            "brief_state": brief,
+        }
+
+    # Otherwise preserve the known brief and ask one neutral clarification.
     brief["ready"] = False
     brief["ambiguities"] = ["Latest refinement could not be interpreted reliably."]
     reply = (
@@ -332,7 +349,7 @@ def _fallback_turn(
     return {
         "action": "clarify",
         "country": country,
-        "normalized_request": _request_from_brief(existing_request, brief),
+        "normalized_request": normalized_request,
         "reply": reply,
         "brief_state": brief,
     }

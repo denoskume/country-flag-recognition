@@ -1608,7 +1608,8 @@ def interpret_country_request(message: str) -> dict[str, str]:
         "When a country context and a substantive topic are both present, set country to "
         "the canonical English country name, preserve the topic in request, and classify "
         "the intent as country_request. If the user names only a country, classify it as "
-        "country_only and choose a natural context-aware response without using a stock question. "
+        "country_only. For country_only, do not provide country facts or substantive content; "
+        "leave reply empty so the app can ask its neutral opening question. "
         "Reply in the same language as the user's message unless the user asks for another "
         "language. For greetings or genuinely country-independent questions, reply naturally "
         "and briefly. Every reply must be freshly generated from the user's exact message "
@@ -1651,7 +1652,12 @@ def interpret_country_request(message: str) -> dict[str, str]:
             result["intent"] = "country_request"
         elif result["country"] and result["intent"] not in {"greeting", "country_request"}:
             result["intent"] = "country_only"
-        if not result["reply"]:
+
+        # Country identification is context only. Never pass model-authored country
+        # exposition into the pre-report chat when no report subject was requested.
+        if result["intent"] == "country_only" and result["country"] and not result["request"]:
+            result["reply"] = ""
+        elif not result["reply"]:
             raise ValueError("dialogue output contains no reply")
         return result
     except Exception as exc:
