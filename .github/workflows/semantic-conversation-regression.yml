@@ -29,3 +29,4 @@ jobs:
         run: |
           pytest tests/test_semantic_report_conversation.py -q
           pytest tests/test_semantic_report_writer_integration.py -q
+          pytest tests/test_flag_upload_entry_behavior.py -q
