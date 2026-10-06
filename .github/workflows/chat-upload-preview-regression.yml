@@ -3,7 +3,11 @@ name: Chat upload preview regression
 on:
   push:
     branches:
-      - fix/render-uploaded-flag-in-chat
+      - main
+    paths:
+      - app.py
+      - tests/test_chat_uploaded_flag_rendering.py
+      - .github/workflows/chat-upload-preview-regression.yml
   pull_request:
     paths:
       - app.py
