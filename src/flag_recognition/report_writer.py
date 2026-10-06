@@ -1636,6 +1636,25 @@ def _is_report_command_only(message: str) -> bool:
     return not remaining
 
 
+def _user_accepts_current_report_scope(message: str) -> bool:
+    """Return True when the user explicitly declines further optional narrowing."""
+    normalized = _normalized_request_text(message)
+    accepted = {
+        "anything is fine",
+        "anything works",
+        "any is fine",
+        "whatever is fine",
+        "whatever works",
+        "no preference",
+        "no preferences",
+        "you choose",
+        "your choice",
+        "all are fine",
+        "all of them",
+    }
+    return normalized in accepted
+
+
 def _is_report_generation_confirmation(
     latest_message: str,
     recent_history: list[dict[str, str]],
@@ -1852,6 +1871,7 @@ def continue_report_conversation(
     prior_ready = bool(state.get("ready"))
     explicit_report_request = _is_explicit_report_request(latest)
     report_confirmation = _is_report_generation_confirmation(latest, recent_history)
+    accepts_current_scope = _user_accepts_current_report_scope(latest)
 
     scope_fields = (
         brief_state.get("topics"),
@@ -1871,7 +1891,12 @@ def continue_report_conversation(
         existing or normalized_request,
         latest,
     )
-    brief_ready = ready or prior_ready or deterministic_ready
+    if accepts_current_scope and has_report_scope:
+        brief_state["ready"] = True
+        brief_state["missing"] = []
+    brief_ready = ready or prior_ready or deterministic_ready or (
+        accepts_current_scope and has_report_scope
+    )
 
     # Flag Intelligence is report-first: before a report exists, substantive
     # country requests are requirements to gather, not prose questions to answer
