@@ -240,6 +240,7 @@ from flag_recognition.report_manifest import (
     build_report_manifest,
     missing_required_sections,
 )
+from flag_recognition.report_conversation import opening_question
 try:
     from flag_recognition.report_writer import (
         continue_report_conversation,
@@ -5151,6 +5152,7 @@ def show_result(
     user_request: str | None = None,
     opening_reply: str | None = None,
     brief_state: dict[str, object] | None = None,
+    defer_opening: bool = False,
 ):
     """Build the complete result inline and expose final downloads."""
     if direct_code is None:
@@ -5212,23 +5214,9 @@ def show_result(
         else:
             st.session_state.fi_image_bytes = None
 
-        assistant_text = str(opening_reply or "").strip()
-        if not assistant_text:
-            try:
-                opening_turn = continue_report_conversation(
-                    country,
-                    "",
-                    "The country was identified from an uploaded flag. "
-                    "Start the live conversation by asking what the user wants to know.",
-                    turn_number=0,
-                )
-                assistant_text = str(opening_turn.get("reply") or "").strip()
-            except Exception as exc:
-                st.error(
-                    "LLM request failed while starting the country conversation: "
-                    f"{type(exc).__name__}: {str(exc)[:220]}"
-                )
-                assistant_text = ""
+        assistant_text = ""
+        if not defer_opening:
+            assistant_text = str(opening_reply or opening_question(country)).strip()
 
         if assistant_text:
             st.session_state.fi_messages.append(
@@ -5411,7 +5399,10 @@ def show_result(
 
 
 if process and image is not None:
-    show_result(image=image)
+    show_result(image=image, defer_opening=bool(prompt_text))
+    if prompt_text:
+        conversation_text = prompt_text
+        conversation_process = True
 
 if text_process:
     resolved_code = (

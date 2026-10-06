@@ -309,28 +309,51 @@ def _reconcile_report_brief_state(
     previous_state: dict[str, Any],
     model_state: dict[str, Any],
 ) -> dict[str, Any]:
-    """Keep previously resolved report constraints when a later model turn omits them."""
+    "Reconcile semantic report state while allowing explicit user scope changes."
     reconciled = dict(model_state)
     previous = previous_state if isinstance(previous_state, dict) else {}
+    changed_fields_raw = model_state.get("changed_fields")
+    changed_fields = {
+        str(value or "").strip().casefold()
+        for value in changed_fields_raw
+        if str(value or "").strip()
+    } if isinstance(changed_fields_raw, list) else set()
 
     for key in ("subject", "period", "depth"):
-        current_value = str(reconciled.get(key) or "").strip()
+        model_value = str(model_state.get(key) or "").strip() if key in model_state else ""
         previous_value = str(previous.get(key) or "").strip()
-        if not current_value and previous_value:
-            reconciled[key] = previous_value
+        reconciled[key] = model_value if key in changed_fields else (model_value or previous_value)
 
     for key in ("topics", "angles", "exclusions", "other_constraints"):
-        merged: list[str] = []
-        for values in (previous.get(key), reconciled.get(key)):
-            if not isinstance(values, list):
-                continue
-            for value in values:
-                text = str(value or "").strip()
-                if text and text not in merged:
-                    merged.append(text)
-        reconciled[key] = merged
+        model_source = model_state.get(key) if key in model_state else None
+        previous_source = previous.get(key)
+        model_items = [
+            str(value or "").strip()
+            for value in model_source
+            if str(value or "").strip()
+        ] if isinstance(model_source, list) else []
+        if key in changed_fields:
+            source = model_source if isinstance(model_source, list) else []
+        else:
+            source = model_items if model_items else previous_source
+        cleaned: list[str] = []
+        if isinstance(source, list):
+            for value in source:
+                item = str(value or "").strip()
+                if item and item not in cleaned:
+                    cleaned.append(item)
+        reconciled[key] = cleaned
 
-    if not str(reconciled.get("period") or "").strip():
+    previous_current_events = bool(previous.get("current_events"))
+    model_current_events = bool(model_state.get("current_events"))
+    reconciled["current_events"] = (
+        model_current_events
+        if "current_events" in changed_fields
+        else (model_current_events or previous_current_events)
+    )
+    reconciled["changed_fields"] = []
+
+    if "period" not in model_state and not str(reconciled.get("period") or "").strip():
         year_range = (
             _extract_requested_year_range(latest_message)
             or _extract_requested_year_range(existing_request)
@@ -338,7 +361,7 @@ def _reconcile_report_brief_state(
         if year_range is not None:
             reconciled["period"] = f"{year_range[0]} to {year_range[1]}"
 
-    if not reconciled.get("topics"):
+    if "topics" not in model_state and not reconciled.get("topics"):
         topic_groups = (
             _requested_topic_groups(latest_message)
             or _requested_topic_groups(existing_request)
@@ -346,7 +369,7 @@ def _reconcile_report_brief_state(
         if topic_groups:
             reconciled["topics"] = list(topic_groups)
 
-    if not str(reconciled.get("depth") or "").strip():
+    if "depth" not in model_state and not str(reconciled.get("depth") or "").strip():
         depth = _extract_depth_label(latest_message) or _extract_depth_label(existing_request)
         if depth:
             reconciled["depth"] = depth
@@ -370,21 +393,42 @@ def _reconcile_report_brief_state(
     reconciled["missing"] = filtered_missing
     return reconciled
 
+def _semantic_brief_has_scope(brief_state: dict[str, Any]) -> bool:
+    "Return True for any meaningful model-derived report scope."
+    if not isinstance(brief_state, dict):
+        return False
+
+    for key in ("subject", "period", "depth"):
+        if str(brief_state.get(key) or "").strip():
+            return True
+
+    for key in ("topics", "angles", "exclusions", "other_constraints"):
+        values = brief_state.get(key)
+        if isinstance(values, list) and any(str(value or "").strip() for value in values):
+            return True
+
+    return bool(brief_state.get("current_events"))
+
 
 def _brief_missing_dimension_from_state(
     brief_state: dict[str, Any],
     existing_request: str,
     latest_message: str,
 ) -> str:
-    topics = [str(item).strip().casefold() for item in brief_state.get("topics", [])]
-    period = str(brief_state.get("period") or "").strip()
+    "Trust semantic state; deterministic rules must not invent missing requirements."
+    if bool(brief_state.get("ready")):
+        return ""
 
-    if not topics:
+    raw_missing = brief_state.get("missing")
+    if isinstance(raw_missing, list):
+        for value in raw_missing:
+            item = str(value or "").strip().casefold()
+            if item:
+                return item
+
+    if not _semantic_brief_has_scope(brief_state):
         return "topic"
-    if "history" in topics and not period:
-        return "period"
     return ""
-
 
 def _brief_missing_dimension(existing_request: str, latest_message: str) -> str:
     brief = _canonicalize_report_brief(existing_request, latest_message)
@@ -1728,6 +1772,22 @@ def continue_report_conversation(
             "exclusions": {"type": "array", "items": {"type": "string"}},
             "current_events": {"type": "boolean"},
             "other_constraints": {"type": "array", "items": {"type": "string"}},
+            "changed_fields": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "enum": [
+                        "subject",
+                        "topics",
+                        "period",
+                        "angles",
+                        "depth",
+                        "exclusions",
+                        "current_events",
+                        "other_constraints",
+                    ],
+                },
+            },
             "ready": {"type": "boolean"},
             "missing": {"type": "array", "items": {"type": "string"}},
         },
@@ -1740,6 +1800,7 @@ def continue_report_conversation(
             "exclusions",
             "current_events",
             "other_constraints",
+            "changed_fields",
             "ready",
             "missing",
         ],
@@ -1769,7 +1830,7 @@ def continue_report_conversation(
         "You are Flag Intelligence gathering requirements for a tailored country report. "
         "Interpret the user's latest message using the recent dialogue, preserved semantic brief, "
         "current country, and report availability. User wording is unpredictable: resolve pronouns, "
-        "ellipsis, fragments, corrections, short reactions, and follow-ups from context. Do not use "
+        "ellipsis, fragments, corrections, short reactions, numeric ranges, ordinal references, and follow-ups from context. Do not use "
         "canned wording and do not behave like a questionnaire. Every reply must be freshly "
         "generated from the exact latest message and accumulated context; never use stock dialogue.\n\n"
         f"CURRENT COUNTRY: {country or '(none)'}\n"
@@ -1784,6 +1845,8 @@ def continue_report_conversation(
         + latest
         + "\n\nRULES:\n"
         "- Preserve resolved country and brief facts unless the user explicitly changes them.\n"
+        "- changed_fields must contain only semantic brief fields that the latest user message explicitly adds, replaces, or clears. Use an empty list when a field is merely carried forward from context.\n"
+        "- If the user explicitly clears a constraint, put that field in changed_fields and return its empty value instead of restoring the old value.\n"
         "- If the user switches country, return the new canonical English country name.\n"
         "- When REPORT AVAILABLE is false, do not answer substantive country knowledge in chat. "
         "Treat country-topic input as requirements for the report.\n"
@@ -1796,7 +1859,7 @@ def continue_report_conversation(
         "- If REPORT AVAILABLE is true, references such as 'where?', 'I am waiting', 'is it ready?', "
         "or 'show me more' should be resolved against the existing report when context supports it.\n"
         "- normalized_request and brief_state are persistent semantic memory. Keep them unchanged on "
-        "ordinary conversational follow-ups unless the user changes scope.\n"
+        "ordinary conversational follow-ups unless the user changes scope. Resolve short numeric or ordinal fragments from recent context; a bounded historical subject does not require calendar years. Explicit corrections replace stale scope fields.\n"
         "- reply naturally in the same language as the latest user message unless another language is requested.\n"
         "Return JSON only."
     )
@@ -1878,18 +1941,9 @@ def continue_report_conversation(
     report_confirmation = _is_report_generation_confirmation(latest, recent_history)
     accepts_current_scope = _user_accepts_current_report_scope(latest)
 
-    scope_fields = (
-        brief_state.get("topics"),
-        str(brief_state.get("period") or "").strip(),
-        brief_state.get("angles"),
-        str(brief_state.get("depth") or "").strip(),
-        brief_state.get("exclusions"),
-        bool(brief_state.get("current_events")),
-        brief_state.get("other_constraints"),
-    )
     has_report_scope = (
         bool(existing)
-        or any(bool(value) for value in scope_fields)
+        or _semantic_brief_has_scope(brief_state)
         or bool(_requested_topic_groups(latest))
     )
     deterministic_ready = _brief_is_sufficiently_specific(
@@ -2354,3 +2408,59 @@ def generate_authored_report(report: dict[str, Any]) -> dict[str, str]:
     draft["__substantial_sections"] = substantial
     draft["__generation_mode"] = "authored_chapters_with_targeted_completion"
     return draft
+
+
+# SEMANTIC_CONVERSATION_ADAPTER_V1
+# Conversation meaning lives in report_conversation. Keep this public adapter
+# so the Streamlit app and existing callers do not need a simultaneous API migration.
+from .report_conversation import continue_semantic_conversation
+
+
+def continue_report_conversation(
+    country_name: str,
+    existing_request: str,
+    latest_message: str,
+    turn_number: int = 1,
+    existing_state: dict[str, Any] | None = None,
+    conversation_history: list[dict[str, str]] | None = None,
+    report_available: bool = False,
+) -> dict[str, Any]:
+    """Adapt semantic conversation actions to the app's legacy action names."""
+    semantic_kwargs = {
+        "turn_number": turn_number,
+        "existing_state": existing_state,
+        "conversation_history": conversation_history,
+        "report_available": report_available,
+    }
+    if getattr(continue_semantic_conversation, "__module__", "") == "flag_recognition.report_conversation":
+        semantic_kwargs.update(
+            client_factory=OpenAI,
+            auth_token_fn=llm_auth_token,
+            model_name_fn=llm_model_name,
+        )
+    result = continue_semantic_conversation(
+        country_name,
+        existing_request,
+        latest_message,
+        **semantic_kwargs,
+    )
+    semantic_action = str(result.get("action") or "converse").strip().casefold()
+    legacy_action = {
+        "clarify": "ask",
+        "generate": "generate",
+        "status": "reply",
+        "converse": "reply",
+    }.get(semantic_action, "reply")
+
+    adapted = dict(result)
+    brief_state = adapted.get("brief_state")
+    if isinstance(brief_state, dict):
+        brief_state = dict(brief_state)
+        if "missing" not in brief_state:
+            brief_state["missing"] = list(brief_state.get("ambiguities") or [])
+        adapted["brief_state"] = brief_state
+    if semantic_action == "status" and str(existing_request or "").strip():
+        adapted["normalized_request"] = str(existing_request).strip()
+    adapted["semantic_action"] = semantic_action
+    adapted["action"] = legacy_action
+    return adapted

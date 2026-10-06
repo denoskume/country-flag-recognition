@@ -39,3 +39,136 @@ def test_cuisine_request_stays_focused_on_cuisine_sections():
     assert "culture_cuisine_music_sport" in sections
     assert "heritage_landmarks" not in sections
     assert "literature_philosophy_thought" not in sections
+
+
+def test_bounded_historical_subject_does_not_force_a_calendar_period():
+    brief_state = {
+        "subject": "French Republics",
+        "topics": ["history"],
+        "period": "",
+        "angles": ["First through Fifth Republic"],
+        "depth": "",
+        "exclusions": [],
+        "current_events": False,
+        "other_constraints": [],
+        "ready": True,
+        "missing": [],
+    }
+
+    assert report_writer._brief_missing_dimension_from_state(
+        brief_state,
+        "history about French republics",
+        "from 1 to 5",
+    ) == ""
+
+
+def test_model_declared_missing_dimension_is_respected_without_hardcoded_topic_rules():
+    brief_state = {
+        "subject": "French Republics",
+        "topics": ["history"],
+        "period": "",
+        "angles": [],
+        "depth": "",
+        "exclusions": [],
+        "current_events": False,
+        "other_constraints": [],
+        "ready": False,
+        "missing": ["scope"],
+    }
+
+    assert report_writer._brief_missing_dimension_from_state(
+        brief_state,
+        "history about French republics",
+        "",
+    ) == "scope"
+
+
+def test_arbitrary_model_topic_can_form_a_report_scope_without_keyword_registration():
+    brief_state = {
+        "subject": "French semiconductor sovereignty",
+        "topics": ["semiconductor supply chain"],
+        "period": "",
+        "angles": ["industrial policy"],
+        "depth": "balanced overview",
+        "exclusions": [],
+        "current_events": False,
+        "other_constraints": [],
+        "ready": True,
+        "missing": [],
+    }
+
+    assert report_writer._semantic_brief_has_scope(brief_state)
+
+
+def test_new_model_scope_replaces_stale_previous_topic_when_user_changes_direction():
+    previous_state = {
+        "subject": "French Republics",
+        "topics": ["history"],
+        "period": "",
+        "angles": ["First through Fifth Republic"],
+        "depth": "",
+        "exclusions": [],
+        "current_events": False,
+        "other_constraints": [],
+        "ready": True,
+        "missing": [],
+    }
+    model_state = {
+        "subject": "French cuisine",
+        "topics": ["traditional cuisine"],
+        "period": "",
+        "angles": [],
+        "depth": "",
+        "exclusions": [],
+        "current_events": False,
+        "other_constraints": [],
+        "ready": True,
+        "missing": [],
+    }
+
+    reconciled = report_writer._reconcile_report_brief_state(
+        "history about French republics from 1 to 5",
+        "actually, focus only on traditional cuisine",
+        previous_state,
+        model_state,
+    )
+
+    assert reconciled["topics"] == ["traditional cuisine"]
+    assert reconciled["subject"] == "French cuisine"
+
+
+def test_explicit_semantic_change_can_clear_a_previous_constraint():
+    previous_state = {
+        "subject": "French Republics",
+        "topics": ["history"],
+        "period": "",
+        "angles": ["constitutional changes"],
+        "depth": "",
+        "exclusions": [],
+        "current_events": False,
+        "other_constraints": [],
+        "ready": False,
+        "missing": [],
+    }
+    model_state = {
+        "subject": "French Republics",
+        "topics": ["history"],
+        "period": "",
+        "angles": [],
+        "depth": "",
+        "exclusions": [],
+        "current_events": False,
+        "other_constraints": [],
+        "ready": True,
+        "missing": [],
+        "changed_fields": ["angles"],
+    }
+
+    reconciled = report_writer._reconcile_report_brief_state(
+        "French Republics with emphasis on constitutional changes",
+        "remove that emphasis; just cover the Republics generally",
+        previous_state,
+        model_state,
+    )
+
+    assert reconciled["angles"] == []
